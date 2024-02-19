@@ -16,7 +16,7 @@
       "zsh": {
         "path": "zsh",
         "env": {
-          "VER_GRADLE":"7",
+          "VER_GRADLE":"8",
           "VER_JAVA":"11.0.22"
         }
       }
