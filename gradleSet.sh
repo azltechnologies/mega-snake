@@ -1,3 +1,4 @@
+set_gradle(){
     local PARAM_GRADLE=$1
     echo "desired gradle version $PARAM_GRADLE"
         local TEMP=$(gradle -v 2>/dev/null | grep Gradle | grep -oE ' [0-9\.]+' | grep -oE '[0-9\.]+' || true)
@@ -49,3 +50,4 @@
         local GRADLE_VERSION=$(gradle -v 2>/dev/null | grep Gradle | grep -oE ' [0-9\.]+' | grep -oE '[0-9\.]+' || true)
         echo "Now using gradle version: $GRADLE_VERSION"
     fi
+}

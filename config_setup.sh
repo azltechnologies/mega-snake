@@ -1,15 +1,14 @@
-set_args() {
-    source /Users/carlosmorales/IdeaProjects/stuff/gradleSet.sh $1
-    source /Users/carlosmorales/IdeaProjects/stuff/javaSet.sh $2
-}
+if [ ! -z "$VER_GRADLE" ]; then
+    source /Users/carlosmorales/IdeaProjects/stuff/gradleSet.sh
+    set_gradle $VER_GRADLE
+fi
 
-if [ ! -z "$VER_GRADLE" ] && [ ! -z "$VER_JAVA" ]; then
-    set_args $VER_GRADLE $VER_JAVA
+if [ ! -z "$VER_JAVA" ]; then
+    source /Users/carlosmorales/IdeaProjects/stuff/javaSet.sh
+    set_java $VER_JAVA
 fi
 
 if [ "$CHECK_GCLOUD" = "true" ]; then
-    $IS_LOGGED=$(gcloud auth print-access-token | grep -cE 'Reauthentication required' || true)
-    if [ "$IS_LOGGED" -eq 0 ]; then
-        gcloud auth application-default login
-    fi
+    source /Users/carlosmorales/IdeaProjects/stuff/gcloudSet.sh
+    setCloud
 fi
