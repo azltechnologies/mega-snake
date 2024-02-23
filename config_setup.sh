@@ -12,3 +12,8 @@ if [ "$CHECK_GCLOUD" = "true" ]; then
     source /Users/carlosmorales/IdeaProjects/stuff/gcloudSet.sh
     setCloud
 fi
+
+if [ "$UNTRACK_PROPS" = "true" ]; then
+    source /Users/carlosmorales/IdeaProjects/stuff/untrackGradleProps.sh
+    untrackProperties
+fi
