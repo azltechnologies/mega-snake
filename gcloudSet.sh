@@ -8,7 +8,7 @@ setCloud(){
         local TIME_DIFF=$((NOW - MODIFIED))
         echo "File exists!"
         if [ "$TIME_DIFF" -gt 3600 ]; then
-            AUTH=1
+            NEED_AUTH=1
         fi
     fi
     if [ "$NEED_AUTH" -eq 1 ]; then
