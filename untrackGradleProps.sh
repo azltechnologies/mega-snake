@@ -11,9 +11,9 @@ untrackProperties(){
         mkdir -p "$WS_TEMP"
     fi
     local EXCLUDE=".git/info/exclude"
-    local UNTRACKED_FOLDER=$(cat "$EXCLUDE" | grep -Ec '^$WS_TEMP' || true)
+    local FOLDER=${WS_TEMP#./}
+    local UNTRACKED_FOLDER=$(cat "$EXCLUDE" | grep -Ec "^$FOLDER" || true)
     if [ "$UNTRACKED_FOLDER" -lt 1 ]; then
-        local FOLDER=${WS_TEMP#./}
         echo "untracking $FOLDER"
         echo "\n$FOLDER/"  >> "$EXCLUDE"
     fi
