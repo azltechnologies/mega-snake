@@ -1,3 +1,4 @@
+WS_TEMP="./workspace_temp"
 if [ ! -z "$VER_GRADLE" ]; then
     source /Users/carlosmorales/IdeaProjects/stuff/gradleSet.sh
     set_gradle $VER_GRADLE
@@ -17,3 +18,4 @@ if [ "$UNTRACK_PROPS" = "true" ]; then
     source /Users/carlosmorales/IdeaProjects/stuff/untrackGradleProps.sh
     untrackProperties
 fi
+source /Users/carlosmorales/IdeaProjects/stuff/branchDetails.sh
