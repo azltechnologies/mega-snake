@@ -10,6 +10,8 @@ setCloud(){
         if [ "$TIME_DIFF" -gt 3600 ]; then
             NEED_AUTH=1
         fi
+    else 
+        NEED_AUTH=1
     fi
     if [ "$NEED_AUTH" -eq 1 ]; then
         echo 'log in to gcloud please'

@@ -32,21 +32,28 @@ set_gradle(){
     else
 
         declare -A GRADLE_MAP
-
-        GRADLE_MAP["$(brew info gradle | grep -oE 'stable [0-9]*\.' | grep -oE ' [0-9]*\.' | grep -oE '[0-9]*')"]="gradle"
+        local GRADLE_KEYS=()
+        GRADLE_MAP[$(brew info gradle | grep -oE 'stable [0-9]*\.' | grep -oE ' [0-9]*\.' | grep -oE '[0-9]*')]="gradle"
         for FORMULA in $(brew list | grep gradle@ ); do
-            GRADLE_MAP["$(echo $FORMULA | grep -oE "@[0-9\.]+"| grep -oE "[0-9]+(\.[0-9]+)?")"]=$FORMULA
+            local key=$(echo $FORMULA | grep -oE "@[0-9\.]+"| grep -oE "[0-9\.]+")
+            GRADLE_MAP[$key]=$FORMULA
+            GRADLE_KEYS+=("$key")
         done
+
+        local GRADLE_MATCHES=$(brew list | grep gradle@ | grep -Eo '@[0-9\.]+' | grep -Ec "@$PARAM_GRADLE" )
+        if [ "$GRADLE_MATCHES" -lt 1 ]; then
+            echo "no gradle version found that matches with $PARAM_GRADLE, please verify the desired gradle version"
+        fi
 
         #for key in "${(@k)GRADLE_MAP}"; do
         #   echo "$key:${GRADLE_MAP[$key]}"
         #done
         if [ ! -z "$GRADLE_VERSION" ]; then
-            echo "removing current gradle version ${GRADLE_MAP["$GRADLE_VERSION"]}"
-            brew unlink ${GRADLE_MAP["$GRADLE_VERSION"]}
+            echo "removing current gradle version ${GRADLE_MAP[$GRADLE_VERSION]}"
+            brew unlink ${GRADLE_MAP[$GRADLE_VERSION]}
         fi
 
-        brew link ${GRADLE_MAP["$PARAM_GRADLE"]}
+        brew link ${GRADLE_MAP[$PARAM_GRADLE]}
         local GRADLE_VERSION=$(gradle -v 2>/dev/null | grep Gradle | grep -oE ' [0-9\.]+' | grep -oE '[0-9\.]+' || true)
         echo "Now using gradle version: $GRADLE_VERSION"
     fi
