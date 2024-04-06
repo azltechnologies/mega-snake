@@ -50,6 +50,8 @@ set_java(){
         export JAVA_HOME="$JAVA_NEW"
     elif [ "$JAVA_MATCHES" -lt 1 ]; then
         echo "no java version found that matches with $PARAM_JAVA, please verify the desired java version"
+        echo "available versions:"
+        /usr/libexec/java_home -V 2>&1
         return 1
     else
         echo "unexpected error"
