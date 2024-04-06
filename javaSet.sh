@@ -36,8 +36,8 @@ set_java(){
         local JAVA_MATCHES=$(echo "$JAVA_KEYS" | grep -cE "^$PARAM_JAVA$" || true)
         if [ "$JAVA_MATCHES" -ne 1 ]; then
             echo "multiple available versions match with $PARAM_JAVA, please be more specific"
-            echo "try running:"
-            echo "/usr/libexec/java_home -V 2>&1"
+            echo "available versions:"
+            /usr/libexec/java_home -V 2>&1
             return 1
         fi
         local JAVA_MATCH=$(echo "$JAVA_KEYS" | grep -E "^$PARAM_JAVA$" || true)
@@ -57,4 +57,7 @@ set_java(){
     fi
     local JAVA_VERSION=$(java -version  2>&1 | grep -oE '"[0-9\.\_]+\"' | grep -oE '[0-9\.\_]+' )
     echo "Now using java version: $JAVA_VERSION"
+}
+versions_java(){
+    /usr/libexec/java_home -V 2>&1
 }
