@@ -41,3 +41,4 @@ remoteBranchesDetails(){
         unfunction -m "printingRemoteBranchesDetails"
     }
 }
+echo "You can use remoteBranchesDetails to get details of the branches in the repo"
