@@ -49,13 +49,15 @@ remoteBranchesDetails(){
         done
         local SORTED_BRANCHES=$(echo "${BRANCHES_KEYS[@]}" | /Users/carlosmorales/IdeaProjects/stuff/sort_numbers.py)
         local SORTED_BRANCHES=("${(f)SORTED_BRANCHES}")
-        local OUTPUT="$WS_TEMP/remote_branches.txt"
-        rm $OUTPUT
+
+        if [ -f "$REMOTE_BRANCHES_OUTPUT" ]; then
+            rm $REMOTE_BRANCHES_OUTPUT
+        fi
         # Print the sorted array
         for branch in "${SORTED_BRANCHES[@]}"; do
-            echo "$BRANCHES_MAP[$branch]" >> "$OUTPUT"
+            echo "$BRANCHES_MAP[$branch]" >> "$REMOTE_BRANCHES_OUTPUT"
         done
-        code "$OUTPUT"
+        code "$REMOTE_BRANCHES_OUTPUT"
     } always {
         unfunction -m "printingRemoteBranchesDetails"
     }

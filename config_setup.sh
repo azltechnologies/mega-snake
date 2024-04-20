@@ -1,5 +1,8 @@
 setup_env(){
     WS_TEMP="./workspace_temp"
+    if [ ! -d "$WS_TEMP" ]; then
+        mkdir -p "$WS_TEMP"
+    fi
     if [ ! -z "$VER_GRADLE" ]; then
         source /Users/carlosmorales/IdeaProjects/stuff/gradleSet.sh
         set_gradle $VER_GRADLE
@@ -19,6 +22,8 @@ setup_env(){
         source /Users/carlosmorales/IdeaProjects/stuff/untrackGradleProps.sh
         untrackProperties
     fi
+    REMOTE_BRANCHES_OUTPUT="$WS_TEMP/remote_branches.txt"
     source /Users/carlosmorales/IdeaProjects/stuff/branchDetails.sh
+    source /Users/carlosmorales/IdeaProjects/stuff/branchCleanUp.sh
 }
 echo "use the setup_env to start working on a repository"

@@ -7,9 +7,6 @@ untrackProperties(){
             git update-index --assume-unchanged $PROP_FILE
         fi
     fi
-    if [ ! -d "$WS_TEMP" ]; then
-        mkdir -p "$WS_TEMP"
-    fi
     local EXCLUDE=".git/info/exclude"
     local FOLDER=${WS_TEMP#./}
     local UNTRACKED_FOLDER=$(cat "$EXCLUDE" | grep -Ec "^$FOLDER" || true)
