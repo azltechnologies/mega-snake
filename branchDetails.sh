@@ -20,10 +20,10 @@ remoteBranchesDetails(){
     {
       function printingRemoteBranchesDetails(){
             local PADDING=20
-            local PADDING_AUTH=35
+            local PADDING_AUTH=50
             local PADDING_BRANCH=50
             local DELIMITER=" | "
-            printf "%3s${DELIMITER}%-${PADDING}s${DELIMITER}%-${PADDING}s${DELIMITER}%-${PADDING_AUTH}s${DELIMITER}%-${PADDING_BRANCH}s${DELIMITER}%-${PADDING}s\n" "$6" "$1" "$2" "$3" "$4" "$5"
+            printf "%3s${DELIMITER}%-${PADDING}s${DELIMITER}%-${PADDING}s${DELIMITER}%-${PADDING_AUTH}s${DELIMITER}%-${PADDING_BRANCH}s${DELIMITER}%-${PADDING}s${DELIMITER}%-${PADDING}s\n" "$1" "$2" "$3" "$4" "$5" "$6" "$7"
         }
 
         declare -A BRANCHES_MAP
@@ -33,8 +33,10 @@ remoteBranchesDetails(){
             if [ "$BRANCH" != "$HEAD" ]; then
                 local LAST_COMMIT=$(git log -1 "$BRANCH")
                 local ID_COMMIT=$(echo "$LAST_COMMIT" | grep -Eo 'commit\s+\w+' | grep -oE '\w+$' | head -n 1 || true)
+                echo "processing branch in commit $ID_COMMIT"
                 local MERGED=$(git branch --contains $ID_COMMIT | grep -cE '\bmaster$' || true)
                 if [ "$filter_flag" != "true" ] || [ "$MERGED" -eq 1 ]; then
+                    local COMMON_ANCESTOR=$(git merge-base master $BRANCH)
                     local TIME_COMMIT=$(git log -1 $BRANCH --pretty="format:%at")
                     local TIME_STRING=$(gdate -d "@${TIME_COMMIT}" +%FT%TZ)
                     local AUTHOR_COMMIT=$(git log -1 $BRANCH --pretty="format:%ae")
@@ -42,7 +44,7 @@ remoteBranchesDetails(){
                     local MESSAGE_COMMIT=${MESSAGE_COMMIT//$'\n'/$'\t'}
                     local MESSAGE_COMMIT=${MESSAGE_COMMIT//$'\r'/$'\t'}
                     local LOCAL_BRANCH=${BRANCH#remotes/origin/}
-                    BRANCHES_MAP[$TIME_COMMIT]=$(printingRemoteBranchesDetails "$ID_COMMIT" "$TIME_STRING" "$AUTHOR_COMMIT" "$LOCAL_BRANCH" "$MESSAGE_COMMIT" "$MERGED")
+                    BRANCHES_MAP[$TIME_COMMIT]=$(printingRemoteBranchesDetails  "$MERGED" "$ID_COMMIT" "$TIME_STRING" "$AUTHOR_COMMIT" "$LOCAL_BRANCH" "$COMMON_ANCESTOR" "$MESSAGE_COMMIT")
                     BRANCHES_KEYS+=("$TIME_COMMIT")
                 fi
             fi
