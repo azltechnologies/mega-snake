@@ -1,7 +1,14 @@
 setup_env(){
     WS_TEMP="./workspace_temp"
+    PRELOAD_SH="$WS_TEMP/preload.sh"
     if [ ! -d "$WS_TEMP" ]; then
         mkdir -p "$WS_TEMP"
+    fi
+    if [ ! -f "$PRELOAD_SH" ]; then
+        touch "$PRELOAD_SH"
+        chmod +x "$PRELOAD_SH"
+    else
+        . "$PRELOAD_SH"
     fi
     if [ ! -z "$VER_GRADLE" ]; then
         source /Users/carlosmorales/IdeaProjects/stuff/gradleSet.sh
