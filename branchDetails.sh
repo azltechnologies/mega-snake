@@ -7,11 +7,11 @@ remoteBranchesDetails(){
                 local filter_flag="true"
             ;;
             \? )
-                echo "Invalid option: $OPTARG" 1>&2
+                ws_warning "Invalid option: $OPTARG" 1>&2
                 return 1
             ;;
             : )
-                echo "Option -$OPTARG requires an argument." 1>&2
+                ws_warning "Option -$OPTARG requires an argument." 1>&2
                 return 1
             ;;
         esac
@@ -33,7 +33,7 @@ remoteBranchesDetails(){
             if [ "$BRANCH" != "$HEAD" ]; then
                 local LAST_COMMIT=$(git log -1 "$BRANCH")
                 local ID_COMMIT=$(echo "$LAST_COMMIT" | grep -Eo 'commit\s+\w+' | grep -oE '\w+$' | head -n 1 || true)
-                echo "processing branch in commit $ID_COMMIT"
+                ws_info "processing branch in commit $ID_COMMIT"
                 local MERGED=$(git branch --contains $ID_COMMIT | grep -cE '\bmaster$' || true)
                 if [ "$filter_flag" != "true" ] || [ "$MERGED" -eq 1 ]; then
                     local COMMON_ANCESTOR=$(git merge-base master $BRANCH)
@@ -49,7 +49,7 @@ remoteBranchesDetails(){
                 fi
             fi
         done
-        local SORTED_BRANCHES=$(echo "${BRANCHES_KEYS[@]}" | /Users/carlosmorales/IdeaProjects/stuff/sort_numbers.py)
+        local SORTED_BRANCHES=$(echo "${BRANCHES_KEYS[@]}" | $WS_CONFIG_HOME/sort_numbers.py)
         local SORTED_BRANCHES=("${(f)SORTED_BRANCHES}")
 
         if [ -f "$REMOTE_BRANCHES_OUTPUT" ]; then
@@ -64,4 +64,4 @@ remoteBranchesDetails(){
         unfunction -m "printingRemoteBranchesDetails"
     }
 }
-echo "You can use remoteBranchesDetails to get details of the branches in the repo"
+ws_advice "You can use remoteBranchesDetails to get details of the branches in the repo"

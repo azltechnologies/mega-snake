@@ -1,18 +1,36 @@
+versions_gradle(){
+    local RESULT=""
+    local FIRSTCYCLE="N"
+    for EDITION in ${(f)"$(brew ls --versions | grep 'gradle')"}; do
+        local version=$(echo $EDITION | grep -oE '^\S+')
+        local key=$(echo $EDITION | grep -oE '\S+$')            
+        local delimiter=" | "
+        local text=$(printf "%-13s${delimiter}%-7s\n" "$version" "$key")
+        if [ "$FIRSTCYCLE" = "N" ]; then
+            RESULT="$text"
+            FIRSTCYCLE="Y"
+        else
+            RESULT="$(echo "$RESULT\n$text")"
+        fi
+    done
+    ws_info "$RESULT"
+}
+ws_advice "use versions_gradle to check all the gradle versions available"
 set_gradle(){
     {
         function versionError(){
-            echo $1
-            echo "available versions:"
-            local VERS=$(brew ls --versions | grep 'gradle')
-            VERS=${VERS//$' '/$'\t|\t'}
-            echo $VERS
+            ws_error $1
+            ws_warning "available versions:"
+            # Removing ANSI escape codes with sed
+            VERS=$(versions_gradle | sed 's/\x1b\[[0-9;]*m//g')
+            ws_warning $VERS
             return 1
         }
         function removingGradle(){   
             local VER=$1
             local NAME=$2
             if [ ! -z "$VER" ]; then
-                echo "removing current gradle version $NAME"
+                ws_info "removing current gradle version $NAME"
                 brew unlink $NAME
                 if [ $? -ne 0 ]; then
                     versionError "Failure at removing current gradle version: $VER." || return 1
@@ -22,12 +40,12 @@ set_gradle(){
         }
         local PARAM_GRADLE=$1
         if [ -z "$PARAM_GRADLE" ]; then
-            echo "desired gradle version not specified"
+            ws_error "desired gradle version not specified"
             return 1
         fi
-        echo "desired gradle version $PARAM_GRADLE"
+        ws_info "desired gradle version $PARAM_GRADLE"
         local GRADLE_VERSION=$(gradle -v 2>/dev/null | grep Gradle | grep -oE ' [0-9\.]+' | grep -oE '[0-9\.]+' || true)
-        echo "current gradle version: $GRADLE_VERSION"
+        ws_info "current gradle version: $GRADLE_VERSION"
         declare -A GRADLE_MAP
         local GRADLE_KEYS=()
         local GRADLE_VALUES=()
@@ -46,14 +64,14 @@ set_gradle(){
         local IS_GRADLE_SET=$(echo $GRADLE_VERSION_NAME | grep -cE "^$PARAM_GRADLE$" || true)
 
         if [ "$IS_GRADLE_SET" -gt 0 ]; then
-            echo "gradle version already set"
+            ws_success "gradle version already set"
         else
             GRADLE_VALUES="${(j:\n:)GRADLE_VALUES}"
             local GRADLE_MATCHES=$(echo "$GRADLE_VALUES" | grep -cE "^$PARAM_GRADLE" || true)
             if [ "$GRADLE_MATCHES" -eq 1 ]; then
                 local GRADLE_NEW=$(echo "$GRADLE_VALUES" | grep -E "^$PARAM_GRADLE" | grep -oE '\S+$' || true)
                 if [ "$GRADLE_NEW" = "$GRADLE_VERSION_NAME" ]; then
-                    echo "gradle version already set"
+                    ws_success "gradle version already set"
                     return 0
                 fi
                 removingGradle $GRADLE_VERSION $GRADLE_VERSION_NAME || return 1
@@ -66,7 +84,7 @@ set_gradle(){
                 fi
                 local GRADLE_NEW=$(echo "$GRADLE_VALUES" | grep -E "^\S" | grep -E "^$PARAM_GRADLE$"  | grep -oE "\S+$" || true)
                 if [ "$GRADLE_NEW" = "$GRADLE_VERSION_NAME" ]; then
-                    echo "gradle version already set"
+                    ws_success "gradle version already set"
                     return 0
                 fi
                 removingGradle $GRADLE_VERSION $GRADLE_VERSION_NAME || return 1
@@ -76,14 +94,10 @@ set_gradle(){
                 return 1
             fi
             local GRADLE_VERSION=$(gradle -v 2>/dev/null | grep Gradle | grep -oE ' [0-9\.]+' | grep -oE '[0-9\.]+' || true)
-            echo "Now using gradle version: $GRADLE_VERSION"
+            ws_success "Now using gradle version: $GRADLE_VERSION"
         fi
     } always {
         unfunction -m "removingGradle"
     }
 }
-versions_gradle(){
-    local VERS=$(brew ls --versions | grep 'gradle')
-    VERS=${VERS//$' '/$'\t|\t'}
-    echo $VERS
-}
+
