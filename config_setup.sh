@@ -25,5 +25,9 @@ setup_env(){
     REMOTE_BRANCHES_OUTPUT="$WS_TEMP/remote_branches.txt"
     source $WS_CONFIG_HOME/branchDetails.sh
     source $WS_CONFIG_HOME/branchCleanUp.sh
+    parse_gcloud_logs(){
+        $WS_CONFIG_HOME/parseJsonLogs.sh $WS_TEMP
+    }
+    ws_advice "use the parse_gcloud_logs function to parse gcloud logs from the $JSON_FILE file"
 }
 ws_advice "use the setup_env to start working on a repository"
