@@ -25,6 +25,7 @@ setup_env(){
     REMOTE_BRANCHES_OUTPUT="$WS_TEMP/remote_branches.txt"
     source $WS_CONFIG_HOME/src/branchDetails.sh
     source $WS_CONFIG_HOME/src/branchCleanUp.sh
+    source $WS_CONFIG_HOME/src/expiredCertsJks.sh
     parse_gcloud_logs(){
         $WS_CONFIG_HOME/src/parseJsonLogs.sh $WS_TEMP
     }
