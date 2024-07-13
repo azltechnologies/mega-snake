@@ -49,7 +49,7 @@ remoteBranchesDetails(){
                 fi
             fi
         done
-        local SORTED_BRANCHES=$(echo "${BRANCHES_KEYS[@]}" | $WS_CONFIG_HOME/sort_numbers.py)
+        local SORTED_BRANCHES=$(echo "${BRANCHES_KEYS[@]}" | $WS_CONFIG_HOME/py/sort_numbers.py)
         local SORTED_BRANCHES=("${(f)SORTED_BRANCHES}")
 
         if [ -f "$REMOTE_BRANCHES_OUTPUT" ]; then

@@ -36,7 +36,7 @@ remoteBranchesCleanUp(){
     fi
     if [ -f "$REMOTE_BRANCHES_OUTPUT" ]; then
         local TEXT=$(cat $REMOTE_BRANCHES_OUTPUT)
-        python3 $WS_CONFIG_HOME/parse_remote_branches.py "$TEXT"
+        python3 $WS_CONFIG_HOME/py/parse_remote_branches.py "$TEXT"
         ws_advice $BRANCHES
     else
         ws_error "file $REMOTE_BRANCHES_OUTPUT doesn't exist, run remoteBranchesDetails function first"
