@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
     parse_remote_branches script, which allows the user to delete old branches
-    that was already been merged into master.
+    that was already been merged into main branch.
 """
 import subprocess
 import sys
@@ -25,7 +25,8 @@ def define_branches(line: str):
     return None
 
 options: List[str] = ["y", "n", "f"]
-text: str=sys.argv[1]
+text: str = sys.argv[1]
+main_branch: str = sys.argv[2]
 array_of_strings = text.split("\n")
 branches: List[RemoteBranch] = map(define_branches, array_of_strings)
 branches = [x for x in branches if x is not None]
@@ -33,7 +34,7 @@ branches = sorted(branches, reverse=False)
 garbage: list[str] = []
 for branch in branches:
     try:
-        if branch.merged_on_master and branch.branch != "master":
+        if branch.merged_on_main and branch.branch != main_branch:
             prompt = (
                 f"\nDo you want to delete the following branch?\n"
                 f"\tBranch: {branch.branch}\n"
@@ -56,7 +57,7 @@ for branch in branches:
     except AttributeError:
         print("error here: " + branch + ".")
         print(branch)
-        print("Attribute 'merged_on_master' does not exist for this object")
+        print("Attribute 'merged_on_main' does not exist for this object")
 
 for branch in garbage:
     NUM_RETRIES = 3
