@@ -46,8 +46,10 @@ remoteBranchesDetails(){
                 local MESSAGE_COMMIT=${MESSAGE_COMMIT//$'\n'/$'\t'}
                 local MESSAGE_COMMIT=${MESSAGE_COMMIT//$'\r'/$'\t'}
                 local LOCAL_BRANCH=${BRANCH#remotes/origin/}
-                BRANCHES_MAP[$TIME_COMMIT]=$(printingRemoteBranchesDetails  "$MERGED" "$ID_COMMIT" "$TIME_STRING" "$AUTHOR_COMMIT" "$LOCAL_BRANCH" "$COMMON_ANCESTOR" "$MESSAGE_COMMIT")
-                BRANCHES_KEYS+=("$TIME_COMMIT")
+                local DUPLICATES=$(echo $BRANCHES_KEYS | grep -o $TIME_COMMIT | wc -l |  awk '{$1=$1};1')
+                local KEY_COMMIT=$(echo "$TIME_COMMIT + $DUPLICATES / 1000000000" | bc -l)
+                BRANCHES_MAP[$KEY_COMMIT]=$(printingRemoteBranchesDetails  "$MERGED" "$ID_COMMIT" "$TIME_STRING" "$AUTHOR_COMMIT" "$LOCAL_BRANCH" "$COMMON_ANCESTOR" "$MESSAGE_COMMIT")
+                BRANCHES_KEYS+=("$KEY_COMMIT")
             fi
             BRANCHES_PENDING=$((BRANCHES_PENDING - 1))
         done
