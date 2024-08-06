@@ -1,8 +1,9 @@
 #!/bin/bash
 
 WS_TEMP="$1"
+WS_CONFIG_HOME="$2"
+source $WS_CONFIG_HOME/src/formatting.sh
 LOG_PATH="$WS_TEMP/logs/parsed"
-mkdir -p "$LOG_PATH"
 
 # copilot, delete all .log files in $LOG_PATH please
 find "$LOG_PATH" -type f -name "*.log" -delete
@@ -10,10 +11,16 @@ find "$LOG_PATH" -type f -name "*.log" -delete
 # Input JSON file
 JSON_FILE="$LOG_PATH/input.json"
 
+if [[ ! -d "$LOG_PATH" ]]; then
+    ws_warning "directory $LOG_PATH not found"
+    mkdir -p "$LOG_PATH"
+    ws_advice "The directory $LOG_PATH has been created"
+fi
+
 if [[ ! -f "$JSON_FILE" ]]; then
     ws_warning "file $JSON_FILE not found"
     ws_error "The input JSON file does not exist"
-    return 1
+    exit 1
 fi
 
 # Parse and sort the JSON array by timestamp

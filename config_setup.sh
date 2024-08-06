@@ -27,7 +27,7 @@ setup_env(){
     source $WS_CONFIG_HOME/src/branchCleanUp.sh
     source $WS_CONFIG_HOME/src/expiredCertsJks.sh
     parse_gcloud_logs(){
-        $WS_CONFIG_HOME/src/parseJsonLogs.sh $WS_TEMP
+        $WS_CONFIG_HOME/src/parseJsonLogs.sh $WS_TEMP $WS_CONFIG_HOME
     }
     ws_advice "use the parse_gcloud_logs function to parse gcloud logs from the $JSON_FILE file"
 }
