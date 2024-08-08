@@ -3,12 +3,12 @@
 setup_env(){
     WS_TEMP="./workspace_temp"
     source $WS_CONFIG_HOME/src/preloadConfig.sh
-    if [ ! -z "$VER_GRADLE" ]; then
+    if [ -n "$VER_GRADLE" ] && [ "$VER_GRADLE" != "false" ]; then
         source $WS_CONFIG_HOME/src/gradleSet.sh
         set_gradle $VER_GRADLE
     fi
 
-    if [ ! -z "$VER_JAVA" ]; then
+    if [ -n "$VER_JAVA" ] && [ "$VER_JAVA" != "false" ]; then
         source $WS_CONFIG_HOME/src/javaSet.sh
         set_java $VER_JAVA
     fi
@@ -23,6 +23,8 @@ setup_env(){
         untrackProperties
     fi
     REMOTE_BRANCHES_OUTPUT="$WS_TEMP/remote_branches.txt"
+    DIFF_TREE_OUTPUT="$WS_TEMP/diff_tree"
+    source $WS_CONFIG_HOME/src/diffTree.sh
     source $WS_CONFIG_HOME/src/branchDetails.sh
     source $WS_CONFIG_HOME/src/branchCleanUp.sh
     source $WS_CONFIG_HOME/src/expiredCertsJks.sh
