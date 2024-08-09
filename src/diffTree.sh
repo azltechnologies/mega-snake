@@ -1,4 +1,17 @@
 createDiffTree() {
+    local CURRENT_BRANCH=$(git rev-parse HEAD)
+    # checking if $1 exists
+    if [ -z "$1" ]; then
+        local MAIN_BRANCH=$(git remote show origin | sed -n '/HEAD branch/s/.*: //p')
+    else
+        # Check if the commit hash is valid
+        if git cat-file -t "$1" 2>/dev/null | grep -q commit; then
+            local MAIN_BRANCH=$1
+        else
+            ws_error "Invalid commit hash"
+            return 1
+        fi
+    fi
     local DIFF_TREE_FILE="diff_tree.txt"
     local DIFF_COMMIT_FILE="diff_commit.txt"
     local DIFF_TREE_DUMMY_REPO="$DIFF_TREE_OUTPUT/diff_tree_dummy_repo"
@@ -35,8 +48,7 @@ createDiffTree() {
         mkdir -p $DIFF_TREE_DUMMY_REPO
     fi
 
-    local CURRENT_BRANCH=$(git branch --show-current)
-    local MAIN_BRANCH=$(git remote show origin | sed -n '/HEAD branch/s/.*: //p')
+
     local RAW_DIFF=("${(@f)$(git diff-tree -r $MAIN_BRANCH $CURRENT_BRANCH)}")
 
     local File_class
