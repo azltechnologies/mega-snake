@@ -112,7 +112,7 @@ createDiffTree() {
     # Use a subshell to change directory temporarily
     (
         cd "$DIFF_TREE_DUMMY_REPO" || exit
-        tree --noreport . > "../$DIFF_TREE_FILE"
+        tree -a --noreport . > "../$DIFF_TREE_FILE"
         echo -e "$CHANGES" >> "../$DIFF_TREE_FILE"
         code "../$DIFF_TREE_FILE"
         git log --pretty=format:"%ad %H%n%B" --date=short $CURRENT_BRANCH...$MAIN_BRANCH > "../$DIFF_COMMIT_FILE"
@@ -120,7 +120,7 @@ createDiffTree() {
     )
 
     if [ -d "$DIFF_TREE_DUMMY_REPO" ]; then
-        rm -rf $DIFF_TREE_DUMMY_REPO
+       # rm -rf $DIFF_TREE_DUMMY_REPO
     fi
 
     for (( j=0; j < ${#File_classes[@]}; j++ )); do

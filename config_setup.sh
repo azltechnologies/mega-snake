@@ -3,24 +3,27 @@
 setup_env(){
     WS_TEMP="./workspace_temp"
     source $WS_CONFIG_HOME/src/preloadConfig.sh
-    if [ -n "$VER_GRADLE" ] && [ "$VER_GRADLE" != "false" ]; then
-        source $WS_CONFIG_HOME/src/gradleSet.sh
-        set_gradle $VER_GRADLE
-    fi
+    if [ -n "$1" ] && [ "$1" -gt 0 ]; then
 
-    if [ -n "$VER_JAVA" ] && [ "$VER_JAVA" != "false" ]; then
-        source $WS_CONFIG_HOME/src/javaSet.sh
-        set_java $VER_JAVA
-    fi
+        if [ ! -z "$UNTRACK_PROPS" ] && [ "$UNTRACK_PROPS" = "true" ] && [ "$1" -gt 1 ]; then
+            source $WS_CONFIG_HOME/src/untrackGradleProps.sh
+            untrackProperties
+        fi
+        if [ -n "$VER_GRADLE" ] && [ "$VER_GRADLE" != "false" ] && [ "$1" -gt 2 ]; then
+            source $WS_CONFIG_HOME/src/gradleSet.sh
+            set_gradle $VER_GRADLE
+        fi
 
-    if [ ! -z "$CHECK_GCLOUD" ] && [ "$CHECK_GCLOUD" = "true" ]; then
-        source $WS_CONFIG_HOME/src/gcloudSet.sh
-        setCloud
-    fi
+        if [ -n "$VER_JAVA" ] && [ "$VER_JAVA" != "false" ] && [ "$1" -gt 2 ]; then
+            source $WS_CONFIG_HOME/src/javaSet.sh
+            set_java $VER_JAVA
+        fi
 
-    if [ ! -z "$UNTRACK_PROPS" ] && [ "$UNTRACK_PROPS" = "true" ]; then
-        source $WS_CONFIG_HOME/src/untrackGradleProps.sh
-        untrackProperties
+        if [ ! -z "$CHECK_GCLOUD" ] && [ "$CHECK_GCLOUD" = "true" ] && [ "$1" -gt 3 ]; then
+            source $WS_CONFIG_HOME/src/gcloudSet.sh
+            setCloud
+        fi
+
     fi
     REMOTE_BRANCHES_OUTPUT="$WS_TEMP/remote_branches.txt"
     DIFF_TREE_OUTPUT="$WS_TEMP/diff_tree"
@@ -33,4 +36,9 @@ setup_env(){
     }
     ws_advice "use the parse_gcloud_logs function to parse gcloud logs from the $JSON_FILE file"
 }
-ws_advice "use the setup_env to start working on a repository"
+ws_advice "use the setup_env to start working on a repository and set up the environment
+    setup_env <level>
+    level: 0 - only set up the environment
+    level: 1 - untrack gradle properties
+    level: 2 - set gradle and java versions
+    level: 3 - set gcloud configurations"
