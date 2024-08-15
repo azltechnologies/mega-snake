@@ -5,21 +5,21 @@ setup_env(){
     source $WS_CONFIG_HOME/src/preloadConfig.sh
     if [ -n "$1" ] && [ "$1" -gt 0 ]; then
 
-        if [ ! -z "$UNTRACK_PROPS" ] && [ "$UNTRACK_PROPS" = "true" ] && [ "$1" -gt 1 ]; then
+        if [ ! -z "$UNTRACK_PROPS" ] && [ "$UNTRACK_PROPS" = "true" ] && [ "$1" -ge 1 ]; then
             source $WS_CONFIG_HOME/src/untrackGradleProps.sh
             untrackProperties
         fi
-        if [ -n "$VER_GRADLE" ] && [ "$VER_GRADLE" != "false" ] && [ "$1" -gt 2 ]; then
+        if [ -n "$VER_GRADLE" ] && [ "$VER_GRADLE" != "false" ] && [ "$1" -ge 2 ]; then
             source $WS_CONFIG_HOME/src/gradleSet.sh
             set_gradle $VER_GRADLE
         fi
 
-        if [ -n "$VER_JAVA" ] && [ "$VER_JAVA" != "false" ] && [ "$1" -gt 2 ]; then
+        if [ -n "$VER_JAVA" ] && [ "$VER_JAVA" != "false" ] && [ "$1" -ge 2 ]; then
             source $WS_CONFIG_HOME/src/javaSet.sh
             set_java $VER_JAVA
         fi
 
-        if [ ! -z "$CHECK_GCLOUD" ] && [ "$CHECK_GCLOUD" = "true" ] && [ "$1" -gt 3 ]; then
+        if [ ! -z "$CHECK_GCLOUD" ] && [ "$CHECK_GCLOUD" = "true" ] && [ "$1" -ge 3 ]; then
             source $WS_CONFIG_HOME/src/gcloudSet.sh
             setCloud
         fi
