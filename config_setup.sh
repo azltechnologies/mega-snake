@@ -32,10 +32,22 @@ setup_env(){
     source $WS_CONFIG_HOME/src/branchCleanUp.sh
     source $WS_CONFIG_HOME/src/expiredCertsJks.sh
     create_release(){
-        git fetch --all
+        if [ -z "$4" ]; then
+            4=$(git rev-parse HEAD)
+                    # Check if the commit hash is valid
+        elif git cat-file -t "$4" 2>/dev/null | grep -q commit; then
+            ws_success "Valid commit hash: $4"
+        else
+            ws_error "Invalid commit hash"
+            return 1
+        fi
         python3 $WS_CONFIG_HOME/py/create_release/create.py "$@"
     }
-    ws_tip "create_release <tag_suffix> <release_type> <release_notes>" "create a release in the current repo"
+    ws_tip "create_release <tag_suffix> <release_type> <release_notes> [branch/commit]" "create a release in the current repo
+        <release_type>:
+            1 - prerelease
+            2 - release
+            3 - latest"
     parse_gcloud_logs(){
         $WS_CONFIG_HOME/src/parseJsonLogs.sh $WS_TEMP $WS_CONFIG_HOME
     }

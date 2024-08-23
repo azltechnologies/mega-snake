@@ -1,0 +1,103 @@
+"""
+This module contains the functions to handle release operations
+"""
+
+import subprocess
+import sys
+import time
+
+def git_fetch() -> None:
+    """
+    Fetches the latest changes from the remote repository and retries on failure up to 3 times.
+
+    Returns:
+        None
+    """
+    cwd: str = "git fetch --all 2>&1"
+    _run_operation(cwd, "Fetch latest changes")
+
+def get_release_list() -> subprocess.CompletedProcess[str]:
+    """
+    Retrieves the latest release from GitHub and retries on failure up to 3 times.
+    
+    Returns:
+        Release
+    """
+    cwd: str = "gh release list 2>&1"
+    return _run_operation(cwd, "Retrieve release list")
+
+def publish_release(tag_name: str, release_type: str,
+                     release_notes: str, release_branch: str) -> None:
+    """
+    Publishes a release on GitHub with the given parameters and retries on failure up to 3 times.
+
+    Args:
+        tag_name: str
+        release_type: str
+        release_notes: str
+        release_branch: str
+
+    Returns:
+        None
+    """
+    cwd: str = (
+        f'gh release create {tag_name} {release_type} --target "{release_branch}" '
+        f'--title "{tag_name}" {release_notes} --generate-notes'
+    )
+    _run_operation(cwd, "Publish release")
+
+def set_release_to_latest(tag: str) -> None:
+    """
+    Sets the given release as the latest release on GitHub and retries on failure up to 3 times.
+
+    Args:
+        release: Release
+    
+    Returns:
+        None
+    """
+    cwd = f'gh release edit {tag} --latest'
+    _run_operation(cwd, "Set release to latest")
+
+def get_commit_from_release(tag: str) -> str:
+    """
+    Retrieves the commit hash from the given release and retries on failure up to 3 times.
+
+    Args:
+        release: Release
+
+    Returns:
+        str
+    """
+    cwd =  f"git rev-list -n 1  \"{tag}\" 2>&1"
+    return _run_operation(cwd, f'Retrieve commit for {tag}').stdout.strip()
+
+def _run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str]:
+    """
+    Runs the given command and retries on failure up to 3 times.
+
+    Args:
+        cwd: str
+        description: str
+    
+    Returns:
+        subprocess.CompletedProcess[str]
+    """
+    num_retries = 3
+    for attempt in range(1, num_retries + 1):
+        try:
+            print(f"Running: {cwd}")
+            result = subprocess.run(cwd, shell=True, check=True, capture_output=True, text=True)
+            print(f"{description} successfully on attempt {attempt}!")
+            print(result.stdout)
+            break  # Exit the loop on successful push
+        except subprocess.CalledProcessError as error:
+            print(f"{description} failed on attempt {attempt}. Error: {error.stdout}")
+            print(f"Error details: {error.stderr}")
+            if attempt == num_retries:
+                print(f"{description} failed after {num_retries} attempts. Giving up.")
+                sys.exit(1)
+            else:
+                print(f'Retrying {description} in 2 seconds...')
+                time.sleep(2)  # Wait 2 seconds before retrying
+    return result

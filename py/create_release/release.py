@@ -3,14 +3,27 @@
 import dataclasses
 import datetime
 import subprocess
-import sys
-import time
 from typing import List
+import release_handler as handler
 
 @dataclasses.dataclass
 class Release:
-    """Class containing a named set of properties"""
+
+    """
+    Class containing a named set of properties
     
+    Properties:
+        title: str
+        release_type: str
+        tag_name: str
+        date_str: str
+        published_at: datetime
+        commit: str
+
+    Methods:
+        get_release_tag: str
+    """
+
     title: str
     release_type: str
     tag_name: str
@@ -21,7 +34,7 @@ class Release:
         if input_string is None or not bool(input_string):
             return None
         return super().__new__(cls)
-    
+
     def __init__(self, input_string: str):
         if input_string is not None and bool(input_string):
             result = input_string.split('\t')
@@ -30,29 +43,8 @@ class Release:
             self.tag_name = result[2]
             self.date_str = result[3]
             self.published_at = datetime.datetime.strptime(self.date_str, "%Y-%m-%dT%H:%M:%SZ")
-            num_retries = 3
             if self.release_type != 'Draft':
-                for attempt in range(1, num_retries + 1):
-                    try:
-                        cwd: str =  f"git rev-list -n 1  \"{self.tag_name}\" 2>&1"
-                        #print(f"runnning: {cwd}")
-                        self.commit = subprocess.run(
-                            cwd,
-                            shell=True,
-                            check=True,
-                            capture_output=True,
-                            text=True
-                        ).stdout.strip()
-                        #print(f"Retrieve commit for {self.tag_name} successfully on attempt {attempt}!")
-                        break  # Exit the loop on successful push
-                    except subprocess.CalledProcessError as error:
-                        print(f"Retrieve commit for {self.tag_name} failed on attempt {attempt}. Error: {error.stdout}")
-                        if attempt == num_retries:
-                            print(f"Retrieve commit for {self.tag_name} failed after {num_retries} attempts. Giving up.")
-                            sys.exit(1)
-                        else:
-                            print("Retrying commit for {self.tag_name} in 2 seconds...")
-                            time.sleep(2)  # Wait 5 seconds before retrying
+                self.commit = handler.get_commit_from_release(self.tag_name)
 
 
     def get_release_tag(self, suffix: str) -> str:
@@ -85,9 +77,8 @@ class Release:
             i += 1
         # if no tag was found, throw error
         raise ValueError(f"Could not find a non-existing tag after {attemps} attempts. Exiting.")
-    
 
-def create_release_list(list_string: str) -> List[Release]:
+def _create_release_list(list_string: str) -> List[Release]:
     """
     Converts a string into a list of Release instances
 
@@ -107,3 +98,15 @@ def create_release_list(list_string: str) -> List[Release]:
         return sorted(releases, key=lambda r: r.published_at, reverse=True)
     return None
 
+def get_latest_release() -> Release:
+    """
+    Retrieves the latest release from GitHub.
+    
+    Returns:
+        Release
+    """
+    result: subprocess.CompletedProcess[str] = handler.get_release_list()
+
+    release_list: List[Release] = _create_release_list(f"{result.stdout}")
+    lastest_release: Release = [x for x in release_list if x.release_type == "Latest"][0]
+    return lastest_release
