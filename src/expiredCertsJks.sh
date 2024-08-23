@@ -93,4 +93,4 @@ findExpiredJKSAliases(){
         unfunction -m "getHelp"
     }
 }
-ws_advice "You can use findExpiredJKSAliases JKS_PATH to check if the certificates in the JKS file are expired" 
+ws_tip "findExpiredJKSAliases JKS_PATH" "check if the certificates in the JKS file are expired" 

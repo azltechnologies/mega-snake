@@ -128,4 +128,4 @@ createDiffTree() {
         done
     done
 }
-ws_advice "Additionally, you can use createDiffTree to create a diff tree of the current branch against master."
+ws_tip "createDiffTree" "create a diff tree of the current branch against master"

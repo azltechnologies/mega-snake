@@ -6,7 +6,7 @@ set_java(){
 
     # Creating JavaMap
     text=$(/usr/libexec/java_home -V 2>&1)
-    VERSIONS_JAVA=$(echo "$text" | $WS_CONFIG_HOME/py/parse_java_versions.py)
+    VERSIONS_JAVA=$(echo "$text" | $WS_CONFIG_HOME/py/util/parse_java_versions.py)
     local VERSIONS_JAVA=("${(f)VERSIONS_JAVA}")
     declare -A JAVA_MAP
     local JAVA_KEYS=()

@@ -30,4 +30,4 @@ preload(){
     source "$PRELOAD_SH"
 }
 
-ws_advice "you can use the  'preload' function to reload the configuration"clear
+ws_tip "preload" "reload the configuration"

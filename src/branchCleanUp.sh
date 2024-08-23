@@ -38,11 +38,11 @@ remoteBranchesCleanUp(){
         local TEXT=$(cat $REMOTE_BRANCHES_OUTPUT)
         local MAIN_BRANCH=$(git remote show origin | sed -n '/HEAD branch/s/.*: //p')
         ws_advice "main branch is $MAIN_BRANCH"
-        python3 $WS_CONFIG_HOME/py/parse_remote_branches.py "$TEXT" "$MAIN_BRANCH"
+        python3 $WS_CONFIG_HOME/py/parse_branch/parse_remote_branches.py "$TEXT" "$MAIN_BRANCH"
         ws_advice $BRANCHES
     else
         ws_error "file $REMOTE_BRANCHES_OUTPUT doesn't exist, run remoteBranchesDetails function first"
         return 1
     fi
 }
-ws_advice "Additionally, you can use remoteBranchesCleanUp to delete remote branches"
+ws_tip "remoteBranchesCleanUp" "delete remote branches"

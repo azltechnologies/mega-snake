@@ -31,12 +31,17 @@ setup_env(){
     source $WS_CONFIG_HOME/src/branchDetails.sh
     source $WS_CONFIG_HOME/src/branchCleanUp.sh
     source $WS_CONFIG_HOME/src/expiredCertsJks.sh
+    create_release(){
+        git fetch --all
+        python3 $WS_CONFIG_HOME/py/create_release/create.py "$@"
+    }
+    ws_tip "create_release <tag_suffix> <release_type> <release_notes>" "create a release in the current repo"
     parse_gcloud_logs(){
         $WS_CONFIG_HOME/src/parseJsonLogs.sh $WS_TEMP $WS_CONFIG_HOME
     }
-    ws_advice "use the parse_gcloud_logs function to parse gcloud logs from the $JSON_FILE file"
+    ws_tip "parse_gcloud_logs" "parse gcloud logs in json format"
 }
-ws_advice "use the setup_env to start working on a repository and set up the environment
+ws_tip "setup_env <level>" "start working on a repository and set up the environment
     setup_env <level>
     level: 0 - only set up the environment
     level: 1 - untrack gradle properties

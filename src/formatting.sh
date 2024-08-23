@@ -29,6 +29,15 @@ ws_advice() {
     tput -T xterm-256color sgr0
 }
 
+ws_tip() {
+    # Define color codes
+    local GREEN='\033[0;32m'
+    local RED='\033[0;31m'
+    local YELLOW='\033[0;33m'
+    local NC='\033[0m' # No Color
+    echo -e "${GREEN}use the ${RED}'$1'${GREEN} function to ${YELLOW}$2${NC}"
+}
+
 endFormating() {
     unset -f ws_success
     unset -f ws_info

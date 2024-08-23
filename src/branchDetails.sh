@@ -53,7 +53,7 @@ remoteBranchesDetails(){
             fi
             BRANCHES_PENDING=$((BRANCHES_PENDING - 1))
         done
-        local SORTED_BRANCHES=$(echo "${BRANCHES_KEYS[@]}" | $WS_CONFIG_HOME/py/sort_numbers.py)
+        local SORTED_BRANCHES=$(echo "${BRANCHES_KEYS[@]}" | $WS_CONFIG_HOME/py/util/sort_numbers.py)
         local SORTED_BRANCHES=("${(f)SORTED_BRANCHES}")
 
         if [ -f "$REMOTE_BRANCHES_OUTPUT" ]; then
@@ -68,4 +68,4 @@ remoteBranchesDetails(){
         unfunction -m "printingRemoteBranchesDetails"
     }
 }
-ws_advice "You can use remoteBranchesDetails to get details of the branches in the repo"
+ws_tip "remoteBranchesDetails" "get details of the branches in the repo"
