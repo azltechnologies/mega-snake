@@ -15,7 +15,7 @@ versions_gradle(){
     done
     ws_info "$RESULT"
 }
-ws_advice "use versions_gradle to check all the gradle versions available"
+ws_tip "versions_gradle" "check all the gradle versions available"
 set_gradle(){
     {
         function versionError(){

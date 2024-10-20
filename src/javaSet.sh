@@ -63,4 +63,4 @@ set_java(){
 versions_java(){
     /usr/libexec/java_home -V 2>&1
 }
-ws_advice "use versions_java to check all the java versions available"
+ws_tip "versions_java" "check all the java versions available"
