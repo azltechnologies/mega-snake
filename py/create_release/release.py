@@ -61,7 +61,7 @@ class Release:
         position: int = tag_name.find("-")
         if position != -1:
             tag_name = tag_name[:position]
-        attemps: int = 12
+        attemps: int = 20
         new_tag_name: str = None
         i: int = 0
         for shot in range(1, attemps + 1):
