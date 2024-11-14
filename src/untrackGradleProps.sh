@@ -29,16 +29,18 @@ untrackProperties() {
             ws_warning "creating $WORKSPACE"
             echo "{\"folders\": [ { \"path\": \".\", \"name\": \"main\" } ], \"settings\":{}}" >"$WORKSPACE"
         fi
-        local VERIFY_BLAME=$(jq 'has("settings") and (.settings | has("git-blame.gitWebUrl"))' "$WORKSPACE")
-        if [ $? -ne 0 ]; then
+        local CONTENT=$(cat "$WORKSPACE"  | perl -0777 -pe 's/,(\s*[\}\]\\])/$1/mg')
+        local VERIFY_BLAME=$(echo "$CONTENT" | jq 'has("settings") and (.settings | has("git-blame.gitWebUrl"))')
+        if [ $? -ne 0 ] | [ -z "$VERIFY_BLAME" ]; then
             ws_error "\njq parsing error\n"
             return 1
         fi
+        echo "$CONTENT" >"$WORKSPACE"
         if [[ $VERIFY_BLAME != "true" ]]; then
             local NEW_VALUE="https://github.com/one-thd/$REPO_NAME/tree/\$ID"
             # Update the setting
             local JSON_OBJ=$(jq --arg value "$NEW_VALUE" '.settings."git-blame.gitWebUrl" = "\($value)"' "$WORKSPACE")
-            if [ $? -ne 0 ]; then
+            if [ $? -ne 0 ] | [ -z "$JSON_OBJ" ]; then
                 ws_error "\njq parsing error\n"
                 return 1
             fi
