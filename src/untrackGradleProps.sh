@@ -70,6 +70,50 @@ untrackProperties() {
                 echo "$JSON_OBJ" >"$WORKSPACE"
             fi
         fi
+
+        # check if settings.logViewer.watch: [] exists
+        local VERIFY_WATCH=$(echo "$CONTENT" | jq 'has("settings") and (.settings | has("logViewer.watch") and (.settings."logViewer.watch" | length == 0))')
+        if [ $? -ne 0 ] | [ -z "$VERIFY_WATCH" ]; then
+            ws_error "\njq parsing error\n"
+            return 1
+        fi
+        echo "VERIFY_WATCH: $VERIFY_WATCH"
+        # If settings.logViewer.watch: [] does not exist, add it
+        if [[ $VERIFY_WATCH != "true" ]]; then
+            local NEW_VALUE="[]"
+            # Update the setting
+            local JSON_OBJ=$(jq --arg value "$NEW_VALUE" '.settings."logViewer.watch" = []' "$WORKSPACE")
+            if [ $? -ne 0 ] | [ -z "$JSON_OBJ" ]; then
+                ws_error "\njq parsing error\n"
+                return 1
+            else
+                ws_info "updating .settings.\"logViewer.watch\" in $WORKSPACE"
+                echo "$JSON_OBJ" >"$WORKSPACE"
+            fi
+        fi
+
+        local LOG_NAME="App log"
+        # check if settings.logViewer.watch[] array is not empty and if `settings.logViewer.watch[X].title: "$LOG_NAME"` exists
+        local VERIFY_LOG=$(echo "$CONTENT" | jq '(.settings."logViewer.watch" | length > 0) and (.settings."logViewer.watch"[] | has("title") and .title == $LOG_NAME)' --arg LOG_NAME "$LOG_NAME")
+        if [ $? -ne 0 ] | [ -z "$VERIFY_LOG" ]; then
+            ws_error "\njq parsing error\n"
+            return 1
+        fi
+        echo "VERIFY_LOG: $VERIFY_LOG"
+        # If `settings.logViewer.watch[X].title: "$LOG_NAME"` does not exist, add it
+        if [[ $VERIFY_LOG != "true" ]]; then
+            local NEW_VALUE="{\"title\":\"$LOG_NAME\",\"pattern\":\"workspace_temp/output.log\",\"autoScroll\":true}"
+            # Update the setting
+            local JSON_OBJ=$(jq --argjson value "$NEW_VALUE" '.settings."logViewer.watch" += [$value]' "$WORKSPACE")
+            if [ $? -ne 0 ] | [ -z "$JSON_OBJ" ]; then
+                ws_error "\njq parsing error\n"
+                return 1
+            else
+                ws_info "updating .settings.\"logViewer.watch[]\" in $WORKSPACE"
+                echo "$JSON_OBJ" >"$WORKSPACE"
+            fi
+        fi
+
         # check if launch exists
         local VERIFY_LAUNCH=$(echo "$CONTENT" | jq 'has("launch")')
         if [ $? -ne 0 ] | [ -z "$VERIFY_LAUNCH" ]; then
