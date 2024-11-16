@@ -1,0 +1,6 @@
+{
+    "jarFilePath": "build/libs/*.jar",
+    "logViewer.followTailMode": "auto",
+    "logViewer.chunkSizeKb": 81920,
+    "java.format.settings.url": "./.vscode/java-formatter.xml"
+}

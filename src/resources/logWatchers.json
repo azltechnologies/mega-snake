@@ -1,0 +1,24 @@
+{
+  "logViewer.watch": [
+    {
+      "title": "GRADLE CLEAN BUILD NO TEST",
+      "pattern": "$PWD/workspace_temp/clean_build_no_test.log",
+      "autoScroll": true
+    },
+    {
+      "title": "GRADLE CLEAN BUILD",
+      "pattern": "$PWD/workspace_temp/clean_build.log",
+      "autoScroll": true
+    },
+    {
+      "title": "GENERIC LOG",
+      "pattern": "$PWD/workspace_temp/output.log",
+      "autoScroll": true
+    },
+    {
+      "title": "JAVA DEBUG LOG",
+      "pattern": "$PWD/workspace_temp/java_debug.log",
+      "autoScroll": true
+    }
+  ]
+}

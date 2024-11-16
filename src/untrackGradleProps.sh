@@ -7,6 +7,12 @@ untrackProperties() {
             git update-index --assume-unchanged $PROP_FILE
         fi
     fi
+    local JAVA_FORMATTER_FILE='./.vscode/java-formatter.xml'
+    if [ ! -f "$JAVA_FORMATTER_FILE" ]; then
+        ws_warning "creating $JAVA_FORMATTER_FILE"
+        cp "$WS_CONFIG_HOME/src/resources/java-formatter.xml" "$JAVA_FORMATTER_FILE"
+    fi
+
     local EXCLUDE=".git/info/exclude"
     local FOLDER=${WS_TEMP#./}
     local UNTRACKED_FOLDER=$(cat "$EXCLUDE" | grep -Ec "^$FOLDER" || true)
@@ -16,8 +22,13 @@ untrackProperties() {
     fi
     local UNTRACKED_WKSPC=$(cat "$EXCLUDE" | grep -Ec "^.+\.code-workspace" || true)
     if [ "$UNTRACKED_WKSPC" -lt 1 ]; then
-        ws_info "untracking $FOLDER"
+        ws_info "untracking code-workspace file"
         echo "\n*.code-workspace" >>"$EXCLUDE"
+    fi
+    local UNTRACKED_WKSPC=$(cat "$EXCLUDE" | grep -Ec "^\.vscode" || true)
+    if [ "$UNTRACKED_WKSPC" -lt 1 ]; then
+        ws_info "untracking .vscode folder"
+        echo "\n.vscode/" >>"$EXCLUDE"
     fi
     # Search for the first file with extension .code-workspace in the current folder
     local REPO_NAME=$(basename -s .git $(git remote get-url origin))
@@ -51,25 +62,32 @@ untrackProperties() {
                 echo "$JSON_OBJ" >"$WORKSPACE"
             fi
         fi
-        # check if settings.jarFilePath exists
-        local VERIFY_JAR=$(echo "$CONTENT" | jq 'has("settings") and (.settings | has("jarFilePath"))')
-        if [ $? -ne 0 ] | [ -z "$VERIFY_JAR" ]; then
-            ws_error "\njq parsing error\n"
-            return 1
-        fi
-        # If settings.jarFilePath does not exist, add it
-        if [[ $VERIFY_JAR != "true" ]]; then
-            local NEW_VALUE="build/libs/*.jar"
-            # Update the setting
-            local JSON_OBJ=$(jq --arg value "$NEW_VALUE" '.settings."jarFilePath" = "\($value)"' "$WORKSPACE")
-            if [ $? -ne 0 ] | [ -z "$JSON_OBJ" ]; then
+
+        local PROPS=$(cat "$WS_CONFIG_HOME/src/resources/props.json" | sed "s|\$PWD|$PWD|g")
+        while read -r PROP; do
+            local VERIFY_PROP=$(echo "$CONTENT" | jq 'has("settings") and (.settings | has($PROP) and (.settings[$PROP] | length == 0))' --arg PROP "$PROP")
+            if [ $? -ne 0 ] | [ -z "$VERIFY_PROP" ]; then
                 ws_error "\njq parsing error\n"
                 return 1
-            else
-                ws_info "updating .settings.\"jarFilePath\" in $WORKSPACE"
-                echo "$JSON_OBJ" >"$WORKSPACE"
             fi
-        fi
+            # If settings.$PROP: [] does not exist, add it
+            if [[ $VERIFY_PROP != "true" ]]; then
+                local NEW_VALUE=$(echo "$PROPS" | jq -r '.[$PROP]' --arg PROP "$PROP")
+                # Update the setting
+                if [[ "$NEW_VALUE" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+                    local JSON_OBJ=$(jq --argjson value "$NEW_VALUE" --arg PROP "$PROP" '.settings[$PROP] += $value' "$WORKSPACE")
+                else
+                    local JSON_OBJ=$(jq --arg value "$NEW_VALUE" --arg PROP "$PROP" '.settings[$PROP] = $value' "$WORKSPACE")
+                fi
+                if [ $? -ne 0 ] | [ -z "$JSON_OBJ" ]; then
+                    ws_error "\njq parsing error\n"
+                    return 1
+                else
+                    ws_info "updating .settings[\"$PROP\"] in $WORKSPACE"
+                    echo "$JSON_OBJ" >"$WORKSPACE"
+                fi
+            fi
+        done < <(echo "$PROPS" | jq -r 'paths | map(tostring)| join(".")')
 
         # check if settings.logViewer.watch: [] exists
         local VERIFY_WATCH=$(echo "$CONTENT" | jq 'has("settings") and (.settings | has("logViewer.watch") and (.settings."logViewer.watch" | length == 0))')
@@ -77,7 +95,6 @@ untrackProperties() {
             ws_error "\njq parsing error\n"
             return 1
         fi
-        echo "VERIFY_WATCH: $VERIFY_WATCH"
         # If settings.logViewer.watch: [] does not exist, add it
         if [[ $VERIFY_WATCH != "true" ]]; then
             local NEW_VALUE="[]"
@@ -92,27 +109,27 @@ untrackProperties() {
             fi
         fi
 
-        local LOG_NAME="App log"
-        # check if settings.logViewer.watch[] array is not empty and if `settings.logViewer.watch[X].title: "$LOG_NAME"` exists
-        local VERIFY_LOG=$(echo "$CONTENT" | jq '(.settings."logViewer.watch" | length > 0) and (.settings."logViewer.watch"[] | has("title") and .title == $LOG_NAME)' --arg LOG_NAME "$LOG_NAME")
-        if [ $? -ne 0 ] | [ -z "$VERIFY_LOG" ]; then
-            ws_error "\njq parsing error\n"
-            return 1
-        fi
-        echo "VERIFY_LOG: $VERIFY_LOG"
-        # If `settings.logViewer.watch[X].title: "$LOG_NAME"` does not exist, add it
-        if [[ $VERIFY_LOG != "true" ]]; then
-            local NEW_VALUE="{\"title\":\"$LOG_NAME\",\"pattern\":\"workspace_temp/output.log\",\"autoScroll\":true}"
-            # Update the setting
-            local JSON_OBJ=$(jq --argjson value "$NEW_VALUE" '.settings."logViewer.watch" += [$value]' "$WORKSPACE")
-            if [ $? -ne 0 ] | [ -z "$JSON_OBJ" ]; then
+        local WATCHERS=$(cat "$WS_CONFIG_HOME/src/resources/logWatchers.json" | sed "s|\$PWD|$PWD|g")
+        while read -r TITLE; do
+            local VERIFY_WATCH=$(echo "$CONTENT" | jq '(.settings."logViewer.watch" | length > 0) and any(.settings."logViewer.watch"[]; .title == $TITLE)' --arg TITLE "$TITLE")
+            if [ $? -ne 0 ] | [ -z "$VERIFY_WATCH" ]; then
                 ws_error "\njq parsing error\n"
                 return 1
-            else
-                ws_info "updating .settings.\"logViewer.watch[]\" in $WORKSPACE"
-                echo "$JSON_OBJ" >"$WORKSPACE"
             fi
-        fi
+            # If `settings.logViewer.watch[X].title: "$TITLE"` does not exist, add it
+            if [[ $VERIFY_WATCH != "true" ]]; then
+                local NEW_VALUE=$(echo "$WATCHERS" | jq -c '."logViewer.watch"[] | select(.title == $TITLE)' --arg TITLE "$TITLE")
+                # Update the setting
+                local JSON_OBJ=$(jq --argjson value "$NEW_VALUE" '.settings."logViewer.watch" += [$value]' "$WORKSPACE")
+                if [ $? -ne 0 ] | [ -z "$JSON_OBJ" ]; then
+                    ws_error "\njq parsing error\n"
+                    return 1
+                else
+                    ws_info "updating .settings.\"logViewer.watch[]\" for '$TITLE' in $WORKSPACE"
+                    echo "$JSON_OBJ" >"$WORKSPACE"
+                fi
+            fi
+        done < <(echo "$WATCHERS" | jq -r '."logViewer.watch"[].title')
 
         # check if launch exists
         local VERIFY_LAUNCH=$(echo "$CONTENT" | jq 'has("launch")')
@@ -134,26 +151,27 @@ untrackProperties() {
             fi
         fi
 
-        local CONFIG_NAME="Debug Java App (Attach)"
-        # check if x.launch.configurations[] array is not empty and if `x.launch.configurations[X].name: "$CONFIG_NAME"` exists
-        local VERIFY_LAUNCH=$(echo "$CONTENT" | jq '(.launch.configurations | length > 0) and (.launch.configurations[] | has("name") and .name == $CONFIG_NAME)' --arg CONFIG_NAME "$CONFIG_NAME")
-        if [ $? -ne 0 ] | [ -z "$VERIFY_LAUNCH" ]; then
-            ws_error "\njq parsing error\n"
-            return 1
-        fi
-        # If `x.launch.configurations[X].name: "$CONFIG_NAME"` does not exist, add it
-        if [[ $VERIFY_LAUNCH != "true" ]]; then
-            local NEW_VALUE="{\"type\":\"java\",\"name\":\"$CONFIG_NAME\",\"request\":\"attach\",\"hostName\":\"localhost\",\"port\":5005}"
-            # Update the setting
-            local JSON_OBJ=$(jq --argjson value "$NEW_VALUE" '.launch.configurations += [$value]' "$WORKSPACE")
-            if [ $? -ne 0 ] | [ -z "$JSON_OBJ" ]; then
+        local LAUNCH_CONFIGS=$(cat "$WS_CONFIG_HOME/src/resources/launch.json")
+        while read -r NAME; do
+            local VERIFY_LAUNCH=$(echo "$CONTENT" | jq '(.launch.configurations | length > 0) and any(.launch.configurations[]; .name == $NAME)' --arg NAME "$NAME")
+            if [ $? -ne 0 ] | [ -z "$VERIFY_LAUNCH" ]; then
                 ws_error "\njq parsing error\n"
                 return 1
-            else
-                ws_info "updating .launch.configurations[] in $WORKSPACE"
-                echo "$JSON_OBJ" >"$WORKSPACE"
             fi
-        fi
+            # If `x.launch.configurations[X].name: "$NAME"` does not exist, add it
+            if [[ $VERIFY_LAUNCH != "true" ]]; then
+                local NEW_VALUE=$(echo "$LAUNCH_CONFIGS" | jq -c '.launch.configurations[] | select(.name == $NAME)' --arg NAME "$NAME")
+                # Update the setting
+                local JSON_OBJ=$(jq --argjson value "$NEW_VALUE" '.launch.configurations += [$value]' "$WORKSPACE")
+                if [ $? -ne 0 ] | [ -z "$JSON_OBJ" ]; then
+                    ws_error "\njq parsing error\n"
+                    return 1
+                else
+                    ws_info "updating .launch.configurations[] for config '$NAME' in $WORKSPACE"
+                    echo "$JSON_OBJ" >"$WORKSPACE"
+                fi
+            fi
+        done < <(echo "$LAUNCH_CONFIGS" | jq -r '.launch.configurations[].name')
 
         # check if tasks exists
         local VERIFY_TASKS=$(echo "$CONTENT" | jq 'has("tasks")')
@@ -175,46 +193,26 @@ untrackProperties() {
             fi
         fi
 
-        local TASK_BUILD="Gradle Clean Build"
-        # check if x.tasks.tasks[] array is not empty and if `x.tasks.tasks[X].label: "$TASK_BUILD"` exists
-        local VERIFY_TASK=$(echo "$CONTENT" | jq '(.tasks.tasks | length > 0) and (.tasks.tasks[] | has("label") and .label == $TASK_BUILD)' --arg TASK_BUILD "$TASK_BUILD")
-        if [ $? -ne 0 ] | [ -z "$VERIFY_TASK" ]; then
-            ws_error "\njq parsing error\n"
-            return 1
-        fi
-        # If `x.tasks.tasks[X].label: "$TASK_BUILD"` does not exist, add it
-        if [[ $VERIFY_TASK != "true" ]]; then
-            local NEW_VALUE="{\"label\":\"$TASK_BUILD\",\"type\":\"shell\",\"command\":\"./gradlew\",\"args\":[\"clean\",\"build\",\"-x\",\"test\"],\"group\":\"build\",\"problemMatcher\":[],\"detail\":\"Runs the gradle clean build task\"}"
-            # Update the setting
-            local JSON_OBJ=$(jq --argjson value "$NEW_VALUE" '.tasks.tasks += [$value]' "$WORKSPACE")
-            if [ $? -ne 0 ] | [ -z "$JSON_OBJ" ]; then
+        local TASKS=$(cat "$WS_CONFIG_HOME/src/resources/tasks.json")
+        while read -r LABEL; do
+            local VERIFY_TASK=$(echo "$CONTENT" | jq '(.tasks.tasks | length > 0) and any(.tasks.tasks[]; .label == $LABEL)' --arg LABEL "$LABEL")
+            if [ $? -ne 0 ] | [ -z "$VERIFY_TASK" ]; then
                 ws_error "\njq parsing error\n"
                 return 1
-            else
-                ws_info "updating .tasks.tasks[] in $WORKSPACE"
-                echo "$JSON_OBJ" >"$WORKSPACE"
             fi
-        fi
-
-        local TASK_TEST="Run Java App with Debugger"
-        # check if x.tasks.tasks[] array is not empty and if `x.tasks.tasks[X].label: "$TASK_TEST"` exists
-        local VERIFY_TASK=$(echo "$CONTENT" | jq '(.tasks.tasks | length > 0) and (.tasks.tasks[] | has("label") and .label == $TASK_TEST)' --arg TASK_TEST "$TASK_TEST")
-        if [ $? -ne 0 ] | [ -z "$VERIFY_TASK" ]; then
-            ws_error "\njq parsing error\n"
-            return 1
-        fi
-        # If `x.tasks.tasks[X].label: "$TASK_TEST"` does not exist, add it
-        if [[ $VERIFY_TASK != "true" ]]; then
-            local NEW_VALUE="{\"label\":\"$TASK_TEST\",\"type\":\"shell\",\"command\":\"java\",\"args\":[\"-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005\",\"-Dspring.profiles.active=stage\",\"-Dspring.config.additional-location=workspace_temp/secrets/stage/applicationSecrets.yml\",\"-jar\",\"\${config:jarFilePath}\"],\"problemMatcher\":[],\"isBackground\":false,\"group\":{\"kind\":\"build\",\"isDefault\":true}}"
-            # Update the setting
-            local JSON_OBJ=$(jq --argjson value "$NEW_VALUE" '.tasks.tasks += [$value]' "$WORKSPACE")
-            if [ $? -ne 0 ] | [ -z "$JSON_OBJ" ]; then
-                ws_error "\njq parsing error\n"
-                return 1
-            else
-                ws_info "updating .tasks.tasks[] in $WORKSPACE"
-                echo "$JSON_OBJ" >"$WORKSPACE"
+            # If `x.tasks.tasks[X].label: "$TASK_BUILD"` does not exist, add it
+            if [[ $VERIFY_TASK != "true" ]]; then
+                local NEW_VALUE=$(echo "$TASKS" | jq -c '.tasks.tasks[] | select(.label == $LABEL)' --arg LABEL "$LABEL")
+                # Update the setting
+                local JSON_OBJ=$(jq --argjson value "$NEW_VALUE" '.tasks.tasks += [$value]' "$WORKSPACE")
+                if [ $? -ne 0 ] | [ -z "$JSON_OBJ" ]; then
+                    ws_error "\njq parsing error\n"
+                    return 1
+                else
+                    ws_info "updating .tasks.tasks[] for '$LABEL' in $WORKSPACE"
+                    echo "$JSON_OBJ" >"$WORKSPACE"
+                fi
             fi
-        fi
+        done < <(echo "$TASKS" | jq -r '.tasks.tasks[].label')
     fi
 }

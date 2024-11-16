@@ -1,0 +1,20 @@
+{
+    "launch": {
+        "version": "0.2.0",
+        "configurations": [
+            {
+                "type": "java",
+                "name": "Debug Java App (Attach)",
+                "request": "attach",
+                "hostName": "localhost",
+                "port": 5005
+            },
+            {
+                "name": "Python Debugger: Python File",
+                "type": "debugpy",
+                "request": "launch",
+                "program": "${file}"
+            }
+        ]
+    }
+}
