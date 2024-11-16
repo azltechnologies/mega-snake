@@ -65,6 +65,7 @@ untrackProperties() {
 
         local PROPS=$(cat "$WS_CONFIG_HOME/src/resources/props.json" | sed "s|\$PWD|$PWD|g")
         while read -r PROP; do
+            # check if settings.$PROP: [] exists
             local VERIFY_PROP=$(echo "$CONTENT" | jq 'has("settings") and (.settings | has($PROP) and (.settings[$PROP] | length == 0))' --arg PROP "$PROP")
             if [ $? -ne 0 ] | [ -z "$VERIFY_PROP" ]; then
                 ws_error "\njq parsing error\n"
@@ -74,7 +75,7 @@ untrackProperties() {
             if [[ $VERIFY_PROP != "true" ]]; then
                 local NEW_VALUE=$(echo "$PROPS" | jq -r '.[$PROP]' --arg PROP "$PROP")
                 # Update the setting
-                if [[ "$NEW_VALUE" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+                if [[ "$NEW_VALUE" =~ ^([0-9]+(\.[0-9]+)?$|\{|\\[) ]]; then
                     local JSON_OBJ=$(jq --argjson value "$NEW_VALUE" --arg PROP "$PROP" '.settings[$PROP] += $value' "$WORKSPACE")
                 else
                     local JSON_OBJ=$(jq --arg value "$NEW_VALUE" --arg PROP "$PROP" '.settings[$PROP] = $value' "$WORKSPACE")
@@ -87,7 +88,7 @@ untrackProperties() {
                     echo "$JSON_OBJ" >"$WORKSPACE"
                 fi
             fi
-        done < <(echo "$PROPS" | jq -r 'paths | map(tostring)| join(".")')
+        done < <(echo "$PROPS" | jq -r 'keys[]')
 
         # check if settings.logViewer.watch: [] exists
         local VERIFY_WATCH=$(echo "$CONTENT" | jq 'has("settings") and (.settings | has("logViewer.watch") and (.settings."logViewer.watch" | length == 0))')
