@@ -1,10 +1,18 @@
+# Detecta si está corriendo en bash o zsh y obtiene el directorio correcto
+if [ -n "$BASH_SOURCE" ]; then
+    # Para bash
+    WS_CONFIG_HOME="$(readlink -f $(dirname "${BASH_SOURCE[0]}"))"
+else
+    # Para zsh
     WS_CONFIG_HOME="$(readlink -f $(dirname "$0"))"
-    source $WS_CONFIG_HOME/src/formatting.sh
-setup_env(){
+fi
+echo "WS_CONFIG_HOME: $WS_CONFIG_HOME"
+source $WS_CONFIG_HOME/src/formatting.sh
+setup_env() {
     WS_TEMP="./workspace_temp"
-    
+
     # Check if ./build.gradle exists and store the result in a variable
-    GRADLE_FILE_EXISTS=$(ls | grep -cE 'build.gradle' || true)    
+    GRADLE_FILE_EXISTS=$(ls | grep -cE 'build.gradle' || true)
     if [ "$GRADLE_FILE_EXISTS" -eq 1 ]; then
         source $WS_CONFIG_HOME/src/preloadConfig.sh
     fi
@@ -38,10 +46,10 @@ setup_env(){
     source $WS_CONFIG_HOME/src/branchCleanUp.sh
     source $WS_CONFIG_HOME/src/expiredCertsJks.sh
     source $WS_CONFIG_HOME/src/instancesFromDeploymentId.sh
-    create_release(){
+    create_release() {
         if [ -z "$4" ]; then
             4=$(git rev-parse HEAD)
-                    # Check if the commit hash is valid
+            # Check if the commit hash is valid
         elif git cat-file -t "$4" 2>/dev/null | grep -q commit; then
             ws_success "Valid commit hash: $4"
         else
@@ -55,7 +63,7 @@ setup_env(){
             1 - prerelease
             2 - release
             3 - latest"
-    parse_gcloud_logs(){
+    parse_gcloud_logs() {
         $WS_CONFIG_HOME/src/parseJsonLogs.sh $WS_TEMP $WS_CONFIG_HOME
     }
     ws_tip "parse_gcloud_logs" "parse gcloud logs in json format"
