@@ -17,8 +17,7 @@ remoteBranchesDetails(){
         esac
     done
 
-    {
-      function printingRemoteBranchesDetails(){
+      printingRemoteBranchesDetails(){
             local PADDING=20
             local PADDING_AUTH=50
             local PADDING_BRANCH=50
@@ -64,8 +63,7 @@ remoteBranchesDetails(){
             echo "$BRANCHES_MAP[$branch]" >> "$REMOTE_BRANCHES_OUTPUT"
         done
         code "$REMOTE_BRANCHES_OUTPUT"
-    } always {
-        unfunction -m "printingRemoteBranchesDetails"
-    }
+        
+        unset -f printingRemoteBranchesDetails
 }
 ws_tip "remoteBranchesDetails" "get details of the branches in the repo"
