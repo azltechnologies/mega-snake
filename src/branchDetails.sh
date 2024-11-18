@@ -53,15 +53,14 @@ remoteBranchesDetails(){
             BRANCHES_PENDING=$((BRANCHES_PENDING - 1))
         done
         local SORTED_BRANCHES=$(echo "${BRANCHES_KEYS[@]}" | $WS_CONFIG_HOME/py/util/sort_numbers.py)
-        local SORTED_BRANCHES=("${(f)SORTED_BRANCHES}")
 
         if [ -f "$REMOTE_BRANCHES_OUTPUT" ]; then
             rm $REMOTE_BRANCHES_OUTPUT
         fi
         # Print the sorted array
-        for branch in "${SORTED_BRANCHES[@]}"; do
-            echo "$BRANCHES_MAP[$branch]" >> "$REMOTE_BRANCHES_OUTPUT"
-        done
+        while read -r branch; do
+            echo "${BRANCHES_MAP[$branch]}" >> "$REMOTE_BRANCHES_OUTPUT"
+        done < <(echo "$SORTED_BRANCHES")
         code "$REMOTE_BRANCHES_OUTPUT"
         
         unset -f printingRemoteBranchesDetails

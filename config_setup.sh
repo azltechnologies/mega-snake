@@ -6,7 +6,6 @@ else
     # Para zsh
     WS_CONFIG_HOME="$(readlink -f $(dirname "$0"))"
 fi
-echo "WS_CONFIG_HOME: $WS_CONFIG_HOME"
 source $WS_CONFIG_HOME/src/formatting.sh
 setup_env() {
     WS_TEMP="./workspace_temp"
