@@ -83,9 +83,10 @@ createDiffTree() {
         SYMBOLS_VALUES[$STATUS_FILE]=$((SYMBOLS_VALUES[$STATUS_FILE] + 1))
         local PATH_FILE=$(echo "$RECORD" | awk '{print $6}')
         File_class.new "$STATUS_FILE" "$PATH_FILE"
-        for key in "${!File_class[@]}"; do
+        while read -r key; do
+            echo "index: $i, key: $key, value: ${File_class[$key]}"
             File_classes[$i, $key]="${File_class[$key]}"
-        done
+        done < <(declare -p File_class | grep -Eo '\[\w+\]' | sed 's/\[//g' | sed 's/\]//g' )
         ((i++))
     done
 
@@ -101,7 +102,7 @@ createDiffTree() {
     done
 
     local CHANGES="\n${#RAW_DIFF[@]} files changed\n"
-    for key in "${!SYMBOLS_VALUES[@]}"; do
+    while read -r key; do
         local qty="${SYMBOLS_VALUES[$key]}"
         if [ "$qty" -eq 0 ]; then
             continue
@@ -109,7 +110,7 @@ createDiffTree() {
         local desc="${SYMBOLS_DESC[$key]}"
         local symbol="${SYMBOLS[$key]}"
         CHANGES="$CHANGES$symbol $desc: $qty\n"
-    done
+    done < <(declare -p SYMBOLS_VALUES | grep -Eo '\[\w+\]' | sed 's/\[//g' | sed 's/\]//g' )
 
     # Use a subshell to change directory temporarily
     (
