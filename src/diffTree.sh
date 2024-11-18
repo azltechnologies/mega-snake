@@ -48,8 +48,10 @@ createDiffTree() {
         mkdir -p $DIFF_TREE_DUMMY_REPO
     fi
 
-
-    local RAW_DIFF=("${(@f)$(git diff-tree -r $MAIN_BRANCH $CURRENT_BRANCH)}")
+    RAW_DIFF=()
+    while read -r record; do
+        RAW_DIFF+=("$record")
+    done < <(git diff-tree -r $MAIN_BRANCH $CURRENT_BRANCH)
 
     local File_class
     # Define the Person "class"
@@ -81,25 +83,25 @@ createDiffTree() {
         SYMBOLS_VALUES[$STATUS_FILE]=$((SYMBOLS_VALUES[$STATUS_FILE] + 1))
         local PATH_FILE=$(echo "$RECORD" | awk '{print $6}')
         File_class.new "$STATUS_FILE" "$PATH_FILE"
-        for key in "${(@k)File_class}"; do
-            File_classes[$i,$key]="${File_class[$key]}"
+        for key in "${!File_class[@]}"; do
+            File_classes[$i, $key]="${File_class[$key]}"
         done
         ((i++))
     done
 
     echo "size of file classes: ${#File_classes[@]}"
-    for (( j=0; j < $i; j++ )); do
-        local KEY_PATH=${File_classes[$j,"PATH"]}
-        local KEY_STATUS=${File_classes[$j,"STATUS"]}
+    for ((j = 0; j < $i; j++)); do
+        local KEY_PATH=${File_classes[$j, "PATH"]}
+        local KEY_STATUS=${File_classes[$j, "STATUS"]}
         local SYMBOL=${SYMBOLS[$KEY_STATUS]}
         local NEW_PATH_FILE="$DIFF_TREE_DUMMY_REPO/$KEY_PATH - $SYMBOL"
         local DIR_PATH=$(dirname "$NEW_PATH_FILE")
         mkdir -p "$DIR_PATH"
-        touch $NEW_PATH_FILE        
+        touch $NEW_PATH_FILE
     done
 
     local CHANGES="\n${#RAW_DIFF[@]} files changed\n"
-    for key in "${(@k)SYMBOLS_VALUES}"; do
+    for key in "${!SYMBOLS_VALUES[@]}"; do
         local qty="${SYMBOLS_VALUES[$key]}"
         if [ "$qty" -eq 0 ]; then
             continue
@@ -112,10 +114,10 @@ createDiffTree() {
     # Use a subshell to change directory temporarily
     (
         cd "$DIFF_TREE_DUMMY_REPO" || exit
-        tree -a --noreport . > "../$DIFF_TREE_FILE"
-        echo -e "$CHANGES" >> "../$DIFF_TREE_FILE"
+        tree -a --noreport . >"../$DIFF_TREE_FILE"
+        echo -e "$CHANGES" >>"../$DIFF_TREE_FILE"
         code "../$DIFF_TREE_FILE"
-        git log --pretty=format:"%ad %H%n%B" --date=short $CURRENT_BRANCH...$MAIN_BRANCH > "../$DIFF_COMMIT_FILE"
+        git log --pretty=format:"%ad %H%n%B" --date=short $CURRENT_BRANCH...$MAIN_BRANCH >"../$DIFF_COMMIT_FILE"
         code "../$DIFF_COMMIT_FILE"
     )
     ws_success "Diff tree created"
