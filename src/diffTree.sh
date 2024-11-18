@@ -118,14 +118,6 @@ createDiffTree() {
         git log --pretty=format:"%ad %H%n%B" --date=short $CURRENT_BRANCH...$MAIN_BRANCH > "../$DIFF_COMMIT_FILE"
         code "../$DIFF_COMMIT_FILE"
     )
-
-    if [ -d "$DIFF_TREE_DUMMY_REPO" ]; then
-       # rm -rf $DIFF_TREE_DUMMY_REPO
-    fi
-
-    for (( j=0; j < ${#File_classes[@]}; j++ )); do
-        for (( k = 0; k < ${#File_class[@]}; k++ )); do
-        done
-    done
+    ws_success "Diff tree created"
 }
 ws_tip "createDiffTree" "create a diff tree of the current branch against master"
