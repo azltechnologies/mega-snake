@@ -1,6 +1,7 @@
 """Class Module representing a file type in the repository changes."""
 
 import dataclasses
+import os
 from enum import Enum
 from py.util.formatting import ws_error
 
@@ -17,6 +18,9 @@ class FileType(Enum):
 
     Methods:
         add: None
+        create_new_file: None
+        from_symbol: FileType
+
     """
 
     ADDED = ("🅐", "A", "FILES ADDED")
@@ -50,6 +54,23 @@ class FileType(Enum):
         self.added += 1
         self.files.append(file)
 
+    def create_new_file(self, location: str) -> None:
+        """
+        Returns the new file string path.
+
+        Args:
+            location: str
+
+        Returns:
+            str
+        """
+        for file in self.files:
+            new_file_path: str = f"{location}/{file} - {self.symbol}"
+            os.makedirs(os.path.dirname(new_file_path), exist_ok=True)
+            # create the new empty file
+            with open(new_file_path, "w", encoding="utf-8") as new_file:
+                new_file.write("")
+
     @classmethod
     def from_symbol(cls, id_type: str) -> "FileType":
         """
@@ -63,3 +84,17 @@ class FileType(Enum):
                 return file_type
         ws_error(f"No FileType with symbol '{id_type}' found.", ValueError(f"No FileType found."))
         return None
+
+    @classmethod
+    def get_changes(cls) -> str:
+        """
+        Returns the changes made to the repository.
+
+        Returns:
+            str
+        """
+        changes: list[str] = []
+        for file_type in cls:
+            if file_type.added > 0:
+                changes.append(f"{file_type.description} — {file_type.symbol}: {file_type.added}\n")
+        return "".join(changes)
