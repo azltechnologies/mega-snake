@@ -19,6 +19,11 @@
       "title": "JAVA DEBUG LOG",
       "pattern": "$PWD/workspace_temp/java_debug.log",
       "autoScroll": true
+    },
+    {
+      "title": "SETUP_ENVIRONMENT_LOG",
+      "pattern": "$PWD/workspace_temp/setup_environment.log",
+      "autoScroll": true
     }
   ]
 }

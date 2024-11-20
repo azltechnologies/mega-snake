@@ -12,9 +12,6 @@ createDiffTree() {
             return 1
         fi
     fi
-    local DIFF_TREE_FILE="diff_tree.txt"
-    local DIFF_COMMIT_FILE="diff_commit.txt"
-    local DIFF_TREE_DUMMY_REPO="$DIFF_TREE_OUTPUT/diff_tree_dummy_repo"
     local SYMBOLS
     declare -A SYMBOLS
     SYMBOLS[A]="🅐"
@@ -43,10 +40,15 @@ createDiffTree() {
     SYMBOLS_DESC[T]="FILES TYPECHANGED"
     SYMBOLS_DESC[U]="FILES UNMERGED"
 
+    local DIFF_TREE_OUTPUT= $1
+    local DIFF_TREE_FILE="diff_tree.txt"
+    local DIFF_COMMIT_FILE="diff_commit.txt"
+    local DIFF_TREE_DUMMY_REPO="$DIFF_TREE_OUTPUT/diff_tree_dummy_repo"
+
     if [ -d "$DIFF_TREE_OUTPUT" ]; then
         rm -rf $DIFF_TREE_OUTPUT
-        mkdir -p $DIFF_TREE_DUMMY_REPO
     fi
+    mkdir -p $DIFF_TREE_DUMMY_REPO
 
     RAW_DIFF=()
     while read -r record; do
