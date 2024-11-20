@@ -1,6 +1,7 @@
 """ This module contains functions for formatting output messages to the console. """
 
 from colorama import init, Fore, Style
+from py.util.props import LOG_LEVEL
 from py.util import logger
 
 # Initialize colopiprama
@@ -24,8 +25,8 @@ def ws_warning(message: str) -> None:
     print(Fore.YELLOW + message)
     logger.log.warning(message)
 
-
-def ws_error(message: str, error: Exception) -> None:
+# specify that this function raises an exception
+def ws_error(message: str, error: Exception) -> ValueError:
     """Print an error message"""
     print(Fore.RED + message)
     logger.log.error(
@@ -38,12 +39,17 @@ def ws_error(message: str, error: Exception) -> None:
 
 
 def ws_advice(message: str) -> None:
-    print(Fore.GREEN + message)
+    """Print an advice message if LOG_LEVEL is set to DEBUG"""
+    # check if LOG_LEVEL is set to DEBUG
+    if LOG_LEVEL == "DEBUG":
+        print(Fore.GREEN + message)
+        logger.log.debug(message)
 
 
 def ws_tip(function_name: str, description: str) -> None:
-    GREEN = Fore.GREEN
-    RED = Fore.RED
-    YELLOW = Fore.YELLOW
-    NC = Style.RESET_ALL  # No Color
-    print(f"{GREEN}use the {RED}'{function_name}'{GREEN} function to {YELLOW}{description}{NC}")
+    """Print a tip message"""
+    green = Fore.GREEN
+    red = Fore.RED
+    yellow = Fore.YELLOW
+    nc = Style.RESET_ALL  # No Color
+    print(f"{green}use the {red}'{function_name}'{green} function to {yellow}{description}{nc}")
