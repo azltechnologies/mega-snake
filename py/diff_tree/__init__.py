@@ -2,6 +2,6 @@
 
 """ init file for the diff_tree module """
 
-import py.util.formatting as formatting
+from py.util.formatting import ws_success
 
-formatting.ws_success("Successfully imported diff_tree module")
+ws_success("Successfully imported diff_tree module")

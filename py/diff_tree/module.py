@@ -6,18 +6,18 @@ import os
 from directory_tree import DisplayTree
 from py.util.formatting import ws_error, ws_info, ws_success
 from py.util.util import run_operation
+from py.util import props
 from py.diff_tree.file_type import FileType
 
 
-def main(tree_output: str, commit_hash: str = None):
+def main(commit_hash: str = None):
     """
     Creates a diff tree of the current branch against master
 
     Args:
-        tree_output: str
         commit_hash: str
     """
-
+    tree_output: str = f"{props.APP_PROPERTIES.working_path}/diff_tree"
     diff_tree_file: str = f"{tree_output}/diff_tree.txt"
     diff_commit_file: str = f"{tree_output}/diff_commit.txt"
     diff_tree_dummy_repo: str = f"{tree_output}/diff_tree_dummy_repo"
