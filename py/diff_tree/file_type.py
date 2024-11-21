@@ -82,7 +82,7 @@ class FileType(Enum):
         for file_type in cls:
             if file_type.id_type == id_type:
                 return file_type
-        ws_error(f"No FileType with symbol '{id_type}' found.", ValueError(f"No FileType found."))
+        ws_error(f"No FileType with symbol '{id_type}' found.", ValueError("No FileType found."))
         return None
 
     @classmethod
@@ -94,7 +94,10 @@ class FileType(Enum):
             str
         """
         changes: list[str] = []
+        count: int = 0
         for file_type in cls:
             if file_type.added > 0:
-                changes.append(f"{file_type.description} — {file_type.symbol}: {file_type.added}\n")
+                count += file_type.added
+                changes.append(f"{file_type.symbol}  {file_type.description}: {file_type.added}\n")
+        changes.insert(0, f"{count} files changed\n")
         return "".join(changes)
