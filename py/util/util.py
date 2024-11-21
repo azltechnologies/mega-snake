@@ -22,7 +22,7 @@ def run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str
         try:
             ws_info(f"Running: {cwd}")
             result = subprocess.run(cwd, shell=True, check=True, capture_output=True, text=True)
-            ws_success(f"{description} successfully on attempt {attempt}!")
+            ws_advice(f"{description} successfully on attempt {attempt}!")
             ws_advice(f"stdout: {result.stdout}")
             break  # Exit the loop on successful push
         except subprocess.CalledProcessError as error:
@@ -36,7 +36,7 @@ def run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str
             else:
                 ws_warning(f'Retrying {description} in 2 seconds...')
                 time.sleep(2)  # Wait 2 seconds before retrying
-        except Exception as e:
+        except Exception as e: # pylint: disable=broad-except
             ws_error(
                 "Error creating diff tree",
                 e

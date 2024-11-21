@@ -1,14 +1,14 @@
 # Detecta si está corriendo en bash o zsh y obtiene el directorio correcto
 if [ -n "$BASH_SOURCE" ]; then
     # Para bash
-    WS_CONFIG_HOME="$(readlink -f $(dirname "${BASH_SOURCE[0]}"))"
+    export WS_CONFIG_HOME="$(readlink -f $(dirname "${BASH_SOURCE[0]}"))"
 else
     # Para zsh
-    WS_CONFIG_HOME="$(readlink -f $(dirname "$0"))"
+    export WS_CONFIG_HOME="$(readlink -f $(dirname "$0"))"
 fi
 source $WS_CONFIG_HOME/src/formatting.sh
 setup_env() {
-    WS_TEMP="./workspace_temp"
+    export WS_TEMP="./workspace_temp"
 
     # Check if ./build.gradle exists and store the result in a variable
     GRADLE_FILE_EXISTS=$(ls | grep -cE 'build.gradle' || true)

@@ -1,7 +1,7 @@
 """ This module contains functions for formatting output messages to the console. """
 
 from colorama import init, Fore, Style
-from py.util.props import LOG_LEVEL
+from py.util.props import get_log_level
 from py.util import logger
 
 # Initialize colopiprama
@@ -41,7 +41,8 @@ def ws_error(message: str, error: Exception) -> ValueError:
 def ws_advice(message: str) -> None:
     """Print an advice message if LOG_LEVEL is set to DEBUG"""
     # check if LOG_LEVEL is set to DEBUG
-    if LOG_LEVEL == "DEBUG":
+    log_level = get_log_level()
+    if log_level == "DEBUG":
         print(Fore.GREEN + message)
         logger.log.debug(message)
 

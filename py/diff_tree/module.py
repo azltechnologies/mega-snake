@@ -4,7 +4,7 @@
 
 import os
 from directory_tree import DisplayTree
-from py.util.formatting import ws_error, ws_info
+from py.util.formatting import ws_error, ws_info, ws_success
 from py.util.util import run_operation
 from py.diff_tree.file_type import FileType
 
@@ -38,9 +38,16 @@ def main(tree_output: str, commit_hash: str = None):
         if commit_validation != "commit":
             ws_error(f"Invalid commit hash: {commit_hash}", ValueError(f"Invalid commit hash: {commit_hash}"))
         main_branch = commit_hash
+    diff_str: str = run_operation(f"git diff-tree -r {main_branch} {current_branch}", "getting differences between branches").stdout.strip()
+    # check if there are no differences
+    if not diff_str:
+        ws_success("No differences found between the current branch and the main branch")
+        return
     differences: list[str] = (
-        run_operation(f"git diff-tree -r {main_branch} {current_branch}", "getting differences between branches").stdout.strip().split("\n")
+        diff_str.split("\n")
     )
+
+
     # iterate over the differences and write them to the output file
     for diff in differences:
         columns: list[str] = diff.split("\t")
