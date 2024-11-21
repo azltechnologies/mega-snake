@@ -4,7 +4,7 @@ This module contains utility functions for common operations.
 
 import subprocess
 import time
-from py.util.formatting import ws_info, ws_success, ws_advice, ws_warning, ws_error
+from py.util.formatting import ws_info, ws_advice, ws_warning, ws_error
 
 def run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str]:
     """
@@ -18,9 +18,10 @@ def run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str
         subprocess.CompletedProcess[str]
     """
     num_retries = 3
+    ws_info(f"Running operation: {description}")
     for attempt in range(1, num_retries + 1):
         try:
-            ws_info(f"Running: {cwd}")
+            ws_advice(f"Running: {cwd}")
             result = subprocess.run(cwd, shell=True, check=True, capture_output=True, text=True)
             ws_advice(f"{description} successfully on attempt {attempt}!")
             ws_advice(f"stdout: {result.stdout}")

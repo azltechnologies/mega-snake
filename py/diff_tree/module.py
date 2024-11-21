@@ -34,11 +34,11 @@ def main(tree_output: str, commit_hash: str = None):
         main_branch = run_operation("git remote show origin | sed -n '/HEAD branch/s/.*: //p'", "Getting main branch").stdout.strip()
         ws_info(f"Main branch: {main_branch}")
     else:
-        commit_validation: str = run_operation(f"git cat-file -t {commit_hash} 2>/dev/null", "Checking if commit hash is valid").stdout.strip()
+        commit_validation: str = run_operation(f"git cat-file -t {commit_hash} 2>/dev/null", f"Checking if commit hash '{commit_hash}' is valid").stdout.strip()
         if commit_validation != "commit":
             ws_error(f"Invalid commit hash: {commit_hash}", ValueError(f"Invalid commit hash: {commit_hash}"))
         main_branch = commit_hash
-    diff_str: str = run_operation(f"git diff-tree -r {main_branch} {current_branch}", "getting differences between branches").stdout.strip()
+    diff_str: str = run_operation(f"git diff-tree -r {main_branch} {current_branch}", f"getting differences between '{main_branch}' and '{current_branch}' branches").stdout.strip()
     # check if there are no differences
     if not diff_str:
         ws_success("No differences found between the current branch and the main branch")
