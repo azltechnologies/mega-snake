@@ -1,4 +1,5 @@
 {
+  "python.defaultInterpreterPath": "$WS_CONFIG_HOME/.venv/bin/python3",
   "jarFilePath": "build/libs/*.jar",
   "logViewer.followTailMode": "auto",
   "logViewer.chunkSizeKb": 81920,

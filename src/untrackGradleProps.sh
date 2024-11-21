@@ -63,7 +63,7 @@ untrackProperties() {
             fi
         fi
 
-        local PROPS=$(cat "$WS_CONFIG_HOME/src/resources/props.json" | sed "s|\$PWD|$PWD|g")
+        local PROPS=$(cat "$WS_CONFIG_HOME/src/resources/props.json" | sed "s|\$PWD|$PWD|g" | sed "s|\$WS_CONFIG_HOME|$WS_CONFIG_HOME|g")
         while read -r PROP; do
             # check if settings.$PROP: [] exists
             local VERIFY_PROP=$(echo "$CONTENT" | jq 'has("settings") and (.settings | has($PROP) and (.settings[$PROP] | length == 0))' --arg PROP "$PROP")
@@ -110,7 +110,7 @@ untrackProperties() {
             fi
         fi
 
-        local WATCHERS=$(cat "$WS_CONFIG_HOME/src/resources/logWatchers.json" | sed "s|\$PWD|$PWD|g")
+        local WATCHERS=$(cat "$WS_CONFIG_HOME/src/resources/logWatchers.json" | sed "s|\$PWD|$PWD|g" | sed "s|\$WS_CONFIG_HOME|$WS_CONFIG_HOME|g")
         while read -r TITLE; do
             local VERIFY_WATCH=$(echo "$CONTENT" | jq '(.settings."logViewer.watch" | length > 0) and any(.settings."logViewer.watch"[]; .title == $TITLE)' --arg TITLE "$TITLE")
             if [ $? -ne 0 ] | [ -z "$VERIFY_WATCH" ]; then
@@ -152,7 +152,7 @@ untrackProperties() {
             fi
         fi
 
-        local LAUNCH_CONFIGS=$(cat "$WS_CONFIG_HOME/src/resources/launch.json")
+        local LAUNCH_CONFIGS=$(cat "$WS_CONFIG_HOME/src/resources/launch.json" | sed "s|\$PWD|$PWD|g" | sed "s|\$WS_CONFIG_HOME|$WS_CONFIG_HOME|g")
         while read -r NAME; do
             local VERIFY_LAUNCH=$(echo "$CONTENT" | jq '(.launch.configurations | length > 0) and any(.launch.configurations[]; .name == $NAME)' --arg NAME "$NAME")
             if [ $? -ne 0 ] | [ -z "$VERIFY_LAUNCH" ]; then
@@ -194,7 +194,7 @@ untrackProperties() {
             fi
         fi
 
-        local TASKS=$(cat "$WS_CONFIG_HOME/src/resources/tasks.json")
+        local TASKS=$(cat "$WS_CONFIG_HOME/src/resources/tasks.json" | sed "s|\$PWD|$PWD|g" | sed "s|\$WS_CONFIG_HOME|$WS_CONFIG_HOME|g")
         while read -r LABEL; do
             local VERIFY_TASK=$(echo "$CONTENT" | jq '(.tasks.tasks | length > 0) and any(.tasks.tasks[]; .label == $LABEL)' --arg LABEL "$LABEL")
             if [ $? -ne 0 ] | [ -z "$VERIFY_TASK" ]; then

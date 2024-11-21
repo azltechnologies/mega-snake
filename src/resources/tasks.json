@@ -3,6 +3,18 @@
         "version": "2.0.0",
         "tasks": [
             {
+                "label": "Activate Python Virtual Environment",
+                "type": "shell",
+                "command": "bash",
+                "args": [
+                    "-c",
+                    "source $WS_CONFIG_HOME/.venv/bin/activate"
+                ],
+                "group": "build",
+                "problemMatcher": [],
+                "detail": "Activates the Python virtual environment"
+            },
+            {
                 "label": "Gradle Clean Build No Tests",
                 "type": "shell",
                 "command": "bash",
