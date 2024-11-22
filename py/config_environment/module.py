@@ -1,6 +1,7 @@
 """ Contains multiple functions to configure the environment for development with vscode. """
 
 from typing import Optional, Callable
+from py.util import props
 from py.util.formatting import WorkspaceError, ws_success, ws_info, ws_warning, ws_advice, ws_tip
 
 def echo(message: str, type: str): # previously echo
@@ -27,8 +28,10 @@ def echo(message: str, type: str): # previously echo
         e = ValueError(f"Invalid message type: {type}")
         WorkspaceError.ws_error(f"message type value must be one of:\n {' | '.join(valid_filters)}",e)
         raise e
-    fun_dict.keys()
-    fun_dict[type](message)
+    if type == "A":
+        fun_dict[type](message, True)
+    else:
+        fun_dict[type](message)
 
 
 def initial_load():

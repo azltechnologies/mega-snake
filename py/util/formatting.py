@@ -37,12 +37,12 @@ def _ws_error(error: BaseException, message: Optional[str] = None) -> None:
     logger.log.error(f"{message}; %s: %s\n\n%s", error.__class__, str(error), logger.get_traceback(error), stacklevel=3)
 
 
-def ws_advice(message: str) -> None:
+def ws_advice(message: str, force: bool = False) -> None:
     """Print an advice message if LOG_LEVEL is set to DEBUG"""
     # check if LOG_LEVEL is set to DEBUG
     props = properties.APP_PROPERTIES
     log_level = props.log_level
-    if log_level == logger.log.DEBUG:
+    if log_level == logger.log.DEBUG or force:
         print(Fore.GREEN + message)
         logger.log.debug(message, stacklevel=2)
 

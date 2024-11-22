@@ -2,13 +2,14 @@
 
 from dataclasses import dataclass, field
 from typing import Optional
+import inspect
 import os
 import logging as log
 from datetime import datetime
 from py.util import formatting, logger
 
 
-@dataclass
+@dataclass(init=False)
 class AppProperties:
     """
     Application properties
@@ -18,28 +19,58 @@ class AppProperties:
         working_path (str): The working path for the application, used mainly for output files
     """
 
-    log_level: int
-    working_path: str
-    log_file: str
+    _log_level: int = field(
+        init=False,
+    )
+    _working_path: str = field(init=False)
+    _log_file: str = field(init=True)
 
-    def __init__(self, log_level: str, working_path: str):
-        """
-        Initializes an instance of the AppProperties class
+    def __new__(cls, log_level: str, working_path: str) -> "AppProperties":
+        # Get call stack
+        frames = inspect.stack()
+        # Check if called from __init__
+        called_from_init: bool = any(frame.function == "init_app_properties" for frame in frames[1:])  # Skip current frame
+        if not called_from_init:
+            raise PermissionError("Operation not permitted: AppProperties class instantiation is only allowed during initialization")
+        return super().__new__(cls)
 
-        Args:
-            log_level (str): The log level to use
-            working_path (str): The working path for the application, used mainly for output files
-        """
+    @property
+    def log_level(self) -> int:
+        return self._log_level
+
+    @log_level.setter
+    def log_level(self, value: int):
         try:
-            level: int = log._nameToLevel[log_level]
+            level: str = log._levelToName[value]
             if level is None:
-                raise ValueError(f"Invalid log level: {log_level}")
-            self.log_level = level
+                raise ValueError(f"Invalid log level: {value}")
+            self._log_level = value
         except KeyError as e:
-            raise KeyError(f"Invalid log level: {log_level}, must be one of {log._nameToLevel.keys()}") from e
+            raise KeyError(f"Invalid log level: {value}, must be one of {log._levelToName.keys()}") from e
+        # Get call stack
+        frames = inspect.stack()
+        # Check if called from __init__
+        called_from_init: bool = any(frame.function == "__init__" for frame in frames[1:])  # Skip current frame
+        if not called_from_init:
+            logger.config_log()
 
+    def log_level_from_str(self, value: str):
+        try:
+            level: int = log._nameToLevel[value]
+            if level is None:
+                raise ValueError(f"Invalid log level: {value}")
+        except KeyError as e:
+            raise KeyError(f"Invalid log level: {value}, must be one of {log._nameToLevel.keys()}") from e
+        self.log_level = level
+
+    @property
+    def working_path(self) -> str:
+        return self._working_path
+
+    @working_path.setter
+    def working_path(self, value: str):
         # Convert the path to an absolute path
-        working_path = os.path.abspath(working_path)
+        working_path = os.path.abspath(value)
         # Check if the path exists
         if not os.path.exists(working_path):
             raise FileNotFoundError(f"Path {working_path} does not exist")
@@ -49,19 +80,48 @@ class AppProperties:
         # Check if the path is writable
         if not os.access(working_path, os.W_OK):
             raise PermissionError(f"Path {working_path} is not writable")
-        self.working_path = working_path
+        self._working_path = working_path
+
+    @property
+    def log_file(self) -> str:
+        return self._log_file
+
+    @log_file.setter
+    def log_file(self, value: str) -> None:
+        # Get call stack
+        frames = inspect.stack()
+        # Check if called from __init__
+        called_from_init: bool = any(frame.function == "__init__" for frame in frames[1:])  # Skip current frame
+        if not called_from_init:
+            raise PermissionError("Operation not permitted: log_file setter method execution is only allowed during initialization")
         today = datetime.today()
         formatted_date: str = today.strftime("%Y-%m-%d")
-        log_path: str = f"{working_path}/logs"
+        log_path: str = f"{self.working_path}/logs"
         if not os.path.exists(log_path):
             os.makedirs(log_path)
-        self.log_file = f"{log_path}/setup_environment_{formatted_date}.log"
+        self._log_file = f"{log_path}/{value}_{formatted_date}.log"
 
-    def __post_init__(self):
+    def __init__(self, log_level: str, working_path: str):
+        """
+        Initializes an instance of the AppProperties class
+
+        Args:
+            log_level (str): The log level to use
+            working_path (str): The working path for the application, used mainly for output files
+        """
+
+        self.log_level_from_str(log_level)
+        self.working_path = working_path
+        self.log_file = "setup_environment"
+        self.__post_init__()
+
+    def __post_init__(self) -> None:
         if self.log_level is None:
             raise ValueError("log_level has not been set")
         if self.working_path is None:
             raise ValueError("working_path has not been set")
+        if self.log_file is None:
+            raise ValueError("log_file has not been set")
 
 
 # Single instance of the configuration object
@@ -69,7 +129,7 @@ APP_PROPERTIES: AppProperties
 
 
 # Initialize the configuration object
-def init_app_properties(log_level: str, working_path: str| None) -> None:
+def init_app_properties(log_level: str, working_path: str | None) -> None:
     """
     Setup the application properties and initialize the logger
 
