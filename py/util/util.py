@@ -2,9 +2,11 @@
 This module contains utility functions for common operations.
 """
 
+import re
 import subprocess
 import time
-from py.util.formatting import ws_info, ws_advice, ws_warning, ws_error
+from py.util.formatting import ws_advice, ws_warning, WorkspaceError
+
 
 def run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str]:
     """
@@ -13,12 +15,12 @@ def run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str
     Args:
         cwd: str
         description: str
-    
+
     Returns:
         subprocess.CompletedProcess[str]
     """
     num_retries = 3
-    ws_info(f"Running operation: {description}")
+    ws_advice(f"Running operation: {description}")
     for attempt in range(1, num_retries + 1):
         try:
             ws_advice(f"Running: {cwd}")
@@ -30,16 +32,28 @@ def run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str
             ws_warning(f"{description} failed on attempt {attempt}. Error: {error.stdout}")
             ws_warning(f"Error details: {error.stderr}")
             if attempt == num_retries:
-                ws_error(
-                    f"{description} failed after {num_retries} attempts. Giving up.",
-                    error
-                )
-            else:
-                ws_warning(f'Retrying {description} in 2 seconds...')
-                time.sleep(2)  # Wait 2 seconds before retrying
-        except Exception as e: # pylint: disable=broad-except
-            ws_error(
-                "Error creating diff tree",
-                e
-            )
+                raise WorkspaceError(f"{description} failed after {num_retries} attempts. Giving up.", error) from error
+            ws_warning(f"Retrying {description} in 2 seconds...")
+            time.sleep(2)  # Wait 2 seconds before retrying
+        except Exception as error:
+            raise WorkspaceError("Error creating diff tree", error) from error
     return result
+
+
+def get_main_branch() -> str:
+    """
+    Gets the main branch of the repository.
+
+    Returns:
+        str
+    """
+    result = run_operation("git remote show origin", "Getting main branch").stdout.strip()
+    if not result:
+        e = ValueError("No main branch found in the current repository")
+        raise WorkspaceError("No main branch found", e) from e
+    pattern = r"^(\s*HEAD branch:\s*)(\S+)"
+    match = re.search(pattern, result, re.MULTILINE)
+    if match:
+        return match.group(2)
+    e = ValueError("No main branch found in the current repository")
+    raise WorkspaceError("No main branch found", e) from e

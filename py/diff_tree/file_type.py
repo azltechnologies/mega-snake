@@ -3,7 +3,7 @@
 import dataclasses
 import os
 from enum import Enum
-from py.util.formatting import ws_error
+from py.util.formatting import WorkspaceError
 
 
 @dataclasses.dataclass
@@ -82,8 +82,8 @@ class FileType(Enum):
         for file_type in cls:
             if file_type.id_type == id_type:
                 return file_type
-        ws_error(f"No FileType with symbol '{id_type}' found.", ValueError("No FileType found."))
-        return None
+        e = ValueError("No FileType found.")
+        raise WorkspaceError(f"No FileType with symbol '{id_type}' found.", e) from e
 
     @classmethod
     def get_changes(cls) -> str:

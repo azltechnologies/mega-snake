@@ -3,8 +3,8 @@
 from dataclasses import dataclass, field
 import os
 import logging as log
-from py.util import formatting, logger
 from datetime import datetime
+from py.util import formatting, logger
 
 
 @dataclass
@@ -30,12 +30,12 @@ class AppProperties:
             working_path (str): The working path for the application, used mainly for output files
         """
         try:
-            level: int = log._nameToLevel[log_level]  # pylint: disable=W0212
+            level: int = log._nameToLevel[log_level]
             if level is None:
                 raise ValueError(f"Invalid log level: {log_level}")
             self.log_level = level
         except KeyError as e:
-            raise KeyError(f"Invalid log level: {log_level}, must be one of {log._nameToLevel.keys()}") from e  # pylint: disable=W0212
+            raise KeyError(f"Invalid log level: {log_level}, must be one of {log._nameToLevel.keys()}") from e
 
         # Check if the environment variable WS_TEMP is set
         if not working_path:

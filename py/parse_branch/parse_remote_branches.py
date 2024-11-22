@@ -7,7 +7,7 @@ import subprocess
 import sys
 import time
 from typing import List
-from remote_branch import RemoteBranch
+from py.util.remote_branch import RemoteBranch
 
 
 def define_branches(line: str):

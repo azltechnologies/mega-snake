@@ -1,5 +1,6 @@
 """ This module contains functions for formatting output messages to the console. """
 
+import sys
 from colorama import init, Fore, Style
 from py.util import logger
 from py.util import props as properties
@@ -27,11 +28,10 @@ def ws_warning(message: str) -> None:
 
 
 # specify that this function raises an exception
-def ws_error(message: str, error: Exception) -> ValueError:
+def _ws_error(error: Exception) -> ValueError:
     """Print an error message"""
-    print(Fore.RED + message)
-    logger.log.error(f"{message}; %s: %s\n\n%s", error.__class__, str(error), logger.get_traceback(error),stacklevel=2)
-    raise SystemExit(error) from error
+    print(Fore.RED + str(error))
+    logger.log.error(f"{str(error)}; %s: %s\n\n%s", error.__class__, str(error), logger.get_traceback(error), stacklevel=3)
 
 
 def ws_advice(message: str) -> None:
@@ -53,3 +53,19 @@ def ws_tip(prologue: str, epilogue: str) -> None:
     tip: str = f"{green}Hey! {red}'{prologue}'{green} {yellow}{epilogue}{nc}."
     print(tip)
     logger.log.info(f"{prologue} {epilogue}", stacklevel=2)
+
+
+class WorkspaceError(BaseException):
+    """Custom exception for workspace operations"""
+
+    def __init__(self, message: str, parent_exception: BaseException, error_code: int = 1) -> None:
+        self.message = message
+        self.parent_exception = parent_exception
+        self.error_code = error_code
+        _, _, tb = sys.exc_info()
+        self.__traceback__ = tb
+        super().__init__(self.message)
+        _ws_error(self)
+
+    def __str__(self) -> str:
+        return f"WorkspaceError: {self.message} (code: {self.error_code}) from {self.parent_exception.__class__}: {str(self.parent_exception)}"

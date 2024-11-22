@@ -77,6 +77,9 @@ untrackProperties() {
                 # Update the setting
                 if [[ "$NEW_VALUE" =~ ^([0-9]+(\.[0-9]+)?$|\{|\\[) ]]; then
                     local JSON_OBJ=$(jq --argjson value "$NEW_VALUE" --arg PROP "$PROP" '.settings[$PROP] += $value' "$WORKSPACE")
+                # check if the value is a boolean
+                elif [[ "$NEW_VALUE" =~ ^(true|false)$ ]]; then
+                    local JSON_OBJ=$(jq --argjson value "$NEW_VALUE" --arg PROP "$PROP" '.settings[$PROP]  += $value' "$WORKSPACE")
                 else
                     local JSON_OBJ=$(jq --arg value "$NEW_VALUE" --arg PROP "$PROP" '.settings[$PROP] = $value' "$WORKSPACE")
                 fi
