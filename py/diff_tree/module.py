@@ -2,7 +2,7 @@
 
 import os
 from typing import Optional
-from directory_tree import DisplayTree
+from directory_tree import DisplayTree # type: ignore
 from py.util.formatting import WorkspaceError, ws_info, ws_success
 from py.util.util import run_operation, get_main_branch
 from py.util import props

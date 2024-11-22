@@ -1,10 +1,10 @@
 """Class Module representing a release."""
 
 import dataclasses
-import datetime
+from datetime import datetime
 import subprocess
 from typing import List, Optional
-import release_handler as handler
+import py.create_release.release_handler as handler
 
 @dataclasses.dataclass
 class Release:
@@ -42,12 +42,12 @@ class Release:
             self.release_type = result[1]
             self.tag_name = result[2]
             self.date_str = result[3]
-            self.published_at = datetime.datetime.strptime(self.date_str, "%Y-%m-%dT%H:%M:%SZ")
+            self.published_at = datetime.strptime(self.date_str, "%Y-%m-%dT%H:%M:%SZ")
             if self.release_type != 'Draft':
                 self.commit = handler.get_commit_from_release(self.tag_name)
 
 
-    def get_release_tag(self, suffix: str) -> Optional[str]:
+    def get_release_tag(self, suffix: str) -> str:
         """
         Returns the tag name of the release
 
@@ -62,7 +62,7 @@ class Release:
         if position != -1:
             tag_name = tag_name[:position]
         attemps: int = 20
-        new_tag_name: Optional[str] = None
+        new_tag_name: str
         i: int = 0
         for shot in range(1, attemps + 1):
             try:
@@ -96,7 +96,7 @@ def _create_release_list(list_string: str) -> List[Release]:
         print(f"Releases size: {len(releases)}")
         # sorting the releases
         return sorted(releases, key=lambda r: r.published_at, reverse=True)
-    return None
+    return []
 
 def get_latest_release() -> Release:
     """

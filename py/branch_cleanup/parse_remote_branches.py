@@ -4,12 +4,13 @@
 """
 
 import subprocess
+from typing import Optional
 from py.util.formatting import ws_success
 from py.util.remote_branch import RemoteBranch
 from py.util.util import run_operation, get_main_branch, get_validated_input
 
 
-def define_branches(line: str) -> RemoteBranch | None:
+def define_branches(line: str) -> Optional[RemoteBranch]:
     """
     Converts a string into a remote_branch instance
 
@@ -33,7 +34,7 @@ def parsing_branches(branches:list[RemoteBranch]) -> list[str]:
     Returns:
         list[RemoteBranch]
     """
-    options: set[str] = {"y", "n", "f", "yes", "no", "finalize"}
+    options: list[str] = ["y", "n", "f", "yes", "no", "finalize"]
     main_branch: str = get_main_branch()
     garbage: list[str] = []
     for branch in branches:

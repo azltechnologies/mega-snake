@@ -51,7 +51,7 @@ def get_main_branch() -> str:
     result = run_operation("git remote show origin", "Getting main branch").stdout.strip()
     if not result:
         e = LookupError("No main branch found in the current repository")
-        WorkspaceError.ws_error("No main branch found", e)
+        WorkspaceError.ws_error(e,"No main branch found")
         raise e
     pattern = r"^(\s*HEAD branch:\s*)(\S+)"
     match = re.search(pattern, result, re.MULTILINE)
@@ -62,7 +62,7 @@ def get_main_branch() -> str:
     raise e
 
 
-def get_validated_input(prompt: str, valid_values: set[str]) -> str:
+def get_validated_input(prompt: str, valid_values: list[str]) -> str:
     """
     Get user input and validate against allowed values
 
@@ -74,7 +74,7 @@ def get_validated_input(prompt: str, valid_values: set[str]) -> str:
     while True:
         user_input = input(f"\n{prompt}\n").lower()
         # convert to lowercase all the values in valid_values
-        valid_values = {value.lower() for value in valid_values}
+        valid_values = [value.lower() for value in valid_values]
         if user_input in valid_values:
             return user_input
         print(f"Invalid input. Please enter one of:\n {' | '.join(valid_values)}")

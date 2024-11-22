@@ -3,9 +3,9 @@
     Create a GitHub release for the current project.
 """
 import sys
-import release_handler as handler
-from release import Release
-import release as rel_func
+from typing import Optional
+import py.create_release.release_handler as handler
+from py.create_release.release import Release, get_latest_release
 
 tag_commands: dict = {
     1: "--prerelease",
@@ -46,7 +46,7 @@ if int(RELEASE_TYPE) == 3:
 if int(RELEASE_TYPE) not in tag_commands:
     raise ValueError(f"Invalid release type: {RELEASE_TYPE}. Exiting.")
 # getting the latest release
-latest_release: Release = rel_func.get_latest_release()
+latest_release: Release = get_latest_release()
 
 # getting the new tag
 new_tag: str = latest_release.get_release_tag(RELEASE_TAG_SUFFIX)
@@ -62,7 +62,7 @@ handler.git_fetch()
 
 if int(RELEASE_TYPE) == 2:
     # getting the new latest release
-    new_latest: Release = rel_func.get_latest_release()
+    new_latest: Release = get_latest_release()
 
     # verifying if the new latest release is the same as the previous one
     if new_latest.tag_name == latest_release.tag_name:

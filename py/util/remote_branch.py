@@ -2,6 +2,7 @@
 
 import dataclasses
 import re
+from typing import Optional
 from datetime import datetime, timezone
 from py.util.formatting import WorkspaceError
 from py.util.util import run_operation
@@ -89,7 +90,7 @@ class RemoteBranch:
         raise e
 
     @classmethod
-    def from_branch(cls, branch: str, filter_by: str, main_branch: str) -> "RemoteBranch":
+    def from_branch(cls, branch: str, filter_by: str, main_branch: str) -> Optional["RemoteBranch"]:
         """
         Get the remote branch info from a branch
 
@@ -101,7 +102,12 @@ class RemoteBranch:
             RemoteBranch
         """
         pattern1 = r"(?<=^remotes/origin/)\S+"
-        local_branch: str = re.search(pattern1, branch).group(0)
+        match = re.search(pattern1, branch)
+        if not match:
+            e = LookupError(f"Unable to parse local branch name for remote branch: {branch}")
+            WorkspaceError.ws_error(e, f"Issues with branch name: {branch}")
+            raise e
+        local_branch: str = match.group(0)
         commit: Commit = Commit.from_branch(branch)
         within_branches: str = run_operation(f"git branch -a --contains {commit.commit_hash}", "Getting branches containing commit").stdout.strip()
         if not within_branches:
@@ -121,7 +127,7 @@ class RemoteBranch:
     def __lt__(self: "RemoteBranch", other: "RemoteBranch") -> bool:
         return self.commit.dt < other.commit.dt
 
-    def printing_remote_branches_details(self):
+    def printing_remote_branches_details(self) -> str:
         """
         Print the remote branch details
         """

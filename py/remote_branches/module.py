@@ -2,6 +2,7 @@
 
 import re
 import os
+from typing import Optional
 from py.util.formatting import WorkspaceError, ws_info
 from py.util.remote_branch import RemoteBranch
 from py.util.util import run_operation, get_main_branch
@@ -26,7 +27,7 @@ def main(filter_by: str):
     if os.path.exists(list_output):
         os.remove(list_output)
 
-    remote_branches: list[RemoteBranch] = []
+    opt_remote_branches: list[Optional[RemoteBranch]] = []
     branches: str = run_operation("git branch -a", "Getting remote branches").stdout.strip()
     if not branches:
         e = ValueError("No remote branches found in the current repository")
@@ -40,11 +41,11 @@ def main(filter_by: str):
     for match in matches:
         branch = str(match)
         ws_info(f"Processing branch: {branch}")
-        remote_branches.append(RemoteBranch.from_branch(branch, filter_by, main_branch))
-        remote_branches = [x for x in remote_branches if x is not None]
+        opt_remote_branches.append(RemoteBranch.from_branch(branch, filter_by, main_branch))
         total_branches -= 1
         ws_info(f"Remaining branches to process: {total_branches}")
 
+    remote_branches: list[RemoteBranch] = [x for x in remote_branches if x is not None]
     # sort the remote branches by
     remote_branches = sorted(remote_branches, key=lambda r: r.commit.dt, reverse=True)
     output: str = ""

@@ -29,7 +29,7 @@ def config_log() -> None:
     )
 
 
-def get_traceback(e: Exception) -> str:
+def get_traceback(e: BaseException) -> str:
     """
     Retrieves the traceback from an exception.
 

@@ -29,7 +29,7 @@ def ws_warning(message: str) -> None:
 
 
 # specify that this function raises an exception
-def _ws_error(error: Exception, message: Optional[str] = None) -> None:
+def _ws_error(error: BaseException, message: Optional[str] = None) -> None:
     """Print an error message"""
     if not message:
         message = str(error)
