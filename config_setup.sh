@@ -6,7 +6,7 @@ else
     # Para zsh
     export WS_CONFIG_HOME="$(readlink -f $(dirname "$0"))"
 fi
-source $WS_CONFIG_HOME/src/formatting.sh
+source $WS_CONFIG_HOME/src/formatting.sh #ya
 setup_env() {
     export WS_TEMP="./workspace_temp"
 
@@ -38,11 +38,7 @@ setup_env() {
         fi
 
     fi
-    REMOTE_BRANCHES_OUTPUT="$WS_TEMP/remote_branches.txt"
-    DIFF_TREE_OUTPUT="$WS_TEMP/diff_tree"
-    source $WS_CONFIG_HOME/src/diffTree.sh #ya
-    source $WS_CONFIG_HOME/src/branchDetails.sh #ya
-    source $WS_CONFIG_HOME/src/branchCleanUp.sh
+    source $WS_CONFIG_HOME/src/setEnv.sh #ya
     source $WS_CONFIG_HOME/src/expiredCertsJks.sh
     source $WS_CONFIG_HOME/src/instancesFromDeploymentId.sh
     create_release() {
