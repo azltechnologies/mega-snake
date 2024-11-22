@@ -75,7 +75,7 @@ class RemoteBranch:
             result = input_string.split("|")
             result[6] = "|".join(result[6:])
             result = [value.strip() for value in result]
-            merged_on_main: str = bool(int(result[0]))
+            merged_on_main: bool = bool(int(result[0]))
             commit_hash: str = result[1]
             date: str = result[2]
             mail: str = result[3]

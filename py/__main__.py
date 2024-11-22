@@ -1,6 +1,7 @@
 """ Sets the environment configuration """
 
 import os
+from typing import Optional
 import click
 from .branch_cleanup.module import main as branch_cleanup
 from .util.logger import get_traceback
@@ -17,10 +18,10 @@ from .util.formatting import WorkspaceError, ws_success, ws_tip
 )
 @click.option("--log-level", "-l", type=click.STRING, default="INFO", help="log level")
 @click.pass_context
-def cli(ctx: click.Context = None, log_level: str = None) -> None:
+def cli(ctx: click.Context, log_level: str) -> None: # mypy: ignore-assignement
     """cli entry point"""
     try:
-        working_path: str = os.getenv("WS_TEMP")
+        working_path: Optional[str] = os.getenv("WS_TEMP") # my
         init_app_properties(log_level, working_path)
         if ctx.invoked_subcommand:
             ws_tip("Invoking subcommand:", ctx.invoked_subcommand)

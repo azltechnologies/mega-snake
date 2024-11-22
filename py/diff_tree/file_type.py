@@ -33,7 +33,7 @@ class FileType(Enum):
 
     symbol: str
     id_type: str
-    description: int
+    description: str
     added: int
     files: list[str]
 

@@ -1,6 +1,7 @@
 """Creates a diff tree of the current branch against master"""
 
 import os
+from typing import Optional
 from directory_tree import DisplayTree
 from py.util.formatting import WorkspaceError, ws_info, ws_success
 from py.util.util import run_operation, get_main_branch
@@ -8,7 +9,7 @@ from py.util import props
 from py.diff_tree.file_type import FileType
 
 
-def main(commit_hash: str = None):
+def main(commit_hash: Optional[str] = None):
     """
     Creates a diff tree of the current branch against master
 

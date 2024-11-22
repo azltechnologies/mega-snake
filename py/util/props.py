@@ -1,6 +1,7 @@
 """ Properties for the application """
 
 from dataclasses import dataclass, field
+from typing import Optional
 import os
 import logging as log
 from datetime import datetime
@@ -17,9 +18,9 @@ class AppProperties:
         working_path (str): The working path for the application, used mainly for output files
     """
 
-    log_level: int = field(default=None)
-    working_path: str = field(default=None)
-    log_file: str = field(default=None)
+    log_level: int
+    working_path: str
+    log_file: str
 
     def __init__(self, log_level: str, working_path: str):
         """
@@ -37,9 +38,6 @@ class AppProperties:
         except KeyError as e:
             raise KeyError(f"Invalid log level: {log_level}, must be one of {log._nameToLevel.keys()}") from e
 
-        # Check if the environment variable WS_TEMP is set
-        if not working_path:
-            raise EnvironmentError("Environment variable 'WS_TEMP' is not set")
         # Convert the path to an absolute path
         working_path = os.path.abspath(working_path)
         # Check if the path exists
@@ -71,7 +69,7 @@ APP_PROPERTIES: AppProperties
 
 
 # Initialize the configuration object
-def init_app_properties(log_level: str, working_path: str) -> None:
+def init_app_properties(log_level: str, working_path: str| None) -> None:
     """
     Setup the application properties and initialize the logger
 
@@ -80,6 +78,10 @@ def init_app_properties(log_level: str, working_path: str) -> None:
         working_path (str): The working path for the application, used mainly for output files
     """
     global APP_PROPERTIES  # pylint: disable=W0603
+
+    # Check if the environment variable WS_TEMP is set
+    if not working_path:
+        raise EnvironmentError("Environment variable 'WS_TEMP' is not set")
     APP_PROPERTIES = AppProperties(log_level, working_path)
     logger.config_log()
     formatting.ws_info(f"Set working path: {APP_PROPERTIES.working_path}")

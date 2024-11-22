@@ -72,12 +72,12 @@ def get_validated_input(prompt: str, valid_values: set[str]) -> str:
     """
     tries: int = 0
     while True:
-        user_input = input(prompt).lower()
+        user_input = input(f"\n{prompt}\n").lower()
         # convert to lowercase all the values in valid_values
         valid_values = {value.lower() for value in valid_values}
         if user_input in valid_values:
             return user_input
-        print(f"Invalid input. Please enter one of: {', '.join(valid_values)}")
+        print(f"Invalid input. Please enter one of:\n {' | '.join(valid_values)}")
         tries += 1
         if tries > 3:
             error = KeyError("Too many invalid inputs. Exiting.")

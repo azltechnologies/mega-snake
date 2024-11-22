@@ -3,7 +3,7 @@
 import dataclasses
 import datetime
 import subprocess
-from typing import List
+from typing import List, Optional
 import release_handler as handler
 
 @dataclasses.dataclass
@@ -47,7 +47,7 @@ class Release:
                 self.commit = handler.get_commit_from_release(self.tag_name)
 
 
-    def get_release_tag(self, suffix: str) -> str:
+    def get_release_tag(self, suffix: str) -> Optional[str]:
         """
         Returns the tag name of the release
 
@@ -62,7 +62,7 @@ class Release:
         if position != -1:
             tag_name = tag_name[:position]
         attemps: int = 20
-        new_tag_name: str = None
+        new_tag_name: Optional[str] = None
         i: int = 0
         for shot in range(1, attemps + 1):
             try:

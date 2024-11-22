@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 """ init file for the branch_cleanup module """
 
 from py.util.formatting import ws_success

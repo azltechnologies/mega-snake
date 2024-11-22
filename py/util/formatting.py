@@ -1,6 +1,7 @@
 """ This module contains functions for formatting output messages to the console. """
 
 import sys
+from typing import Optional
 from colorama import init, Fore, Style
 from py.util import logger
 from py.util import props as properties
@@ -28,7 +29,7 @@ def ws_warning(message: str) -> None:
 
 
 # specify that this function raises an exception
-def _ws_error(error: Exception, message: str = None) -> ValueError:
+def _ws_error(error: Exception, message: Optional[str] = None) -> None:
     """Print an error message"""
     if not message:
         message = str(error)
