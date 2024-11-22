@@ -74,6 +74,8 @@ class WorkspaceError(BaseException):
         return f"WorkspaceError: {self.message} (code: {self.error_code}) from {self.parent_exception.__class__}: {str(self.parent_exception)}"
 
     @staticmethod
-    def ws_error(exception: BaseException, message: str) -> None:
+    def ws_error(exception: Optional[BaseException], message: str) -> None:
+        if not exception:
+            exception = BaseException(message)
         """Log and print an exception"""
         _ws_error(exception, message)

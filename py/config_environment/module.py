@@ -1,7 +1,34 @@
 """ Contains multiple functions to configure the environment for development with vscode. """
 
-from typing import Optional
-from py.util.formatting import WorkspaceError
+from typing import Optional, Callable
+from py.util.formatting import WorkspaceError, ws_success, ws_info, ws_warning, ws_advice, ws_tip
+
+def echo(message: str, type: str): # previously echo
+    """
+    Prints a message to the console and logs it into the workspace configuration log file.
+
+    Args:
+        message (str): The message to be printed.
+        type (str): The type of message to be printed.
+
+    Returns:
+        None
+    """
+    fun_dict: dict[str, Callable] = {
+        "S": ws_success,
+        "I": ws_info,
+        "W": ws_warning,
+        "E": WorkspaceError.ws_error,
+        "A": ws_advice,
+        "T": ws_tip,
+    }
+    valid_filters: set[str] = set(fun_dict.keys())
+    if type not in valid_filters:
+        e = ValueError(f"Invalid message type: {type}")
+        WorkspaceError.ws_error(e, f"message type value must be one of:\n {' | '.join(valid_filters)}")
+        raise e
+    fun_dict.keys()
+    fun_dict[type](message)
 
 
 def initial_load():
