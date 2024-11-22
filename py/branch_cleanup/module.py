@@ -17,7 +17,7 @@ def main() -> None:
     if get_validated_input(prompt, yes_no_options) == "y":
         filter_options: list[str] = ["a", "m"]
         prompt = "Filter branches by (a)ll or (m)erged?"
-        user_input: str = get_validated_input(prompt, filter_options)
+        user_input: str = get_validated_input(prompt, filter_options).upper()
         ws_info(f"Filtering branches by: {user_input}")
         remoteBranchesDetails(user_input)
         ws_success(f"Successfully ran `remoteBranchesDetails -f {user_input}` function")

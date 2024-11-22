@@ -21,6 +21,11 @@ def main(filter_by: str):
     Args:
         filter: str
     """
+    valid_filters: set[str] = {"A", "M", "U"}
+    if filter_by not in valid_filters:
+        e = ValueError(f"Invalid filter: {filter_by}")
+        WorkspaceError.ws_error(e, f"filter value must be one of:\n {' | '.join(valid_filters)}")
+        raise e
     main_branch: str = get_main_branch()
     list_output: str = get_output_file()
     # check if list_output directory exists. if so, delete it
@@ -40,12 +45,12 @@ def main(filter_by: str):
     ws_info(f"Main branch: {main_branch}; Found {total_branches} remote branches to process")
     for match in matches:
         branch = str(match)
-        ws_info(f"Processing branch: {branch}")
+        ws_info(f"Processing branch: {branch} filtered by: '{filter_by}'")
         opt_remote_branches.append(RemoteBranch.from_branch(branch, filter_by, main_branch))
         total_branches -= 1
         ws_info(f"Remaining branches to process: {total_branches}")
 
-    remote_branches: list[RemoteBranch] = [x for x in remote_branches if x is not None]
+    remote_branches: list[RemoteBranch] = [x for x in opt_remote_branches if x is not None]
     # sort the remote branches by
     remote_branches = sorted(remote_branches, key=lambda r: r.commit.dt, reverse=True)
     output: str = ""
