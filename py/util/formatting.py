@@ -28,10 +28,12 @@ def ws_warning(message: str) -> None:
 
 
 # specify that this function raises an exception
-def _ws_error(error: Exception) -> ValueError:
+def _ws_error(error: Exception, message: str = None) -> ValueError:
     """Print an error message"""
-    print(Fore.RED + str(error))
-    logger.log.error(f"{str(error)}; %s: %s\n\n%s", error.__class__, str(error), logger.get_traceback(error), stacklevel=3)
+    if not message:
+        message = str(error)
+    print(Fore.RED + message)
+    logger.log.error(f"{message}; %s: %s\n\n%s", error.__class__, str(error), logger.get_traceback(error), stacklevel=3)
 
 
 def ws_advice(message: str) -> None:
@@ -69,3 +71,8 @@ class WorkspaceError(BaseException):
 
     def __str__(self) -> str:
         return f"WorkspaceError: {self.message} (code: {self.error_code}) from {self.parent_exception.__class__}: {str(self.parent_exception)}"
+
+    @staticmethod
+    def ws_error(exception: BaseException, message: str) -> None:
+        """Log and print an exception"""
+        _ws_error(exception, message)

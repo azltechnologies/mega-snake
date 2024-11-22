@@ -40,8 +40,8 @@ setup_env() {
     fi
     REMOTE_BRANCHES_OUTPUT="$WS_TEMP/remote_branches.txt"
     DIFF_TREE_OUTPUT="$WS_TEMP/diff_tree"
-    source $WS_CONFIG_HOME/src/diffTree.sh
-    source $WS_CONFIG_HOME/src/branchDetails.sh
+    source $WS_CONFIG_HOME/src/diffTree.sh #ya
+    source $WS_CONFIG_HOME/src/branchDetails.sh #ya
     source $WS_CONFIG_HOME/src/branchCleanUp.sh
     source $WS_CONFIG_HOME/src/expiredCertsJks.sh
     source $WS_CONFIG_HOME/src/instancesFromDeploymentId.sh

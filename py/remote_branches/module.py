@@ -8,6 +8,11 @@ from py.util.util import run_operation, get_main_branch
 from py.util import props
 
 
+def get_output_file():
+    """Returns the path to the output file"""
+    return f"{props.APP_PROPERTIES.working_path}/remote_branches.txt"
+
+
 def main(filter_by: str):
     """
     Creates a detailed list of remote branches filtered by type
@@ -16,7 +21,7 @@ def main(filter_by: str):
         filter: str
     """
     main_branch: str = get_main_branch()
-    list_output: str = f"{props.APP_PROPERTIES.working_path}/remote_branches.txt"
+    list_output: str = get_output_file()
     # check if list_output directory exists. if so, delete it
     if os.path.exists(list_output):
         os.remove(list_output)
@@ -25,10 +30,11 @@ def main(filter_by: str):
     branches: str = run_operation("git branch -a", "Getting remote branches").stdout.strip()
     if not branches:
         e = ValueError("No remote branches found in the current repository")
-        raise WorkspaceError("No remote branches found", e) from e
+        WorkspaceError.ws_error(e, "No remote branches found")
+        raise e
     branches = f"{branches}\n remotes/origin/HEAD master"
     pattern = r"^\s*(remotes/(?!origin/HEAD).+)$"
-    matches = re.findall(pattern,branches,re.MULTILINE)
+    matches = re.findall(pattern, branches, re.MULTILINE)
     total_branches = len(matches)
     ws_info(f"Main branch: {main_branch}; Found {total_branches} remote branches to process")
     for match in matches:
@@ -39,9 +45,9 @@ def main(filter_by: str):
         total_branches -= 1
         ws_info(f"Remaining branches to process: {total_branches}")
 
-    # sort the remote branches by 
+    # sort the remote branches by
     remote_branches = sorted(remote_branches, key=lambda r: r.commit.dt, reverse=True)
-    output:str = ""
+    output: str = ""
     for remote_branch in remote_branches:
         output += remote_branch.printing_remote_branches_details()
     with open(list_output, "a", encoding="utf-8") as file:

@@ -83,7 +83,8 @@ class FileType(Enum):
             if file_type.id_type == id_type:
                 return file_type
         e = ValueError("No FileType found.")
-        raise WorkspaceError(f"No FileType with symbol '{id_type}' found.", e) from e
+        WorkspaceError.ws_error(e, f"No FileType with symbol '{id_type}' found.")
+        raise e
 
     @classmethod
     def get_changes(cls) -> str:

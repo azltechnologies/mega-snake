@@ -84,12 +84,12 @@ class RemoteBranch:
             message: str = result[6]
             commit: Commit = Commit.from_strings(commit_hash, date, message)
             return cls(branch, merged_on_main, commit, mail, main_common_ancestor)
-        # COpilot, what is the most convenient exception to raise here where the input_string is None or empty?
         e = ValueError("Invalid input string")
-        raise WorkspaceError("Invalid input string", e) from e
+        WorkspaceError.ws_error(e, "String is empty or None")
+        raise e
 
     @classmethod
-    def from_branch(cls, branch: str, filter_by: str,main_branch: str) -> "RemoteBranch":
+    def from_branch(cls, branch: str, filter_by: str, main_branch: str) -> "RemoteBranch":
         """
         Get the remote branch info from a branch
 
@@ -105,8 +105,9 @@ class RemoteBranch:
         commit: Commit = Commit.from_branch(branch)
         within_branches: str = run_operation(f"git branch -a --contains {commit.commit_hash}", "Getting branches containing commit").stdout.strip()
         if not within_branches:
-            e = ValueError(f"Commit {commit.commit_hash} not found in any branch")
-            raise WorkspaceError(f"Commit {commit.commit_hash} not found in any branch", e) from e
+            e = LookupError(f"Commit {commit.commit_hash} not found in any branch")
+            WorkspaceError.ws_error(e, f"Commit {commit.commit_hash} not found in any branch")
+            raise e
         pattern: str = rf"\s*remotes/origin/{main_branch}\s*$"
         merged_on_main: bool = bool(re.search(pattern, within_branches, re.MULTILINE))
         if filter_by == "M" and not merged_on_main:

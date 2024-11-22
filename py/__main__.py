@@ -2,6 +2,7 @@
 
 import os
 import click
+from .branch_cleanup.module import main as branch_cleanup
 from .util.logger import get_traceback
 from .util.props import init_app_properties
 from .diff_tree.module import main as diff_tree
@@ -78,6 +79,19 @@ def remote_branches_details(filter_by: str) -> None:
         filter_by: str | "A"
     """
     remote_branches(filter_by)
+
+
+@cli.command(
+    name="remoteBranchesCleanUp",
+    short_help="Helper function for deleting branches merged branches from the remote repository.",
+    help="Iterates over the remote branches asking the user which merged branches to delete",
+    epilog="Requires user input to delete branches",
+)
+def remote_branches_clean_up() -> None:
+    """
+    calls the branch_cleanup module
+    """
+    branch_cleanup()
 
 
 if __name__ == "__main__":

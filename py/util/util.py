@@ -32,7 +32,8 @@ def run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str
             ws_warning(f"{description} failed on attempt {attempt}. Error: {error.stdout}")
             ws_warning(f"Error details: {error.stderr}")
             if attempt == num_retries:
-                raise WorkspaceError(f"{description} failed after {num_retries} attempts. Giving up.", error) from error
+                WorkspaceError.ws_error(error, f"{description} failed after {num_retries} attempts. Giving up.")
+                raise error
             ws_warning(f"Retrying {description} in 2 seconds...")
             time.sleep(2)  # Wait 2 seconds before retrying
         except Exception as error:
@@ -49,11 +50,36 @@ def get_main_branch() -> str:
     """
     result = run_operation("git remote show origin", "Getting main branch").stdout.strip()
     if not result:
-        e = ValueError("No main branch found in the current repository")
-        raise WorkspaceError("No main branch found", e) from e
+        e = LookupError("No main branch found in the current repository")
+        WorkspaceError.ws_error("No main branch found", e)
+        raise e
     pattern = r"^(\s*HEAD branch:\s*)(\S+)"
     match = re.search(pattern, result, re.MULTILINE)
     if match:
         return match.group(2)
-    e = ValueError("No main branch found in the current repository")
-    raise WorkspaceError("No main branch found", e) from e
+    e = LookupError("No main branch found in the current repository")
+    WorkspaceError.ws_error(e, "No main branch found")
+    raise e
+
+
+def get_validated_input(prompt: str, valid_values: set[str]) -> str:
+    """
+    Get user input and validate against allowed values
+
+    Args:
+        prompt: str
+        valid_values: set[str]
+    """
+    tries: int = 0
+    while True:
+        user_input = input(prompt).lower()
+        # convert to lowercase all the values in valid_values
+        valid_values = {value.lower() for value in valid_values}
+        if user_input in valid_values:
+            return user_input
+        print(f"Invalid input. Please enter one of: {', '.join(valid_values)}")
+        tries += 1
+        if tries > 3:
+            error = KeyError("Too many invalid inputs. Exiting.")
+            WorkspaceError.ws_error(error,f"Too many invalid inputs for '{prompt}'. Exiting.")
+            raise error

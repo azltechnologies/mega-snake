@@ -32,20 +32,22 @@ def main(commit_hash: str = None):
         main_branch = get_main_branch()
         ws_info(f"Main branch: {main_branch}")
     else:
-        commit_validation: str = run_operation(f"git cat-file -t {commit_hash} 2>/dev/null", f"Checking if commit hash '{commit_hash}' is valid").stdout.strip()
+        commit_validation: str = run_operation(
+            f"git cat-file -t {commit_hash} 2>/dev/null", f"Checking if commit hash '{commit_hash}' is valid"
+        ).stdout.strip()
         if commit_validation != "commit":
             e = ValueError(f"Invalid commit hash: {commit_hash}")
-            raise WorkspaceError(f"Invalid commit hash: {commit_hash}", e) from e
+            WorkspaceError.ws_error(e, f"Invalid commit hash: {commit_hash}")
+            raise e
         main_branch = commit_hash
-    diff_str: str = run_operation(f"git diff-tree -r {main_branch} {current_branch}", f"getting differences between '{main_branch}' and '{current_branch}' branches").stdout.strip()
+    diff_str: str = run_operation(
+        f"git diff-tree -r {main_branch} {current_branch}", f"getting differences between '{main_branch}' and '{current_branch}' branches"
+    ).stdout.strip()
     # check if there are no differences
     if not diff_str:
         ws_success("No differences found between the current branch and the main branch")
         return
-    differences: list[str] = (
-        diff_str.split("\n")
-    )
-
+    differences: list[str] = diff_str.split("\n")
 
     # iterate over the differences and write them to the output file
     for diff in differences:
@@ -56,10 +58,13 @@ def main(commit_hash: str = None):
     create_files(diff_tree_dummy_repo)
     display_inner_tree(diff_tree_dummy_repo, diff_tree_file)
     # write the commit list to the file
-    commits:str = run_operation(f" git log --pretty=format:'%ad %H%n%B' --date=short {current_branch}...{main_branch}", "Writing commit list to file").stdout.strip()
+    commits: str = run_operation(
+        f" git log --pretty=format:'%ad %H%n%B' --date=short {current_branch}...{main_branch}", "Writing commit list to file"
+    ).stdout.strip()
     with open(diff_commit_file, "w", encoding="utf-8") as diff_commit:
         diff_commit.write(commits)
     run_operation(f"code {diff_commit_file}", "opening diff commit file")
+
 
 def create_files(location: str) -> None:
     """
@@ -70,6 +75,7 @@ def create_files(location: str) -> None:
     """
     for file_type in FileType:
         file_type.create_new_file(location)
+
 
 def display_inner_tree(root_dir: str, output_file: str) -> None:
     """
@@ -84,7 +90,7 @@ def display_inner_tree(root_dir: str, output_file: str) -> None:
     """
     tree: str = DisplayTree(f"{root_dir}", stringRep=True, header=False)
     tree = f"{tree}\n{FileType.get_changes()}"
-    lines:list[str] = tree.splitlines()
+    lines: list[str] = tree.splitlines()
     lines[0] = "."
     tree = "\n".join(lines)
     with open(output_file, "w", encoding="utf-8") as diff_tree:
