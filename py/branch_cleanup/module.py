@@ -25,7 +25,7 @@ def main() -> None:
     # check if input_file exists
     if not os.path.exists(input_file):
         e = FileNotFoundError(f"No file found at {input_file}")
-        WorkspaceError.ws_error(e, "File listing the remote branches not found")
+        WorkspaceError.ws_error("File listing the remote branches not found", e)
         raise e
     # read the file
     with open(input_file, "r", encoding="utf-8") as file:
@@ -33,8 +33,8 @@ def main() -> None:
     # check if branches is empty
     if not branches:
         exc = IOError(f"No branches found in the file {input_file}")
-        WorkspaceError.ws_error(exc, f"No records in {input_file}, verify that the file is being written correctly")
-        raise e
+        WorkspaceError.ws_error(f"No records in {input_file}, verify that the file is being written correctly", exc)
+        raise exc
     lines: list[str] = branches.split("\n")
     # creating branches list
     opt_branches_list: list[Optional[RemoteBranch]] = list(map(define_branches, lines))

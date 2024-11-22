@@ -25,7 +25,7 @@ def echo(message: str, type: str): # previously echo
     valid_filters: set[str] = set(fun_dict.keys())
     if type not in valid_filters:
         e = ValueError(f"Invalid message type: {type}")
-        WorkspaceError.ws_error(e, f"message type value must be one of:\n {' | '.join(valid_filters)}")
+        WorkspaceError.ws_error(f"message type value must be one of:\n {' | '.join(valid_filters)}",e)
         raise e
     fun_dict.keys()
     fun_dict[type](message)
@@ -78,7 +78,7 @@ def gcloud_login(type: str): # previously gcloudSet
     valid_filters: set[str] = {"B", "U", "A"}
     if type not in valid_filters:
         e = ValueError(f"Invalid loggin type: {type}")
-        WorkspaceError.ws_error(e, f"logging type value must be one of:\n {' | '.join(valid_filters)}")
+        WorkspaceError.ws_error(f"logging type value must be one of:\n {' | '.join(valid_filters)}",e)
         raise e
     pass
 

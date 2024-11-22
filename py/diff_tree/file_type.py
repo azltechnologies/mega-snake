@@ -83,7 +83,7 @@ class FileType(Enum):
             if file_type.id_type == id_type:
                 return file_type
         e = ValueError("No FileType found.")
-        WorkspaceError.ws_error(e, f"No FileType with symbol '{id_type}' found.")
+        WorkspaceError.ws_error(f"No FileType with symbol '{id_type}' found.",e)
         raise e
 
     @classmethod

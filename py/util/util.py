@@ -32,7 +32,7 @@ def run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str
             ws_warning(f"{description} failed on attempt {attempt}. Error: {error.stdout}")
             ws_warning(f"Error details: {error.stderr}")
             if attempt == num_retries:
-                WorkspaceError.ws_error(error, f"{description} failed after {num_retries} attempts. Giving up.")
+                WorkspaceError.ws_error(f"{description} failed after {num_retries} attempts. Giving up.", error)
                 raise error
             ws_warning(f"Retrying {description} in 2 seconds...")
             time.sleep(2)  # Wait 2 seconds before retrying
@@ -51,15 +51,15 @@ def get_main_branch() -> str:
     result = run_operation("git remote show origin", "Getting main branch").stdout.strip()
     if not result:
         e = LookupError("No main branch found in the current repository")
-        WorkspaceError.ws_error(e,"No main branch found")
+        WorkspaceError.ws_error("No main branch found",e)
         raise e
     pattern = r"^(\s*HEAD branch:\s*)(\S+)"
     match = re.search(pattern, result, re.MULTILINE)
     if match:
         return match.group(2)
-    e = LookupError("No main branch found in the current repository")
-    WorkspaceError.ws_error(e, "No main branch found")
-    raise e
+    exc = LookupError("No main branch found in the current repository")
+    WorkspaceError.ws_error("No main branch found",exc)
+    raise exc
 
 
 def get_validated_input(prompt: str, valid_values: list[str]) -> str:
@@ -81,5 +81,5 @@ def get_validated_input(prompt: str, valid_values: list[str]) -> str:
         tries += 1
         if tries > 3:
             error = KeyError("Too many invalid inputs. Exiting.")
-            WorkspaceError.ws_error(error,f"Too many invalid inputs for '{prompt}'. Exiting.")
+            WorkspaceError.ws_error(f"Too many invalid inputs for '{prompt}'. Exiting.",error)
             raise error

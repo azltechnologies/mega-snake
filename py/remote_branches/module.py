@@ -24,7 +24,7 @@ def main(filter_by: str):
     valid_filters: set[str] = {"A", "M", "U"}
     if filter_by not in valid_filters:
         e = ValueError(f"Invalid filter: {filter_by}")
-        WorkspaceError.ws_error(e, f"filter value must be one of:\n {' | '.join(valid_filters)}")
+        WorkspaceError.ws_error( f"filter value must be one of:\n {' | '.join(valid_filters)}",e)
         raise e
     main_branch: str = get_main_branch()
     list_output: str = get_output_file()
@@ -35,9 +35,9 @@ def main(filter_by: str):
     opt_remote_branches: list[Optional[RemoteBranch]] = []
     branches: str = run_operation("git branch -a", "Getting remote branches").stdout.strip()
     if not branches:
-        e = ValueError("No remote branches found in the current repository")
-        WorkspaceError.ws_error(e, "No remote branches found")
-        raise e
+        exc = ValueError("No remote branches found in the current repository")
+        WorkspaceError.ws_error("No remote branches found",exc)
+        raise exc
     branches = f"{branches}\n remotes/origin/HEAD master"
     pattern = r"^\s*(remotes/(?!origin/HEAD).+)$"
     matches = re.findall(pattern, branches, re.MULTILINE)

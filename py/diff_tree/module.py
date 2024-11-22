@@ -38,7 +38,7 @@ def main(commit_hash: Optional[str] = None):
         ).stdout.strip()
         if commit_validation != "commit":
             e = ValueError(f"Invalid commit hash: {commit_hash}")
-            WorkspaceError.ws_error(e, f"Invalid commit hash: {commit_hash}")
+            WorkspaceError.ws_error(f"Invalid commit hash: {commit_hash}",e)
             raise e
         main_branch = commit_hash
     diff_str: str = run_operation(
