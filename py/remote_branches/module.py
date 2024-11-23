@@ -21,7 +21,7 @@ def main(filter_by: str):
     Args:
         filter: str
     """
-    valid_filters: set[str] = {"A", "M", "U"}
+    valid_filters: list[str] = props.REMOTE_BRANCHES_OPT
     if filter_by not in valid_filters:
         e = ValueError(f"Invalid filter: {filter_by}")
         WorkspaceError.ws_error( f"filter value must be one of:\n {' | '.join(valid_filters)}",e)

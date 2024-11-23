@@ -5,7 +5,19 @@ This module contains utility functions for common operations.
 import re
 import subprocess
 import time
+import py.util.formatting as formatting
+from typing import Callable
 from py.util.formatting import ws_advice, ws_warning, WorkspaceError
+
+# global constants
+MSG_OPT: dict[str, Callable] = {
+    "S": formatting.ws_success,
+    "I": formatting.ws_info,
+    "W": formatting.ws_warning,
+    "E": formatting.WorkspaceError.ws_error,
+    "A": formatting.ws_advice,
+    "T": formatting.ws_tip,
+}
 
 
 def run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str]:

@@ -5,8 +5,9 @@ from typing import Optional
 import click
 from .branch_cleanup.module import main as branch_cleanup
 from .config_environment.module import echo as msg
+from .util.util import MSG_OPT
 from .util.logger import get_traceback
-from .util.props import init_app_properties
+from .util.props import init_app_properties, REMOTE_BRANCHES_OPT, LOGGING_OPT, SHELL_OPT
 from .diff_tree.module import main as diff_tree
 from .remote_branches.module import main as remote_branches
 from .util.formatting import WorkspaceError, ws_advice
@@ -17,13 +18,14 @@ from .util.formatting import WorkspaceError, ws_advice
     epilog="requires ...",
     context_settings={"help_option_names": ["-h", "--help"]},
 )
-@click.option("--log-level", "-l", type=click.STRING, default="INFO", help="log level")
+@click.option("--log-level", "-l", type=click.Choice(list(LOGGING_OPT), False), default="INFO", help="log level")
+@click.option("--working-path", type=click.STRING, required=True, hidden=True)
+@click.option("--shell", type=click.Choice(SHELL_OPT, False), required=True, hidden=True)
 @click.pass_context
-def cli(ctx: click.Context, log_level: str) -> None:  # mypy: ignore-assignement
+def cli(ctx: click.Context, log_level: str, working_path: str, shell: str) -> None:  # mypy: ignore-assignement
     """cli entry point"""
     try:
-        working_path: Optional[str] = os.getenv("WS_TEMP")  # my
-        init_app_properties(log_level, working_path)
+        init_app_properties(log_level, working_path, shell)
         if ctx.invoked_subcommand:
             ws_advice(f"Invoking subcommand: {ctx.invoked_subcommand}")
     except Exception as e:
@@ -66,7 +68,7 @@ def create_diff_tree(commit_hash: str) -> None:
 @click.option(
     "--filter_by",
     "-f",
-    type=click.Choice(["M", "U", "A"], False),
+    type=click.Choice(REMOTE_BRANCHES_OPT, False),
     help="""filter branches by merge status against main branch:\n
     'M' - merged branches\n
     'U' - unmerged branches\n
@@ -121,7 +123,7 @@ def remote_branches_clean_up() -> None:
 @click.option(
     "--type",
     "-t",
-    type=click.Choice(["S", "I", "W", "E", "A", "T"], False),
+    type=click.Choice(list(MSG_OPT.keys()), False),
     help="""The type of message to be printed:\n
         'S' - Success\n
         'I' - Information -- default\n

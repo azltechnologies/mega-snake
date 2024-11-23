@@ -2,11 +2,27 @@
 if [ -n "$BASH_SOURCE" ]; then
     # Para bash
     export WS_CONFIG_HOME="$(readlink -f $(dirname "${BASH_SOURCE[0]}"))"
+    export WS_SHELL="bash"
 else
     # Para zsh
     export WS_CONFIG_HOME="$(readlink -f $(dirname "$0"))"
+    export WS_SHELL="zsh"
 fi
 source $WS_CONFIG_HOME/src/formatting.sh #ya
+set_env() {
+    PROP_FILE="$WS_CONFIG_HOME/config.properties"
+
+    WS_TEMP=$(grep "working_path" "$PROP_FILE" | sed 's/working_path=//')
+    RE_PY_ENV=$(grep "python_virtual_bash" "$PROP_FILE" | sed 's/python_virtual_bash=//')
+    PY_MODULE=$(grep "python_module" "$PROP_FILE" | sed 's/python_module=//')
+    PYTHON_ENV="$WS_CONFIG_HOME/$RE_PY_ENV"
+    source "$PYTHON_ENV"
+    export PYTHONPATH="$WS_CONFIG_HOME"
+    echo "WS_SHELL=$WS_SHELL"
+    python3 -m $PY_MODULE --shell "$WS_SHELL" --working-path "$WS_TEMP" "$@"
+    deactivate
+}
+ws_tip "set_env" "use python version"
 setup_env() {
     export WS_TEMP="./workspace_temp"
 
@@ -38,7 +54,6 @@ setup_env() {
         fi
 
     fi
-    source $WS_CONFIG_HOME/src/setEnv.sh #ya
     source $WS_CONFIG_HOME/src/expiredCertsJks.sh
     source $WS_CONFIG_HOME/src/instancesFromDeploymentId.sh
     create_release() {

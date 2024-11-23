@@ -1,13 +1,30 @@
 """ Properties for the application """
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Callable
 import inspect
 import os
 import logging as log
 from datetime import datetime
 from py.util import formatting, logger
 
+
+REMOTE_BRANCHES_OPT: list[str] = ["M", "U", "A"]
+LOGGING_OPT: list[str] = list(log._nameToLevel.keys())
+SHELL_OPT: list[str] = ["bash", "zsh", "powershell"]
+
+
+def _check_forbidden_execution(method: str, message:str, reload: bool = False) -> None:
+    # Get call stack
+    frames = inspect.stack()
+    # Check if called from __init__
+    called_from_init: bool = any(frame.function == method for frame in frames[2:])  # Skip current frame
+    if not called_from_init:
+        if not reload:
+            raise PermissionError(f"Operation not permitted: {message} is only allowed during initialization")
+        else:
+            logger.config_log()
+            formatting.ws_advice(f"Properties reloaded by: {message}")
 
 @dataclass(init=False)
 class AppProperties:
@@ -24,14 +41,9 @@ class AppProperties:
     )
     _working_path: str = field(init=False)
     _log_file: str = field(init=True)
-
-    def __new__(cls, log_level: str, working_path: str) -> "AppProperties":
-        # Get call stack
-        frames = inspect.stack()
-        # Check if called from __init__
-        called_from_init: bool = any(frame.function == "init_app_properties" for frame in frames[1:])  # Skip current frame
-        if not called_from_init:
-            raise PermissionError("Operation not permitted: AppProperties class instantiation is only allowed during initialization")
+    _shell: str = field(init=True)
+    def __new__(cls, log_level: str, working_path: str, shell: str) -> "AppProperties":
+        _check_forbidden_execution("init_app_properties","AppProperties class instantiation ")
         return super().__new__(cls)
 
     @property
@@ -47,12 +59,8 @@ class AppProperties:
             self._log_level = value
         except KeyError as e:
             raise KeyError(f"Invalid log level: {value}, must be one of {log._levelToName.keys()}") from e
-        # Get call stack
-        frames = inspect.stack()
-        # Check if called from __init__
-        called_from_init: bool = any(frame.function == "__init__" for frame in frames[1:])  # Skip current frame
-        if not called_from_init:
-            logger.config_log()
+        _check_forbidden_execution("__init__", "log_level setter method execution", True)
+            
 
     def log_level_from_str(self, value: str):
         try:
@@ -88,12 +96,7 @@ class AppProperties:
 
     @log_file.setter
     def log_file(self, value: str) -> None:
-        # Get call stack
-        frames = inspect.stack()
-        # Check if called from __init__
-        called_from_init: bool = any(frame.function == "__init__" for frame in frames[1:])  # Skip current frame
-        if not called_from_init:
-            raise PermissionError("Operation not permitted: log_file setter method execution is only allowed during initialization")
+        _check_forbidden_execution("__init__", "log_file setter method execution")
         today = datetime.today()
         formatted_date: str = today.strftime("%Y-%m-%d")
         log_path: str = f"{self.working_path}/logs"
@@ -101,7 +104,18 @@ class AppProperties:
             os.makedirs(log_path)
         self._log_file = f"{log_path}/{value}_{formatted_date}.log"
 
-    def __init__(self, log_level: str, working_path: str):
+    @property
+    def shell(self) -> str:
+        return self._shell
+    
+    @shell.setter
+    def shell(self, value: str) -> None:
+        _check_forbidden_execution("__init__", "shell setter method execution")
+        if value not in SHELL_OPT:
+            raise ValueError(f"Invalid shell: {value}, must be one of {SHELL_OPT}")
+        self._shell = value
+
+    def __init__(self, log_level: str, working_path: str, shell: str) -> None:
         """
         Initializes an instance of the AppProperties class
 
@@ -113,15 +127,13 @@ class AppProperties:
         self.log_level_from_str(log_level)
         self.working_path = working_path
         self.log_file = "setup_environment"
+        self.shell = shell
         self.__post_init__()
 
     def __post_init__(self) -> None:
-        if self.log_level is None:
-            raise ValueError("log_level has not been set")
-        if self.working_path is None:
-            raise ValueError("working_path has not been set")
-        if self.log_file is None:
-            raise ValueError("log_file has not been set")
+        for attr_name, attr_value in vars(self).items():
+            if attr_value is None:
+                raise ValueError(f"{attr_name} has not been set")
 
 
 # Single instance of the configuration object
@@ -129,7 +141,7 @@ APP_PROPERTIES: AppProperties
 
 
 # Initialize the configuration object
-def init_app_properties(log_level: str, working_path: str | None) -> None:
+def init_app_properties(log_level: str, working_path: Optional[str], shell: Optional[str]) -> None:
     """
     Setup the application properties and initialize the logger
 
@@ -142,8 +154,11 @@ def init_app_properties(log_level: str, working_path: str | None) -> None:
     # Check if the environment variable WS_TEMP is set
     if not working_path:
         raise EnvironmentError("Environment variable 'WS_TEMP' is not set")
-    APP_PROPERTIES = AppProperties(log_level, working_path)
+    if not shell:
+        raise EnvironmentError("Environment variable 'WS_SHELL' is not set")
+    APP_PROPERTIES = AppProperties(log_level, working_path, shell)
     logger.config_log()
     formatting.ws_advice(f"Set working path: {APP_PROPERTIES.working_path}")
     formatting.ws_advice(f"set log level: {APP_PROPERTIES.log_level}")
     formatting.ws_advice(f"Set log file: {APP_PROPERTIES.log_file}")
+    formatting.ws_advice(f"Set shell: {APP_PROPERTIES.shell}")
