@@ -118,7 +118,7 @@ class RemoteBranch:
         merged_on_main: bool = bool(re.search(pattern, within_branches, re.MULTILINE))
         if filter_by == "M" and not merged_on_main:
             return None
-        elif filter_by == "U" and merged_on_main and local_branch != main_branch:
+        if filter_by == "U" and merged_on_main and local_branch != main_branch:
             return None
         mail: str = run_operation(f"git log -1 --pretty='format:%ae'  {branch}", "Getting commit author").stdout.strip()
         main_common_ancestor: str = run_operation(f"git merge-base {branch} {main_branch}", "Getting main common ancestor").stdout.strip()

@@ -3,7 +3,6 @@
 import dataclasses
 from datetime import datetime
 import subprocess
-from typing import List, Optional
 import py.create_release.release_handler as handler
 
 @dataclasses.dataclass
@@ -78,7 +77,7 @@ class Release:
         # if no tag was found, throw error
         raise ValueError(f"Could not find a non-existing tag after {attemps} attempts. Exiting.")
 
-def _create_release_list(list_string: str) -> List[Release]:
+def _create_release_list(list_string: str) -> list[Release]:
     """
     Converts a string into a list of Release instances
 
@@ -90,7 +89,7 @@ def _create_release_list(list_string: str) -> List[Release]:
     """
     if list_string is not None and bool(list_string):
         array_of_strings = list_string.split("\n")
-        releases: List[Release] = [Release(f"{string}") for string in array_of_strings]
+        releases: list[Release] = [Release(f"{string}") for string in array_of_strings]
         releases = [x for x in releases if x is not None]
         # printing the releases size
         print(f"Releases size: {len(releases)}")
@@ -107,6 +106,6 @@ def get_latest_release() -> Release:
     """
     result: subprocess.CompletedProcess[str] = handler.get_release_list()
 
-    release_list: List[Release] = _create_release_list(f"{result.stdout}")
+    release_list: list[Release] = _create_release_list(f"{result.stdout}")
     lastest_release: Release = [x for x in release_list if x.release_type == "Latest"][0]
     return lastest_release

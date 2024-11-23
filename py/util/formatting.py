@@ -3,9 +3,9 @@
 import sys
 import traceback
 import re
+from logging import info, warning, debug, error as log_error, DEBUG, root
 from typing import Optional
 from colorama import init, Fore, Style
-from logging import info, warning, debug, error as log_error, DEBUG, root
 
 # Initialize colopiprama
 init(autoreset=True)
@@ -96,7 +96,7 @@ class WorkspaceError(BaseException):
 
     @staticmethod
     def ws_error(message: str,exception: Optional[BaseException] = None) -> None:
+        """Log and print an exception"""
         if not exception:
             exception = BaseException(message)
-        """Log and print an exception"""
         _ws_error(exception, message)

@@ -1,6 +1,5 @@
 """ Sets the environment configuration """
 
-import os
 from typing import Optional
 import click
 from .branch_cleanup.module import main as branch_cleanup
@@ -19,13 +18,12 @@ from .util.formatting import WorkspaceError, ws_advice
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 @click.option("--log-level", "-l", type=click.Choice(list(LOGGING_OPT), False), default="INFO", help="log level")
-@click.option("--working-path", type=click.STRING, required=True, hidden=True)
 @click.option("--shell", type=click.Choice(SHELL_OPT, False), required=True, hidden=True)
 @click.pass_context
-def cli(ctx: click.Context, log_level: str, working_path: str, shell: str) -> None:  # mypy: ignore-assignement
+def cli(ctx: click.Context, log_level: str, shell: str) -> None:  # mypy: ignore-assignement
     """cli entry point"""
     try:
-        init_app_properties(log_level, working_path, shell)
+        init_app_properties(log_level, shell)
         if ctx.invoked_subcommand:
             ws_advice(f"Invoking subcommand: {ctx.invoked_subcommand}")
     except Exception as e:
@@ -66,7 +64,7 @@ def create_diff_tree(commit_hash: str) -> None:
     epilog="the branch details are created within $WS_TEMP path.",
 )
 @click.option(
-    "--filter_by",
+    "--filter-by",
     "-f",
     type=click.Choice(REMOTE_BRANCHES_OPT, False),
     help="""filter branches by merge status against main branch:\n
@@ -121,7 +119,7 @@ def remote_branches_clean_up() -> None:
 @click.argument("message", type=click.STRING)
 @click.argument("epilog", type=click.STRING, required=False, default=None)
 @click.option(
-    "--type",
+    "--type-msg",
     "-t",
     type=click.Choice(list(MSG_OPT.keys()), False),
     help="""The type of message to be printed:\n
@@ -134,20 +132,21 @@ def remote_branches_clean_up() -> None:
      """,
     default="I",
 )
-def echo(message: str, epilog: Optional[str], type: str) -> None:
+def echo(message: str, epilog: Optional[str], type_msg: str) -> None:
     """
     Calls the echo function from the config_environment module
 
     Args:
         message: str
         epilog: str
-        type: str
+        type_msg: str
     """
-    msg(message, epilog, type)
+    msg(message, epilog, type_msg)
 
 
 if __name__ == "__main__":
     try:
-        cli(prog_name="set_env")
+        cli(prog_name="set_env") # pylint: disable=E1120
+
     except Exception as e:
         raise WorkspaceError("Error during initialization", e) from e

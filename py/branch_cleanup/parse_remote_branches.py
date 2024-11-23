@@ -24,7 +24,8 @@ def define_branches(line: str) -> Optional[RemoteBranch]:
         return RemoteBranch.from_string(line)
     return None
 
-def parsing_branches(branches:list[RemoteBranch]) -> list[str]:
+
+def parsing_branches(branches: list[RemoteBranch]) -> list[str]:
     """
     Parses the branches and returns the branches that require deletion
 
@@ -49,9 +50,9 @@ def parsing_branches(branches:list[RemoteBranch]) -> list[str]:
                 f"(y)es | (n)o | (f)inalize\n"
             )
             user_input = get_validated_input(prompt, options)
-            if user_input == "y" or user_input == "yes":
+            if user_input in {"y", "yes"}:
                 garbage.append(branch.branch)
-            elif user_input == "f" or user_input == "finalize":
+            elif user_input in {"f", "finalize"}:
                 break
     return garbage
 
@@ -67,6 +68,6 @@ def delete_branches(garbage: list[str]) -> None:
         try:
             result = run_operation(f'git push -d origin "{branch}" 2>&1', f"Deleting branch {branch}")
             ws_success(result.stdout.strip())
-            continue # Continue to the next branch
+            continue  # Continue to the next branch
         except subprocess.CalledProcessError:
             continue

@@ -22,10 +22,9 @@ def main(filter_by: str):
     Args:
         filter: str
     """
-    valid_filters: list[str] = REMOTE_BRANCHES_OPT
-    if filter_by not in valid_filters:
+    if filter_by not in REMOTE_BRANCHES_OPT:
         e = ValueError(f"Invalid filter: {filter_by}")
-        WorkspaceError.ws_error( f"filter value must be one of:\n {' | '.join(valid_filters)}",e)
+        WorkspaceError.ws_error( f"filter value must be one of:\n {' | '.join(REMOTE_BRANCHES_OPT)}",e)
         raise e
     main_branch: str = get_main_branch()
     list_output: str = get_output_file()
@@ -40,8 +39,7 @@ def main(filter_by: str):
         WorkspaceError.ws_error("No remote branches found",exc)
         raise exc
     branches = f"{branches}\n remotes/origin/HEAD master"
-    pattern = r"^\s*(remotes/(?!origin/HEAD).+)$"
-    matches = re.findall(pattern, branches, re.MULTILINE)
+    matches = re.findall(r"^\s*(remotes/(?!origin/HEAD).+)$", branches, re.MULTILINE)
     total_branches = len(matches)
     ws_info(f"Main branch: {main_branch}; Found {total_branches} remote branches to process")
     for match in matches:

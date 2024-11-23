@@ -1,3 +1,5 @@
+""" Constants for the package. """
+
 from typing import Callable
 from logging import _nameToLevel
 from py.util import formatting

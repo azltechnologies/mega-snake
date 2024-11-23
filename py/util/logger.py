@@ -16,7 +16,7 @@ def config_log() -> None:
         + ":[%(funcName)-42s]:%(lineno)-6d  –– %(message)s"
     )
     props = properties.APP_PROPERTIES
-    path: str = props.log_file
+    path: str = props.retrieve_property("log_file")
     log_level = props.log_level
     log.basicConfig(
         filename=path,

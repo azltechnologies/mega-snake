@@ -5,7 +5,6 @@ This module contains utility functions for common operations.
 import re
 import subprocess
 import time
-import py.util.formatting as formatting
 from py.util.formatting import ws_advice, ws_warning, WorkspaceError
 
 

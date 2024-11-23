@@ -4,14 +4,13 @@ function set_env {
     $properties_file="$ws_config_home/config.properties"
 
     # read prop working_path from properties file
-    $ws_temp=$(Get-Content $properties_file | Select-String -Pattern "working_path" | ForEach-Object { $_ -replace "working_path=", "" })
     $re_py_env=$(Get-Content $properties_file | Select-String -Pattern "python_virtual_ps1" | ForEach-Object { $_ -replace "python_virtual_ps1=", "" })
     $py_module=$(Get-Content $properties_file | Select-String -Pattern "python_module" | ForEach-Object { $_ -replace "python_module=", "" })
     $python_env="$ws_config_home/$re_py_env"
     & $python_env
     $env:PYTHONPATH="$ws_config_home"
     
-    python3 -m $py_module --shell "$ws_shell" --working-path "$ws_temp" $args
+    python3 -m $py_module --shell "$ws_shell" $args
 
     deactivate
 }

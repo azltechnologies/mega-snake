@@ -16,8 +16,7 @@ def main(commit_hash: Optional[str] = None):
     Args:
         commit_hash: str
     """
-    tree_output: str = f"{props.APP_PROPERTIES.working_path}/diff_tree"
-    diff_tree_file: str = f"{tree_output}/diff_tree.txt"
+    tree_output: str = f"{props.APP_PROPERTIES.retrieve_property("working_path")}/diff_tree"
     diff_commit_file: str = f"{tree_output}/diff_commit.txt"
     diff_tree_dummy_repo: str = f"{tree_output}/diff_tree_dummy_repo"
 
@@ -48,16 +47,15 @@ def main(commit_hash: Optional[str] = None):
     if not diff_str:
         ws_success("No differences found between the current branch and the main branch")
         return
-    differences: list[str] = diff_str.split("\n")
 
     # iterate over the differences and write them to the output file
-    for diff in differences:
+    for diff in diff_str.split("\n"):
         columns: list[str] = diff.split("\t")
         symbol = columns[0].split(" ")[4]
         path: str = columns[1]
         FileType.from_symbol(symbol).add(path)
     create_files(diff_tree_dummy_repo)
-    display_inner_tree(diff_tree_dummy_repo, diff_tree_file)
+    display_inner_tree(diff_tree_dummy_repo, f"{tree_output}/diff_tree.txt")
     # write the commit list to the file
     commits: str = run_operation(
         f" git log --pretty=format:'%ad %H%n%B' --date=short {current_branch}...{main_branch}", "Writing commit list to file"

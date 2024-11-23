@@ -3,7 +3,6 @@
     Create a GitHub release for the current project.
 """
 import sys
-from typing import Optional
 import py.create_release.release_handler as handler
 from py.create_release.release import Release, get_latest_release
 
