@@ -47,13 +47,14 @@ def ws_advice(message: str, force: bool = False) -> None:
         logger.log.debug(message, stacklevel=2)
 
 
-def ws_tip(prologue: str, epilogue: str) -> None:
+def ws_tip(prologue: str, epilogue: Optional[str]) -> None:
     """Print a tip message"""
+    epilogue = f" {epilogue}" if epilogue else ""
     green = Fore.GREEN
     red = Fore.RED
     yellow = Fore.YELLOW
     nc = Style.RESET_ALL  # No Color
-    tip: str = f"{green}Hey! {red}'{prologue}'{green} {yellow}{epilogue}{nc}."
+    tip: str = f"{green}Hey! {red}'{prologue}'{green}{yellow}{epilogue}{nc}."
     print(tip)
     logger.log.info(f"{prologue} {epilogue}", stacklevel=2)
 

@@ -2,36 +2,41 @@
 
 from typing import Optional, Callable
 from py.util import props
-from py.util.formatting import WorkspaceError, ws_success, ws_info, ws_warning, ws_advice, ws_tip
+from py.util import formatting
 
-def echo(message: str, type: str): # previously echo
+
+def echo(message: str, epilog: Optional[str], type: str):  # previously echo
     """
     Prints a message to the console and logs it into the workspace configuration log file.
 
     Args:
         message (str): The message to be printed.
+        epilog (Optional[str]): An optional ending message as a second argument.
         type (str): The type of message to be printed.
 
     Returns:
         None
     """
     fun_dict: dict[str, Callable] = {
-        "S": ws_success,
-        "I": ws_info,
-        "W": ws_warning,
-        "E": WorkspaceError.ws_error,
-        "A": ws_advice,
-        "T": ws_tip,
+        "S": formatting.ws_success,
+        "I": formatting.ws_info,
+        "W": formatting.ws_warning,
+        "E": formatting.WorkspaceError.ws_error,
+        "A": formatting.ws_advice,
+        "T": formatting.ws_tip,
     }
     valid_filters: set[str] = set(fun_dict.keys())
     if type not in valid_filters:
         e = ValueError(f"Invalid message type: {type}")
-        WorkspaceError.ws_error(f"message type value must be one of:\n {' | '.join(valid_filters)}",e)
+        formatting.WorkspaceError.ws_error(f"message type value must be one of:\n {' | '.join(valid_filters)}", e)
         raise e
+    msg: str = f"{message}\n{epilog}" if epilog else message
     if type == "A":
-        fun_dict[type](message, True)
+        fun_dict[type](msg, True)
+    if type == "T":
+        fun_dict[type](message, epilog)
     else:
-        fun_dict[type](message)
+        fun_dict[type](msg)
 
 
 def initial_load():
@@ -45,7 +50,7 @@ def initial_load():
     pass
 
 
-def set_gradle_version(version: str): # previously gradleSet
+def set_gradle_version(version: str):  # previously gradleSet
     """
     Sets the gradle version to be used in the project.
 
@@ -58,7 +63,7 @@ def set_gradle_version(version: str): # previously gradleSet
     pass
 
 
-def set_java_version(version: str): # previously javaSet
+def set_java_version(version: str):  # previously javaSet
     """
     Sets the java version to be used in the project.
 
@@ -71,7 +76,7 @@ def set_java_version(version: str): # previously javaSet
     pass
 
 
-def gcloud_login(type: str): # previously gcloudSet
+def gcloud_login(type: str):  # previously gcloudSet
     """
     Logs into the gcloud account.
 
@@ -81,11 +86,12 @@ def gcloud_login(type: str): # previously gcloudSet
     valid_filters: set[str] = {"B", "U", "A"}
     if type not in valid_filters:
         e = ValueError(f"Invalid loggin type: {type}")
-        WorkspaceError.ws_error(f"logging type value must be one of:\n {' | '.join(valid_filters)}",e)
+        formatting.WorkspaceError.ws_error(f"logging type value must be one of:\n {' | '.join(valid_filters)}", e)
         raise e
     pass
 
-def setting_workspace(): # previously untrackGradleProps
+
+def setting_workspace():  # previously untrackGradleProps
     """
     Sets the workspace for the project.
 

@@ -101,13 +101,23 @@ def remote_branches_clean_up() -> None:
     short_help="Prints message to the console and logs it.",
     help="Prints a message to the console in a custom format and logs it into the workspace configuration log file.",
     epilog="""
-    usage: set_env msg <message> [-t | --type]  <type>\n
+    usage: set_env msg <message> [OPTIONS]   <type>\n
     OPTIONS:\n
-        type: message type value must be one of:\n
-            S | I | W | E | A | T
+        epilog: an optional ending message as a second argument\n
+        type:
+            usage: [-t | --type] <type>\n
+            allowed values:\n
+                S | I | W | E | A | T
+                    S - Success
+                    I - Information -- default
+                    W - Warning
+                    E - Error
+                    A - Advice -- use for Debugging
+                    T - Tip
     """,
 )
 @click.argument("message", type=click.STRING)
+@click.argument("epilog", type=click.STRING, required=False, default=None)
 @click.option(
     "--type",
     "-t",
@@ -122,15 +132,16 @@ def remote_branches_clean_up() -> None:
      """,
     default="I",
 )
-def echo(message: str, type: str) -> None:
+def echo(message: str, epilog: Optional[str], type: str) -> None:
     """
     Calls the echo function from the config_environment module
 
     Args:
         message: str
+        epilog: str
         type: str
     """
-    msg(message, type)
+    msg(message, epilog, type)
 
 
 if __name__ == "__main__":
