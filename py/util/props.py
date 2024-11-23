@@ -1,18 +1,13 @@
 """ Properties for the application """
 
 from dataclasses import dataclass, field
-from typing import Optional, Callable
+from typing import Optional
 import inspect
 import os
 import logging as log
 from datetime import datetime
 from py.util import formatting, logger
-
-
-REMOTE_BRANCHES_OPT: list[str] = ["M", "U", "A"]
-LOGGING_OPT: list[str] = list(log._nameToLevel.keys())
-SHELL_OPT: list[str] = ["bash", "zsh", "powershell"]
-
+from py.constants import SHELL_OPT
 
 def _check_forbidden_execution(method: str, message:str, reload: bool = False) -> None:
     # Get call stack

@@ -5,9 +5,9 @@ from typing import Optional
 import click
 from .branch_cleanup.module import main as branch_cleanup
 from .config_environment.module import echo as msg
-from .util.util import MSG_OPT
-from .util.logger import get_traceback
-from .util.props import init_app_properties, REMOTE_BRANCHES_OPT, LOGGING_OPT, SHELL_OPT
+from .constants import MSG_OPT, REMOTE_BRANCHES_OPT, LOGGING_OPT, SHELL_OPT
+from .util.formatting import get_traceback
+from .util.props import init_app_properties
 from .diff_tree.module import main as diff_tree
 from .remote_branches.module import main as remote_branches
 from .util.formatting import WorkspaceError, ws_advice

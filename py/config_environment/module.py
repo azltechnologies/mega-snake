@@ -1,7 +1,8 @@
 """ Contains multiple functions to configure the environment for development with vscode. """
 
 from typing import Optional, Callable
-from py.util import props, formatting, util
+from py.util import props, formatting
+from py.constants import MSG_OPT
 
 
 
@@ -17,7 +18,7 @@ def echo(message: str, epilog: Optional[str], type: str):  # previously echo
     Returns:
         None
     """
-    fun_dict: dict[str, Callable] = util.MSG_OPT
+    fun_dict: dict[str, Callable] = MSG_OPT
     valid_filters: set[str] = set(fun_dict.keys())
     if type not in valid_filters:
         e = ValueError(f"Invalid message type: {type}")

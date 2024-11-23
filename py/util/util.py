@@ -6,18 +6,7 @@ import re
 import subprocess
 import time
 import py.util.formatting as formatting
-from typing import Callable
 from py.util.formatting import ws_advice, ws_warning, WorkspaceError
-
-# global constants
-MSG_OPT: dict[str, Callable] = {
-    "S": formatting.ws_success,
-    "I": formatting.ws_info,
-    "W": formatting.ws_warning,
-    "E": formatting.WorkspaceError.ws_error,
-    "A": formatting.ws_advice,
-    "T": formatting.ws_tip,
-}
 
 
 def run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str]:
@@ -63,14 +52,14 @@ def get_main_branch() -> str:
     result = run_operation("git remote show origin", "Getting main branch").stdout.strip()
     if not result:
         e = LookupError("No main branch found in the current repository")
-        WorkspaceError.ws_error("No main branch found",e)
+        WorkspaceError.ws_error("No main branch found", e)
         raise e
     pattern = r"^(\s*HEAD branch:\s*)(\S+)"
     match = re.search(pattern, result, re.MULTILINE)
     if match:
         return match.group(2)
     exc = LookupError("No main branch found in the current repository")
-    WorkspaceError.ws_error("No main branch found",exc)
+    WorkspaceError.ws_error("No main branch found", exc)
     raise exc
 
 
@@ -93,5 +82,5 @@ def get_validated_input(prompt: str, valid_values: list[str]) -> str:
         tries += 1
         if tries > 3:
             error = KeyError("Too many invalid inputs. Exiting.")
-            WorkspaceError.ws_error(f"Too many invalid inputs for '{prompt}'. Exiting.",error)
+            WorkspaceError.ws_error(f"Too many invalid inputs for '{prompt}'. Exiting.", error)
             raise error

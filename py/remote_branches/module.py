@@ -7,6 +7,7 @@ from py.util.formatting import WorkspaceError, ws_info
 from py.util.remote_branch import RemoteBranch
 from py.util.util import run_operation, get_main_branch
 from py.util import props
+from py.constants import REMOTE_BRANCHES_OPT
 
 
 def get_output_file():
@@ -21,7 +22,7 @@ def main(filter_by: str):
     Args:
         filter: str
     """
-    valid_filters: list[str] = props.REMOTE_BRANCHES_OPT
+    valid_filters: list[str] = REMOTE_BRANCHES_OPT
     if filter_by not in valid_filters:
         e = ValueError(f"Invalid filter: {filter_by}")
         WorkspaceError.ws_error( f"filter value must be one of:\n {' | '.join(valid_filters)}",e)

@@ -1,7 +1,5 @@
 """Module responsible for configuring the logger."""
 import logging
-import traceback
-import re
 from py.util import props as properties
 
 log = logging
@@ -27,23 +25,3 @@ def config_log() -> None:
         format=log_format,
         force=True
     )
-
-
-def get_traceback(e: BaseException) -> str:
-    """
-    Retrieves the traceback from an exception.
-
-    Args:
-        e (Exception): exception to retrieve the traceback
-
-    Returns:
-        str: Exception's traceback.
-    """
-    # Pattern and replacement
-    pattern = r'\.py", line (\d+)'
-    replacement = r'.py:\1"'
-    tb_str = "".join(traceback.format_exception(type(e), e, e.__traceback__))
-
-    # Perform substitution
-    result = re.sub(pattern, replacement, tb_str)
-    return result
