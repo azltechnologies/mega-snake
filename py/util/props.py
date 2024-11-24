@@ -5,13 +5,12 @@ from configparser import ConfigParser
 from typing import Optional
 import inspect
 import os
-import logging as log
 from datetime import datetime
 from py.util import formatting, logger
-from py.constants import SHELL_OPT
+from py.constants import SHELL_OPT, LOGGING_NAME_TO_LEVEL,LOGGING_LEVEL_TO_NANE
 
 
-def _check_forbidden_execution(method: str, message: str, reload: bool = False) -> None:
+def _check_forbidden_execution(method: str, message: str, reload: bool = False, props: Optional["AppProperties"] = None) -> None:
     # Get call stack
     frames = inspect.stack()
     # Check if called from __init__
@@ -19,7 +18,9 @@ def _check_forbidden_execution(method: str, message: str, reload: bool = False) 
     if not called_from_init:
         if not reload:
             raise PermissionError(f"Operation not permitted: {message} is only allowed during initialization")
-        logger.config_log()
+        if not props:
+            raise ValueError("properties must be set when reloading properties")
+        logger.config_log(props.retrieve_property("local_config_file"), props.log_level)
         formatting.ws_advice(f"Properties reloaded by: {message}")
 
 
@@ -40,21 +41,20 @@ def check_property(prop: str, dic: dict[str, str]) -> str:
 @dataclass(init=False)
 class AppProperties:
     """
-    Application properties
+    Singleton class to hold the properties of the application
 
     Attributes:
+        _instance (AppProperties): The instance of the class
         log_level (int): The log level to use
         working_path (str): The working path for the application, used mainly for output files
     """
+
+    _instance: Optional["AppProperties"] = None
 
     _log_level: int = field(
         init=False,
     )
     _props: dict[str, str] = field(default_factory=dict)
-
-    def __new__(cls, log_level: str, shell: str, properties: dict[str, str]) -> "AppProperties":
-        _check_forbidden_execution("init_app_properties", "AppProperties class instantiation ")
-        return super().__new__(cls)
 
     @property
     def props(self) -> dict[str, str]:
@@ -78,27 +78,27 @@ class AppProperties:
         return self._log_level
 
     @log_level.setter
-    def log_level(self, value: int):
+    def log_level(self, value: int)-> None:
         try:
-            level: str = log._levelToName[value]
+            level: str = LOGGING_LEVEL_TO_NANE[value]
             if level is None:
                 raise ValueError(f"Invalid log level: {value}")
             self._log_level = value
         except KeyError as e:
-            raise KeyError(f"Invalid log level: {value}, must be one of {log._levelToName.keys()}") from e
-        _check_forbidden_execution("__init__", "log_level setter method execution", True)
+            raise KeyError(f"Invalid log level: {value}, must be one of {LOGGING_LEVEL_TO_NANE.keys()}") from e
+        _check_forbidden_execution("__init__", "log_level setter method execution", True, self)
 
-    def log_level_from_str(self, value: str):
+    def log_level_from_str(self, value: str)-> None:
         """Set the log level from a string"""
         try:
-            level: int = log._nameToLevel[value]
+            level: int = LOGGING_NAME_TO_LEVEL[value]
             if level is None:
                 raise ValueError(f"Invalid log level: {value}")
         except KeyError as e:
-            raise KeyError(f"Invalid log level: {value}, must be one of {log._nameToLevel.keys()}") from e
+            raise KeyError(f"Invalid log level: {value}, must be one of {LOGGING_NAME_TO_LEVEL.keys()}") from e
         self.log_level = level
 
-    def __working_path_validator(self, value: str):
+    def __working_path_validator(self, value: str)-> None:
         # Convert the path to an absolute path
         working_path = os.path.abspath(value)
         # Check if the path exists
@@ -157,9 +157,24 @@ class AppProperties:
             if attr_value is None:
                 raise ValueError(f"{attr_name} has not been set")
 
+    @staticmethod
+    def get_instance() -> "AppProperties":
+        """
+        Get the instance of the class
+        
+        Returns:
+            AppProperties: The instance of the class
+        """
+        if AppProperties._instance is None:
+            raise RuntimeError("Properties Singleton not initialized yet")
+        return AppProperties._instance
 
-# Single instance of the configuration object
-APP_PROPERTIES: AppProperties
+    def __new__(cls, log_level: str, shell: str, properties: dict[str, str]) -> "AppProperties":
+        _check_forbidden_execution("init_app_properties", "AppProperties class instantiation")
+        if not cls._instance:
+            cls._instance = super().__new__(cls)
+            return cls._instance
+        raise RuntimeError("Properties Singleton already initialized")
 
 
 def read_properties(file_path: str) -> dict:
@@ -189,7 +204,6 @@ def init_app_properties(log_level: str, shell: Optional[str]) -> None:
         log_level (str): The log level to use
         shell (Optional[str]): The shell in use by the user
     """
-    global APP_PROPERTIES  # pylint: disable=W0603
 
     prop_file: str = f'{os.getenv("PYTHONPATH")}/config.properties'
     # check if the properties file exists
@@ -204,11 +218,13 @@ def init_app_properties(log_level: str, shell: Optional[str]) -> None:
 
     if not shell:
         raise EnvironmentError("Environment variable 'WS_SHELL' is not set")
-    APP_PROPERTIES = AppProperties(log_level, shell, properties)
-    APP_PROPERTIES.retrieve_property("working_path")
-    logger.config_log()
-    formatting.ws_advice(f"set log level: {APP_PROPERTIES.log_level}")
-    formatting.ws_advice(f"Set working path: {APP_PROPERTIES.retrieve_property("working_path")}")
-    formatting.ws_advice(f"Set log file: {APP_PROPERTIES.retrieve_property("log_file")}")
-    formatting.ws_advice(f"Set shell: {APP_PROPERTIES.retrieve_property("shell")}")
-    formatting.ws_advice(f"Set local config file: {APP_PROPERTIES.retrieve_property("local_config_file")}")
+    AppProperties(log_level, shell, properties)
+    app_props: AppProperties = AppProperties.get_instance()
+    path: str = app_props.retrieve_property("log_file")
+    level: int = app_props.log_level
+    logger.config_log(path, level)
+    formatting.ws_advice(f"set log level: {app_props.log_level}")
+    formatting.ws_advice(f"Set working path: {app_props.retrieve_property("working_path")}")
+    formatting.ws_advice(f"Set log file: {app_props.retrieve_property("log_file")}")
+    formatting.ws_advice(f"Set shell: {app_props.retrieve_property("shell")}")
+    formatting.ws_advice(f"Set local config file: {app_props.retrieve_property("local_config_file")}")

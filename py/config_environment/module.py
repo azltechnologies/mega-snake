@@ -5,8 +5,7 @@ from py.util import formatting
 from py.constants import MSG_OPT
 
 
-
-def echo(message: str, epilog: Optional[str], type_msg: str):  # previously echo
+def echo(message: str, epilog: Optional[str], type_msg: str) -> None:  # previously echo
     """
     Prints a message to the console and logs it into the workspace configuration log file.
 
@@ -33,7 +32,7 @@ def echo(message: str, epilog: Optional[str], type_msg: str):  # previously echo
         fun_dict[type_msg](msg)
 
 
-def initial_load():
+def initial_load() -> None:  # previously initialLoad
     """
     Initializes the configuration system by creating a local config file if it doesn't exist,
     then loads its contents into the environment.
@@ -44,7 +43,7 @@ def initial_load():
     pass
 
 
-def set_gradle_version(version: str):  # previously gradleSet
+def set_gradle_version(version: str) -> None:  # previously gradleSet
     """
     Sets the gradle version to be used in the project.
 
@@ -57,7 +56,7 @@ def set_gradle_version(version: str):  # previously gradleSet
     pass
 
 
-def set_java_version(version: str):  # previously javaSet
+def set_java_version(version: str) -> None:  # previously javaSet
     """
     Sets the java version to be used in the project.
 
@@ -70,7 +69,7 @@ def set_java_version(version: str):  # previously javaSet
     pass
 
 
-def gcloud_login(type_login: str):  # previously gcloudSet
+def gcloud_login(type_login: str) -> None:  # previously gcloudSet
     """
     Logs into the gcloud account.
 
@@ -85,7 +84,7 @@ def gcloud_login(type_login: str):  # previously gcloudSet
     pass
 
 
-def setting_workspace():  # previously untrackGradleProps
+def setting_workspace() -> None:  # previously untrackGradleProps
     """
     Sets the workspace for the project.
 

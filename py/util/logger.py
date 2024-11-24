@@ -1,10 +1,9 @@
 """Module responsible for configuring the logger."""
 import logging
-from py.util import props as properties
 
 log = logging
 
-def config_log() -> None:
+def config_log(path:str, level: int) -> None:
     """
     Configures the logger at the specified level.
 
@@ -15,13 +14,10 @@ def config_log() -> None:
         "%(asctime)25s –– [%(levelname)-8s] %(filename)25s"
         + ":[%(funcName)-42s]:%(lineno)-6d  –– %(message)s"
     )
-    props = properties.APP_PROPERTIES
-    path: str = props.retrieve_property("log_file")
-    log_level = props.log_level
     log.basicConfig(
         filename=path,
         encoding="utf-8",
-        level=log_level,
+        level=level,
         format=log_format,
         force=True
     )

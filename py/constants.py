@@ -1,11 +1,26 @@
 """ Constants for the package. """
 
 from typing import Callable
-from logging import _nameToLevel
+from logging import WARNING, INFO, DEBUG, NOTSET, ERROR
 from py.util import formatting
 
 REMOTE_BRANCHES_OPT: list[str] = ["M", "U", "A"]
-LOGGING_OPT: list[str] = list(_nameToLevel.keys())
+
+LOGGING_NAME_TO_LEVEL = {
+    'ERROR': ERROR,
+    'WARNING': WARNING,
+    'INFO': INFO,
+    'DEBUG': DEBUG,
+    'NOTSET': NOTSET,
+}
+LOGGING_LEVEL_TO_NANE = {
+    ERROR: 'ERROR',
+    WARNING: 'WARNING',
+    INFO: 'INFO',
+    DEBUG: 'DEBUG',
+    NOTSET: 'NOTSET',
+}
+LOGGING_OPT: list[str] = list(LOGGING_NAME_TO_LEVEL.keys())
 SHELL_OPT: list[str] = ["bash", "zsh", "powershell"]
 
 # global constants

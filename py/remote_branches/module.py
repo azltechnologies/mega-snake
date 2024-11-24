@@ -6,16 +6,16 @@ from typing import Optional
 from py.util.formatting import WorkspaceError, ws_info
 from py.util.remote_branch import RemoteBranch
 from py.util.util import run_operation, get_main_branch
-from py.util import props
+from py.util.props import AppProperties
 from py.constants import REMOTE_BRANCHES_OPT
 
 
-def get_output_file():
+def get_output_file() -> str:
     """Returns the path to the output file"""
-    return f"{props.APP_PROPERTIES.working_path}/remote_branches.txt"
+    return f"{AppProperties.get_instance().retrieve_property("working_path")}/remote_branches.txt"
 
 
-def main(filter_by: str):
+def main(filter_by: str) -> None:
     """
     Creates a detailed list of remote branches filtered by type
 
@@ -24,7 +24,7 @@ def main(filter_by: str):
     """
     if filter_by not in REMOTE_BRANCHES_OPT:
         e = ValueError(f"Invalid filter: {filter_by}")
-        WorkspaceError.ws_error( f"filter value must be one of:\n {' | '.join(REMOTE_BRANCHES_OPT)}",e)
+        WorkspaceError.ws_error(f"filter value must be one of:\n {' | '.join(REMOTE_BRANCHES_OPT)}", e)
         raise e
     main_branch: str = get_main_branch()
     list_output: str = get_output_file()
@@ -36,7 +36,7 @@ def main(filter_by: str):
     branches: str = run_operation("git branch -a", "Getting remote branches").stdout.strip()
     if not branches:
         exc = ValueError("No remote branches found in the current repository")
-        WorkspaceError.ws_error("No remote branches found",exc)
+        WorkspaceError.ws_error("No remote branches found", exc)
         raise exc
     branches = f"{branches}\n remotes/origin/HEAD master"
     matches = re.findall(r"^\s*(remotes/(?!origin/HEAD).+)$", branches, re.MULTILINE)

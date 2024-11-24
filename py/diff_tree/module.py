@@ -2,21 +2,21 @@
 
 import os
 from typing import Optional
-from directory_tree import DisplayTree # type: ignore
+from directory_tree import DisplayTree
 from py.util.formatting import WorkspaceError, ws_info, ws_success
 from py.util.util import run_operation, get_main_branch
-from py.util import props
+from py.util.props import AppProperties
 from py.diff_tree.file_type import FileType
 
 
-def main(commit_hash: Optional[str] = None):
+def main(commit_hash: Optional[str] = None) -> None:
     """
     Creates a diff tree of the current branch against master
 
     Args:
         commit_hash: str
     """
-    tree_output: str = f"{props.APP_PROPERTIES.retrieve_property("working_path")}/diff_tree"
+    tree_output: str = f"{AppProperties.get_instance().retrieve_property("working_path")}/diff_tree"
     diff_commit_file: str = f"{tree_output}/diff_commit.txt"
     diff_tree_dummy_repo: str = f"{tree_output}/diff_tree_dummy_repo"
 
@@ -65,7 +65,7 @@ def main(commit_hash: Optional[str] = None):
     run_operation(f"code {diff_commit_file}", "opening diff commit file")
 
 
-def create_files(location: str) -> None:
+def create_files(location: str)-> None:
     """
     Creates new files for each file type.
 
@@ -76,7 +76,7 @@ def create_files(location: str) -> None:
         file_type.create_new_file(location)
 
 
-def display_inner_tree(root_dir: str, output_file: str) -> None:
+def display_inner_tree(root_dir: str, output_file: str)-> None:
     """
     Display the tree of a directory's contents, hiding the root directory.
 

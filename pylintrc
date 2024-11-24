@@ -1,0 +1,6 @@
+[MASTER]
+init-hook='import sys; sys.path.append("/Users/carlosmorales/IdeaProjects/stuff")'
+load-plugins=py.util.custom_checkers
+
+[MESSAGES CONTROL]
+enable=MissingReturnTypeChecker

@@ -25,7 +25,7 @@ class Commit:
         self.message = message
 
     @classmethod
-    def from_branch(cls, branch: str):
+    def from_branch(cls, branch: str) -> "Commit":
         """Get the commit info from a branch"""
         commit_hash: str = run_operation(f"git log -1 --pretty='format:%H'  {branch}", "Getting commit hash").stdout.strip()
         message: str = run_operation(f"git log -1 --pretty='format:%B'  {branch}", "Getting commit message").stdout.strip()
@@ -38,7 +38,7 @@ class Commit:
         return cls(commit_hash, dt, formatted_date, message)
 
     @classmethod
-    def from_strings(cls, commit_hash: str, date_str: str, message: str):
+    def from_strings(cls, commit_hash: str, date_str: str, message: str) -> "Commit":
         """Get the commit info from string values"""
         dt = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%SZ")
         return cls(commit_hash, dt, date_str, message)

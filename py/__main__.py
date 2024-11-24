@@ -20,7 +20,7 @@ from .util.formatting import WorkspaceError, ws_advice
 @click.option("--log-level", "-l", type=click.Choice(list(LOGGING_OPT), False), default="INFO", help="log level")
 @click.option("--shell", type=click.Choice(SHELL_OPT, False), required=True, hidden=True)
 @click.pass_context
-def cli(ctx: click.Context, log_level: str, shell: str) -> None:  # mypy: ignore-assignement
+def cli(ctx: click.Context, log_level: str, shell: str) -> None:
     """cli entry point"""
     try:
         init_app_properties(log_level, shell)
@@ -34,10 +34,10 @@ def cli(ctx: click.Context, log_level: str, shell: str) -> None:  # mypy: ignore
 
 @cli.result_callback()
 @click.pass_context
-def post_command(ctx, result, **kwargs):  # pylint: disable=W0613
+def post_command(ctx, result, **kwargs) -> None:
     """Post-command execution logic"""
     if ctx.invoked_subcommand:
-        ws_advice(f"Command '{ctx.invoked_subcommand}' completed successfully")
+        ws_advice(f"Command '{ctx.invoked_subcommand}' completed successfully with result: {result} and kwargs: { kwargs}")
 
 
 @cli.command(
@@ -146,7 +146,6 @@ def echo(message: str, epilog: Optional[str], type_msg: str) -> None:
 
 if __name__ == "__main__":
     try:
-        cli(prog_name="set_env") # pylint: disable=E1120
-
+        cli.main(prog_name="set_env")
     except Exception as e:
         raise WorkspaceError("Error during initialization", e) from e
