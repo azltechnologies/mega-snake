@@ -5,12 +5,12 @@ from datetime import datetime
 import subprocess
 import py.create_release.release_handler as handler
 
+
 @dataclasses.dataclass
 class Release:
-
     """
     Class containing a named set of properties
-    
+
     Properties:
         title: str
         release_type: str
@@ -29,6 +29,7 @@ class Release:
     date_str: str
     published_at: datetime
     commit: str
+
     def __new__(cls, input_string: str):
         if input_string is None or not bool(input_string):
             return None
@@ -36,15 +37,14 @@ class Release:
 
     def __init__(self, input_string: str):
         if input_string is not None and bool(input_string):
-            result = input_string.split('\t')
+            result = input_string.split("\t")
             self.title = result[0]
             self.release_type = result[1]
             self.tag_name = result[2]
             self.date_str = result[3]
             self.published_at = datetime.strptime(self.date_str, "%Y-%m-%dT%H:%M:%SZ")
-            if self.release_type != 'Draft':
+            if self.release_type != "Draft":
                 self.commit = handler.get_commit_from_release(self.tag_name)
-
 
     def get_release_tag(self, suffix: str) -> str:
         """
@@ -77,6 +77,7 @@ class Release:
         # if no tag was found, throw error
         raise ValueError(f"Could not find a non-existing tag after {attemps} attempts. Exiting.")
 
+
 def _create_release_list(list_string: str) -> list[Release]:
     """
     Converts a string into a list of Release instances
@@ -97,10 +98,11 @@ def _create_release_list(list_string: str) -> list[Release]:
         return sorted(releases, key=lambda r: r.published_at, reverse=True)
     return []
 
+
 def get_latest_release() -> Release:
     """
     Retrieves the latest release from GitHub.
-    
+
     Returns:
         Release
     """
