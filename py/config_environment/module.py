@@ -1,8 +1,11 @@
 """ Contains multiple functions to configure the environment for development with vscode. """
 
+import os
 from typing import Optional, Callable
 from py.util import formatting
 from py.constants import MSG_OPT
+from py.util.props import AppProperties
+from py.config_environment.graphql_schema import create_schema
 
 
 def echo(message: str, epilog: Optional[str], type_msg: str) -> None:  # previously echo
@@ -30,6 +33,25 @@ def echo(message: str, epilog: Optional[str], type_msg: str) -> None:  # previou
         fun_dict[type_msg](message, epilog)
     else:
         fun_dict[type_msg](msg)
+
+def create_graphql_schema(schema_path:str) -> None:
+    """
+    Creates a GraphQL schema file in the working directory.
+    """
+    props_inst: AppProperties = AppProperties.get_instance()
+    schema_abs: str = os.path.abspath(schema_path)
+    # verify that the schema path exists and is a directory
+    if not os.path.isdir(schema_abs):
+        raise NotADirectoryError(f"Schema path is not a directory: {schema_abs}")
+    # verify that the schema path is not empty
+    if not os.listdir(schema_abs):
+        raise FileNotFoundError(f"Schema path is empty: {schema_abs}")
+    output_file: str = props_inst.retrieve_property('graphql_schema_file')
+    # if the schema file already exists, delete it
+    if os.path.exists(output_file):
+        os.remove(output_file)
+
+    create_schema(schema_abs, output_file)
 
 
 def initial_load() -> None:  # previously initialLoad

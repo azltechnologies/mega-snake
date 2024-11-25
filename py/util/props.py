@@ -145,11 +145,13 @@ class AppProperties:
         working_path: str = check_property("working_path", properties)
         log_file: str = check_property("log_file_name", properties)
         local_config_file: str = check_property("local_config_file_name", properties)
+        graphql_schema_file:str = check_property("graphql_schema_file_name", properties)
         self.log_level_from_str(log_level)
         self.__working_path_validator(working_path)
         self.__log_file_validator(log_file)
         self.__shell_validator(shell)
         self.__local_config_file_validator(local_config_file)
+        self.props["graphql_schema_file"] = f"{self.props["working_path"]}/{graphql_schema_file}"
         self.__post_init__()
 
     def __post_init__(self) -> None:

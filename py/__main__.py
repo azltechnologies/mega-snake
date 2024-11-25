@@ -3,7 +3,7 @@
 from typing import Optional
 import click
 from .branch_cleanup.module import main as branch_cleanup
-from .config_environment.module import echo as msg
+from .config_environment.module import echo as msg, create_graphql_schema as graphql_schema
 from .constants import MSG_OPT, REMOTE_BRANCHES_OPT, LOGGING_OPT, SHELL_OPT
 from .util.formatting import get_traceback
 from .util.props import init_app_properties
@@ -143,6 +143,21 @@ def echo(message: str, epilog: Optional[str], type_msg: str) -> None:
     """
     msg(message, epilog, type_msg)
 
+@cli.command(
+    name="createGraphqlSchema",
+    short_help="Creates a GraphQL schema file in the working directory.",
+    help="Creates a GraphQL schema file in the working directory.",
+    epilog="usage: set_env createGraphqlSchema <schema_path>",
+)
+@click.argument("schema_path", type=click.STRING)
+def create_graphql_schema(schema_path:str) -> None:
+    """
+    Calls the create_graphql_schema function from the config_environment module
+
+    Args:
+        schema_path: str
+    """
+    graphql_schema(schema_path)
 
 if __name__ == "__main__":
     try:

@@ -7,6 +7,8 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.13"
+pytest = "8.2.0"
+graphql-core = "3.2.5"
 colorama = "0.4.6"
 directory-tree = "1.0.0"
 mypy = "1.13.0"
