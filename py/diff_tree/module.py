@@ -4,7 +4,7 @@ import os
 from typing import Optional
 from directory_tree import DisplayTree
 from py.util.formatting import WorkspaceError, ws_info, ws_success
-from py.util.util import run_operation, get_main_branch
+from py.util.util import run_operation, get_main_branch, get_current_commit
 from py.util.props import AppProperties
 from py.diff_tree.file_type import FileType
 
@@ -26,7 +26,7 @@ def main(commit_hash: Optional[str] = None) -> None:
         # create the tree_output directory
         run_operation(f"mkdir -p {diff_tree_dummy_repo}/", "Creating diff tree output directory")
 
-    current_branch: str = run_operation("git rev-parse HEAD", "Getting current branch").stdout.strip()
+    current_branch: str = get_current_commit()
     main_branch: str
     if commit_hash is None:
         main_branch = get_main_branch()

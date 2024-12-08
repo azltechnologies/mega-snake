@@ -48,18 +48,38 @@ def get_main_branch() -> str:
     Returns:
         str
     """
-    result = run_operation("git remote show origin", "Getting main branch").stdout.strip()
+    remotes:list[str] = run_operation("git remote", "Getting remotes").stdout.strip().split("\n")
+    if not remotes:
+        exc = ValueError("No remotes found in the current repository")
+        WorkspaceError.ws_error("No remotes found in the current repository", exc)
+        raise exc
+    if len(remotes) > 1:
+        ex = NotImplementedError("Multiple remotes found in the current repository")
+        WorkspaceError.ws_error("Operations with multiple remotes are not supported", ex)
+        raise ex
+    ws_warning(f"{len(remotes)}")
+    result = run_operation(f"git remote show {remotes[0]}", "Getting main branch").stdout.strip()
     if not result:
-        e = LookupError("No main branch found in the current repository")
+        e = LookupError(f"No main branch found in the current repository for remote {remotes[0]}")
         WorkspaceError.ws_error("No main branch found", e)
         raise e
     pattern = r"^(\s*HEAD branch:\s*)(\S+)"
     match = re.search(pattern, result, re.MULTILINE)
     if match:
         return match.group(2)
-    exc = LookupError("No main branch found in the current repository")
-    WorkspaceError.ws_error("No main branch found", exc)
-    raise exc
+    exception = LookupError("No main branch found in the current repository")
+    WorkspaceError.ws_error("No main branch found", exception)
+    raise exception
+
+def get_current_commit() -> str:
+    """
+    Gets the current branch of the repository.
+
+    Returns:
+        str
+    """
+    result = run_operation("git rev-parse HEAD", "Getting current branch").stdout.strip()
+    return result
 
 
 def get_validated_input(prompt: str, valid_values: list[str]) -> str:

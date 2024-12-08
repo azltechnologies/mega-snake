@@ -40,7 +40,7 @@ def create_schema(schema_path: str, output_file: str) -> None:
     # Write to schema.json
     with open(output_json, "w", encoding="utf-8") as json_file:
         json.dump(introspection_dict, json_file, indent=2)
-    
+
     with open(output_graphql, "w", encoding="utf-8") as json_file:
         json_file.write(schema_str)
 

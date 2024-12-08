@@ -4,6 +4,7 @@ import dataclasses
 from datetime import datetime
 import subprocess
 import py.create_release.release_handler as handler
+from py.util.formatting import ws_info, ws_advice, WorkspaceError
 
 
 @dataclasses.dataclass
@@ -68,14 +69,17 @@ class Release:
                 new_tag_name = f"{tag_name}-{suffix}.{i}"
                 com: str = f"git rev-parse {new_tag_name} 2>&1"
                 subprocess.run(com, shell=True, check=True, capture_output=True, text=True)
-                print(f"Found an existing tag {new_tag_name} at attempt {shot}!")
+                ws_info(f"Found an existing tag {new_tag_name} at attempt {shot}!")
             except subprocess.CalledProcessError:
                 # If the tag does not exist, this exception will be caught
-                print(f"Tag {new_tag_name} is available!")
+                ws_info(f"Tag {new_tag_name} is available!")
                 return new_tag_name  # Return the first non-existing tag
             i += 1
         # if no tag was found, throw error
-        raise ValueError(f"Could not find a non-existing tag after {attemps} attempts. Exiting.")
+        e = ValueError(f"Could not find a non-existing tag after {attemps} attempts. Exiting.")
+        WorkspaceError.ws_error(f"Could'nt find a tag for {tag_name}-{suffix}", e)
+        raise e
+
 
 
 def _create_release_list(list_string: str) -> list[Release]:
@@ -93,7 +97,7 @@ def _create_release_list(list_string: str) -> list[Release]:
         releases: list[Release] = [Release(f"{string}") for string in array_of_strings]
         releases = [x for x in releases if x is not None]
         # printing the releases size
-        print(f"Releases size: {len(releases)}")
+        ws_advice(f"Releases size: {len(releases)}")
         # sorting the releases
         return sorted(releases, key=lambda r: r.published_at, reverse=True)
     return []

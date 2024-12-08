@@ -7,23 +7,22 @@ from py.util import formatting
 REMOTE_BRANCHES_OPT: list[str] = ["M", "U", "A"]
 
 LOGGING_NAME_TO_LEVEL = {
-    'ERROR': ERROR,
-    'WARNING': WARNING,
-    'INFO': INFO,
-    'DEBUG': DEBUG,
-    'NOTSET': NOTSET,
+    "ERROR": ERROR,
+    "WARNING": WARNING,
+    "INFO": INFO,
+    "DEBUG": DEBUG,
+    "NOTSET": NOTSET,
 }
 LOGGING_LEVEL_TO_NANE = {
-    ERROR: 'ERROR',
-    WARNING: 'WARNING',
-    INFO: 'INFO',
-    DEBUG: 'DEBUG',
-    NOTSET: 'NOTSET',
+    ERROR: "ERROR",
+    WARNING: "WARNING",
+    INFO: "INFO",
+    DEBUG: "DEBUG",
+    NOTSET: "NOTSET",
 }
 LOGGING_OPT: list[str] = list(LOGGING_NAME_TO_LEVEL.keys())
 SHELL_OPT: list[str] = ["bash", "zsh", "powershell"]
 
-# global constants
 MSG_OPT: dict[str, Callable] = {
     "S": formatting.ws_success,
     "I": formatting.ws_info,
@@ -32,3 +31,5 @@ MSG_OPT: dict[str, Callable] = {
     "A": formatting.ws_advice,
     "T": formatting.ws_tip,
 }
+
+RELEASE_TYPE_OPT: dict[str, str] = {"p": "--prerelease", "r": "--latest=false", "l": "--latest"}

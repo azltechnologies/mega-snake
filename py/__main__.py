@@ -4,12 +4,13 @@ from typing import Optional
 import click
 from .branch_cleanup.module import main as branch_cleanup
 from .config_environment.module import echo as msg, create_graphql_schema as graphql_schema
-from .constants import MSG_OPT, REMOTE_BRANCHES_OPT, LOGGING_OPT, SHELL_OPT
+from .constants import MSG_OPT, REMOTE_BRANCHES_OPT, LOGGING_OPT, SHELL_OPT, RELEASE_TYPE_OPT
 from .util.formatting import get_traceback
 from .util.props import init_app_properties
 from .diff_tree.module import main as diff_tree
 from .remote_branches.module import main as remote_branches
 from .util.formatting import WorkspaceError, ws_advice
+from .create_release.module import main as create_release
 
 
 @click.group(
@@ -143,6 +144,7 @@ def echo(message: str, epilog: Optional[str], type_msg: str) -> None:
     """
     msg(message, epilog, type_msg)
 
+
 @cli.command(
     name="createGraphqlSchema",
     short_help="Creates a GraphQL schema file in the working directory.",
@@ -150,7 +152,7 @@ def echo(message: str, epilog: Optional[str], type_msg: str) -> None:
     epilog="usage: set_env createGraphqlSchema <schema_path>",
 )
 @click.argument("schema_path", type=click.STRING)
-def create_graphql_schema(schema_path:str) -> None:
+def create_graphql_schema(schema_path: str) -> None:
     """
     Calls the create_graphql_schema function from the config_environment module
 
@@ -158,6 +160,48 @@ def create_graphql_schema(schema_path:str) -> None:
         schema_path: str
     """
     graphql_schema(schema_path)
+
+
+@cli.command(
+    name="createRelease",
+    short_help="Creates a new release on GitHub with the given parameters.",
+    help="Creates a new release on GitHub with the given parameters.",
+    epilog="""
+    usage: set_env createRelease <tag_suffix> <release_type> <release_notes> <release_branch>\n
+    Args:\n
+        tag_suffix: str - suffix to add to the tag\n
+        release_type: int -\n
+            1: --prerelease\n
+            2: --latest=false\n
+            3: --latest\n
+        notes: Optional[str] - release notes
+    """,
+)
+@click.argument("tag_suffix", type=click.STRING, required=True)
+@click.option(
+    "--release-type",
+    "-r",
+    type=click.Choice(list(RELEASE_TYPE_OPT.keys()), True),
+    required=True,
+    help="""Release type:\n
+        'p' - --prerelease\n
+        'r' - --latest=false\n
+        'l' - --latest\n""",
+)
+@click.option("--notes", "-n", type=click.STRING, required=False, default=None)
+@click.option("--branch", "-b", type=click.STRING, required=False, default=None)
+def create_release_github(tag_suffix: str, release_type: str, notes: Optional[str], branch: Optional[str]) -> None:
+    """
+    Calls the create_release function from the create_release module
+
+    Args:
+        tag_suffix: str
+        release_type: str
+        notes: Optional[str]
+        branch: str
+    """
+    create_release(tag_suffix, release_type, notes, branch)
+
 
 if __name__ == "__main__":
     try:
