@@ -2,10 +2,11 @@
 
 import os
 from typing import Optional, Callable
-from py.util import formatting
-from py.constants import MSG_OPT
+from py.util.formatting import WorkspaceError, ws_advice
+from py.constants import MSG_OPT, GCLOUD_LOGGIN_OPT
 from py.util.props import AppProperties
 from py.config_environment.graphql_schema import create_schema
+from py.config_environment.gcloud import gcloud_login
 
 
 def echo(message: str, epilog: Optional[str], type_msg: str) -> None:  # previously echo
@@ -24,7 +25,7 @@ def echo(message: str, epilog: Optional[str], type_msg: str) -> None:  # previou
     valid_filters: set[str] = set(fun_dict.keys())
     if type_msg not in valid_filters:
         e = ValueError(f"Invalid message type: {type_msg}")
-        formatting.WorkspaceError.ws_error(f"message type value must be one of:\n {' | '.join(valid_filters)}", e)
+        WorkspaceError.ws_error(f"message type value must be one of:\n {' | '.join(valid_filters)}", e)
         raise e
     msg: str = f"{message}\n{epilog}" if epilog else message
     if type_msg == "A":
@@ -34,7 +35,8 @@ def echo(message: str, epilog: Optional[str], type_msg: str) -> None:  # previou
     else:
         fun_dict[type_msg](msg)
 
-def create_graphql_schema(schema_path:str) -> None:
+
+def create_graphql_schema(schema_path: str) -> None:
     """
     Creates a GraphQL schema file in the working directory.
     """
@@ -46,7 +48,7 @@ def create_graphql_schema(schema_path:str) -> None:
     # verify that the schema path is not empty
     if not os.listdir(schema_abs):
         raise FileNotFoundError(f"Schema path is empty: {schema_abs}")
-    output_file: str = props_inst.retrieve_property('graphql_schema_file')
+    output_file: str = props_inst.retrieve_property("graphql_schema_file")
     # if the schema file already exists, delete it
     if os.path.exists(output_file):
         os.remove(output_file)
@@ -91,19 +93,28 @@ def set_java_version(version: str) -> None:  # previously javaSet
     pass
 
 
-def gcloud_login(type_login: str) -> None:  # previously gcloudSet
+def gcloud_login_env(project:Optional[str],type_login: str) -> None:
     """
     Logs into the gcloud account.
 
     Returns:
         None
     """
-    valid_filters: set[str] = {"B", "U", "A"}
+    valid_filters: set[str] = set(GCLOUD_LOGGIN_OPT.keys())
     if type_login not in valid_filters:
         e = ValueError(f"Invalid loggin type: {type_login}")
-        formatting.WorkspaceError.ws_error(f"logging type value must be one of:\n {' | '.join(valid_filters)}", e)
+        WorkspaceError.ws_error(f"logging type value must be one of:\n {' | '.join(valid_filters)}", e)
         raise e
-    pass
+    # checking if gcloud is installed
+    exit_status:int = os.system("gcloud --version")
+    if exit_status == 0:
+        ws_advice("gcloud is installed and the version command ran successfully.")
+    else:
+        exc = RuntimeError("There was an error running the gcloud version command.")
+        WorkspaceError.ws_error("There was an error running the gcloud version command.", exc)
+        raise exc
+    gcloud_login(type_login, project)
+
 
 
 def setting_workspace() -> None:  # previously untrackGradleProps

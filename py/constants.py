@@ -33,3 +33,5 @@ MSG_OPT: dict[str, Callable] = {
 }
 
 RELEASE_TYPE_OPT: dict[str, str] = {"p": "--prerelease", "r": "--latest=false", "l": "--latest"}
+
+GCLOUD_LOGGIN_OPT: dict[str, str] = {"U": "user", "A": "application", "B": "both"}

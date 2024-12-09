@@ -37,7 +37,7 @@ def main(tag_suffix: str, release_type: str, notes: Optional[str], branch: Optio
         branch = get_current_commit()
     handler.git_fetch()
 
-    if release_type == "l":
+    if release_type.lower() == "l":
         prompt: str = "\nAre you sure you want to create a new latest release? y/n: "
         yes_no_options: list[str] = ["y", "n"]
         if get_validated_input(prompt, yes_no_options) == "y":
@@ -62,7 +62,7 @@ def main(tag_suffix: str, release_type: str, notes: Optional[str], branch: Optio
     # fetching the latest changes
     handler.git_fetch()
 
-    if release_type == "r":
+    if release_type.lower() == "r":
         # getting the new latest release
         new_latest: Release = get_latest_release()
 

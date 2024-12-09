@@ -1,16 +1,31 @@
 """ Sets the environment configuration """
 
-from typing import Optional
+from typing import Callable, Optional
+import os
 import click
 from .branch_cleanup.module import main as branch_cleanup
-from .config_environment.module import echo as msg, create_graphql_schema as graphql_schema
-from .constants import MSG_OPT, REMOTE_BRANCHES_OPT, LOGGING_OPT, SHELL_OPT, RELEASE_TYPE_OPT
+from .config_environment.module import echo as msg, create_graphql_schema as graphql_schema, gcloud_login_env
+from .constants import MSG_OPT, REMOTE_BRANCHES_OPT, LOGGING_OPT, SHELL_OPT, RELEASE_TYPE_OPT, GCLOUD_LOGGIN_OPT
 from .util.formatting import get_traceback
 from .util.props import init_app_properties
 from .diff_tree.module import main as diff_tree
 from .remote_branches.module import main as remote_branches
-from .util.formatting import WorkspaceError, ws_advice
+from .util.formatting import WorkspaceError, ws_advice, ws_success, ws_info, ws_warning
 from .create_release.module import main as create_release
+
+
+def cli_metadata(**metadata) -> Callable:
+    """
+    Decorator to add custom metadata to a command
+    """
+
+    def decorator(f) -> Callable:
+        if not hasattr(f, "metadata"):
+            f.flags = {}
+        f.flags.update(metadata)
+        return f
+
+    return decorator
 
 
 @click.group(
@@ -20,13 +35,27 @@ from .create_release.module import main as create_release
 )
 @click.option("--log-level", "-l", type=click.Choice(list(LOGGING_OPT), False), default="INFO", help="log level")
 @click.option("--shell", type=click.Choice(SHELL_OPT, False), required=True, hidden=True)
+@click.option("--skip-initilization", "-s", is_flag=True, help="Skip initialization in those commands that support it")
 @click.pass_context
-def cli(ctx: click.Context, log_level: str, shell: str) -> None:
+def cli(ctx: click.Context, log_level: str, shell: str, skip_initilization: bool) -> None:
     """cli entry point"""
     try:
+        cmd_name = ctx.invoked_subcommand
+        if cmd_name:
+            ws_advice(f"Invoking subcommand: {cmd_name}")
+            if skip_initilization:
+                # Access params
+                cmd = cli.get_command(ctx, cmd_name)
+                if not cmd:
+                    raise click.ClickException(f"Command '{cmd_name}' not found")
+                # check if the command has cli_metadata
+                metadata = getattr(cmd.callback, "flags", {})
+                flags: Optional[set[str]] = metadata.get("flags")
+                if flags and "skip" in flags:
+                    ws_info("'skip' flag detected. Skipping initialization.")
+                    return
+                ws_warning("'skip' flag detected but not supported by the invoked command. \n Proceeding with initialization.")
         init_app_properties(log_level, shell)
-        if ctx.invoked_subcommand:
-            ws_advice(f"Invoking subcommand: {ctx.invoked_subcommand}")
     except Exception as e:
         print(f"Error during initialization: {e}")
         print(get_traceback(e))
@@ -181,7 +210,7 @@ def create_graphql_schema(schema_path: str) -> None:
 @click.option(
     "--release-type",
     "-r",
-    type=click.Choice(list(RELEASE_TYPE_OPT.keys()), True),
+    type=click.Choice(list(RELEASE_TYPE_OPT.keys()), False),
     required=True,
     help="""Release type:\n
         'p' - --prerelease\n
@@ -201,6 +230,52 @@ def create_release_github(tag_suffix: str, release_type: str, notes: Optional[st
         branch: str
     """
     create_release(tag_suffix, release_type, notes, branch)
+
+
+@cli.command(
+    name="gcloudLogin",
+    short_help="Logs into gcloud — [supports skip mode]",
+    help="Logs into gcloud and sets the project — [supports skip mode]",
+    epilog="""
+             usage: set_env Login [OPTIONS] [project]\n
+                args:\n
+                    project: Optional[str] - project name\n
+                    type-login: str - login type\n
+                        allowed values:\n
+                            'A' - Application Default\n
+                            'U' - User Account\n
+                            'B' - Both\n
+             """,
+)
+@click.argument("type-login", type=click.Choice(list(GCLOUD_LOGGIN_OPT.keys()), False), required=True)
+@click.argument("project", type=click.STRING, required=False, default=None)
+@cli_metadata(flags={"skip"})
+def gcloud_login_click(project: Optional[str], type_login: str) -> None:
+    """
+    Calls the gcloud_login function from the config_environment module
+
+    Args:
+        project: Optional[str]
+        type_login: str
+    """
+    gcloud_login_env(project, type_login)
+
+
+@cli.command(
+    name="gcloudLogout",
+    short_help="Logs out of gcloud — [supports skip mode]",
+    help="Logs out of gcloud — [supports skip mode]",
+    epilog="usage: set_env Logout",
+)
+@cli_metadata(flags={"skip"})
+def gcloud_logout() -> None:
+    """
+    Logs out of gcloud
+    """
+    os.system("gcloud auth revoke 2>/dev/null")
+    ws_success("gcloud account is now logged out.")
+    os.system("gcloud auth application-default revoke 2>/dev/null")
+    ws_success("gcloud application-default credentials are now revoked.")
 
 
 if __name__ == "__main__":
