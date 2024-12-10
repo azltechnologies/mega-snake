@@ -1,5 +1,6 @@
 """ This module contains functions for formatting output messages to the console. """
 
+import subprocess
 import sys
 import os
 import traceback
@@ -12,21 +13,39 @@ from colorama import init, Fore, Style
 # Initialize colopiprama
 init(autoreset=True)
 
-ERROR_CODES: dict[type, int] = {RuntimeError: 101}
+ERROR_CODES: dict[type, int] = {
+    RuntimeError: 101,
+    FileNotFoundError: 102,
+    ValueError: 103,
+    NotImplementedError: 104,
+    IOError: 105,
+    NotADirectoryError: 106,
+    LookupError: 107,
+    IndexError: 108,
+    KeyError: 109,
+    PermissionError: 110,
+    subprocess.SubprocessError: 111,
+    EnvironmentError: 112,
+}
 
 old_hook = sys.excepthook
 
 logger = logging.getLogger(__name__)
 
+
 class ErrorFilter(logging.Filter):
     """Allows only ERROR and CRITICAL levels."""
+
     def filter(self, record) -> bool:
         return record.levelno >= logging.ERROR
 
+
 class DefaultFilter(logging.Filter):
     """Allows only DEBUG, INFO, WARNING levels."""
+
     def filter(self, record) -> bool:
         return record.levelno < logging.ERROR
+
 
 def config_log(path: str, level: int) -> None:
     """
@@ -159,9 +178,10 @@ def ws_tip(prologue: str, epilogue: Optional[str]) -> None:
 
 
 def ws_error(message: str, exception: Optional[BaseException] = None) -> None:
-    """Log and print an exception"""
+    """Log and print an exception while removing the stack trace"""
     if not exception:
         exception = BaseException(message)
+    exception.__traceback__ = None
     _ws_error(exception, message)
 
 
@@ -183,7 +203,7 @@ class WorkspaceError(BaseException):
                 filename = handler.baseFilename
                 break
         if not filename:
-            ws_error(str(parent_exception))
+            ws_error(str(parent_exception),parent_exception)
             super().__init__(self.message)
             return
         self.__traceback__ = parent_exception.__traceback__
