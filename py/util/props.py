@@ -6,7 +6,7 @@ from typing import Optional
 import inspect
 import os
 from datetime import datetime
-from py.util import formatting, logger
+from py.util import formatting
 from py.constants import SHELL_OPT, LOGGING_NAME_TO_LEVEL,LOGGING_LEVEL_TO_NANE
 
 
@@ -20,7 +20,7 @@ def _check_forbidden_execution(method: str, message: str, reload: bool = False, 
             raise PermissionError(f"Operation not permitted: {message} is only allowed during initialization")
         if not props:
             raise ValueError("properties must be set when reloading properties")
-        logger.config_log(props.retrieve_property("local_config_file"), props.log_level)
+        formatting.config_log(props.retrieve_property("local_config_file"), props.log_level)
         formatting.ws_advice(f"Properties reloaded by: {message}")
 
 
@@ -224,7 +224,7 @@ def init_app_properties(log_level: str, shell: Optional[str]) -> None:
     app_props: AppProperties = AppProperties.get_instance()
     path: str = app_props.retrieve_property("log_file")
     level: int = app_props.log_level
-    logger.config_log(path, level)
+    formatting.config_log(path, level)
     formatting.ws_advice(f"set log level: {app_props.log_level}")
     formatting.ws_advice(f"Set working path: {app_props.retrieve_property("working_path")}")
     formatting.ws_advice(f"Set log file: {app_props.retrieve_property("log_file")}")

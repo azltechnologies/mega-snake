@@ -6,7 +6,7 @@ import sys
 from typing import Optional
 import py.create_release.release_handler as handler
 from py.create_release.release import Release, get_latest_release
-from py.util.formatting import WorkspaceError, ws_info, ws_success
+from py.util.formatting import ws_info, ws_success
 from py.util.util import get_validated_input, get_current_commit
 from py.constants import RELEASE_TYPE_OPT
 
@@ -31,8 +31,7 @@ def main(tag_suffix: str, release_type: str, notes: Optional[str], branch: Optio
         if release_type not in RELEASE_TYPE_OPT:
             raise ValueError(f"Invalid release type: {release_type}. Exiting.")
     except (IndexError, ValueError) as e:
-        WorkspaceError.ws_error("Usage: create_release.py <tag_suffix> <release_type> <release_notes> <release_branch>", e)
-        raise e
+        raise IndexError(f"release_type must be one of: {RELEASE_TYPE_OPT.keys()}") from e
     if not branch:
         branch = get_current_commit()
     handler.git_fetch()
@@ -44,9 +43,7 @@ def main(tag_suffix: str, release_type: str, notes: Optional[str], branch: Optio
             ws_info("Exiting.")
             sys.exit(0)
     if release_type not in RELEASE_TYPE_OPT:
-        exc = ValueError(f"Invalid release type: {release_type}. Exiting.")
-        WorkspaceError.ws_error(f"Please enter one of:\n {' | '.join(RELEASE_TYPE_OPT.keys())}", exc)
-        raise exc
+        raise ValueError(f"Invalid release type: {release_type}; Please enter one of:\n {' | '.join(RELEASE_TYPE_OPT.keys())}")
     # getting the latest release
     latest_release: Release = get_latest_release()
 

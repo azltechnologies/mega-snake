@@ -4,7 +4,7 @@ import dataclasses
 from datetime import datetime
 import subprocess
 import py.create_release.release_handler as handler
-from py.util.formatting import ws_info, ws_advice, WorkspaceError
+from py.util.formatting import ws_info, ws_advice
 
 
 @dataclasses.dataclass
@@ -76,10 +76,7 @@ class Release:
                 return new_tag_name  # Return the first non-existing tag
             i += 1
         # if no tag was found, throw error
-        e = ValueError(f"Could not find a non-existing tag after {attemps} attempts. Exiting.")
-        WorkspaceError.ws_error(f"Could'nt find a tag for {tag_name}-{suffix}", e)
-        raise e
-
+        raise subprocess.SubprocessError(f"Could not find a non-existing tag for {tag_name}-{suffix} after {attemps} attempts. Exiting.")
 
 
 def _create_release_list(list_string: str) -> list[Release]:

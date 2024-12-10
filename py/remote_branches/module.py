@@ -3,7 +3,7 @@
 import re
 import os
 from typing import Optional
-from py.util.formatting import WorkspaceError, ws_info
+from py.util.formatting import ws_info
 from py.util.remote_branch import RemoteBranch
 from py.util.util import run_operation, get_main_branch
 from py.util.props import AppProperties
@@ -23,9 +23,7 @@ def main(filter_by: str) -> None:
         filter: str
     """
     if filter_by not in REMOTE_BRANCHES_OPT:
-        e = ValueError(f"Invalid filter: {filter_by}")
-        WorkspaceError.ws_error(f"filter value must be one of:\n {' | '.join(REMOTE_BRANCHES_OPT)}", e)
-        raise e
+        raise ValueError(f"Invalid filter: {filter_by}; filter value must be one of:\n {' | '.join(REMOTE_BRANCHES_OPT)}")
     main_branch: str = get_main_branch()
     list_output: str = get_output_file()
     # check if list_output directory exists. if so, delete it
@@ -35,9 +33,7 @@ def main(filter_by: str) -> None:
     opt_remote_branches: list[Optional[RemoteBranch]] = []
     branches: str = run_operation("git branch -a", "Getting remote branches").stdout.strip()
     if not branches:
-        exc = ValueError("No remote branches found in the current repository")
-        WorkspaceError.ws_error("No remote branches found", exc)
-        raise exc
+        raise ValueError("No remote branches found in the current repository")
     branches = f"{branches}\n remotes/origin/HEAD master"
     matches = re.findall(r"^\s*(remotes/(?!origin/HEAD).+)$", branches, re.MULTILINE)
     total_branches = len(matches)

@@ -282,4 +282,4 @@ if __name__ == "__main__":
     try:
         cli.main(prog_name="set_env")
     except Exception as e:
-        raise WorkspaceError("Error during initialization", e) from e
+        raise WorkspaceError("Error during cli execution", e) from e

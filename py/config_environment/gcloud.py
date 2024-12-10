@@ -2,7 +2,7 @@
 
 import os
 from typing import Optional
-from py.util.formatting import WorkspaceError, ws_info, ws_success, ws_tip
+from py.util.formatting import ws_info, ws_success, ws_tip
 from py.util.util import run_operation
 
 
@@ -38,9 +38,7 @@ def user_login() -> None:
     else:
         exit_status = os.system("gcloud auth application-default login")
         if exit_status != 0:
-            e = RuntimeError("There was an error running the gcloud auth application-default login command.")
-            WorkspaceError.ws_error("There was an error running the gcloud auth application-default login command.", e)
-            raise e
+            raise RuntimeError("There was an error running the gcloud auth application-default login command.")
         ws_success("gcloud application-default credentials are now set.")
 
 
@@ -57,9 +55,7 @@ def app_login() -> None:
     else:
         exit_status = os.system("gcloud auth login")
         if exit_status != 0:
-            e = RuntimeError("There was an error running the gcloud auth login command.")
-            WorkspaceError.ws_error("There was an error running the gcloud auth login command.", e)
-            raise e
+            raise RuntimeError("There was an error running the gcloud auth login command.")
         ws_success("gcloud account is now set.")
 
 
@@ -75,14 +71,10 @@ def project_set(project: str) -> None:
         ws_tip("Current project:", current_project)
         exit_status = os.system(f"gcloud config set project {project}")
         if exit_status != 0:
-            e = RuntimeError(f"There was an error running the gcloud config set project {project} command.")
-            WorkspaceError.ws_error(f"There was an error running the gcloud config set project {project} command.", e)
-            raise e
+            raise RuntimeError(f"There was an error running the gcloud config set project {project} command.")
         new_project: str = run_operation("gcloud config get-value project", "Getting new project").stdout.strip()
         if new_project != project:
-            exc = RuntimeError("The project was not set to the specified project.")
-            WorkspaceError.ws_error("The project was not set to the specified project.", exc)
-            raise exc
+            raise RuntimeError("gcloud: The project was not set to the specified project.")
         ws_success(f"Project is now set to {project}")
     else:
         ws_info("Project was already set to the specified project.")

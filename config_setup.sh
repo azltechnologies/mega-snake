@@ -18,7 +18,13 @@ set_env() {
     source "$PYTHON_ENV"
     export PYTHONPATH="$WS_CONFIG_HOME"
     python3 -m $PY_MODULE --shell "$WS_SHELL" "$@"
+
+    # catch exit code
+    local exit_code=$?
+
     deactivate
+
+    return $exit_code
 }
 ws_tip "set_env" "use python version"
 setup_env() {

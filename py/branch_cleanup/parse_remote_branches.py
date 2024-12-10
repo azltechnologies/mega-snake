@@ -69,5 +69,5 @@ def delete_branches(garbage: list[str]) -> None:
             result = run_operation(f'git push -d origin "{branch}" 2>&1', f"Deleting branch {branch}")
             ws_success(result.stdout.strip())
             continue  # Continue to the next branch
-        except subprocess.CalledProcessError:
+        except subprocess.SubprocessError:
             continue

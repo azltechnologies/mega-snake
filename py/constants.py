@@ -27,7 +27,7 @@ MSG_OPT: dict[str, Callable] = {
     "S": formatting.ws_success,
     "I": formatting.ws_info,
     "W": formatting.ws_warning,
-    "E": formatting.WorkspaceError.ws_error,
+    "E": formatting.ws_error,
     "A": formatting.ws_advice,
     "T": formatting.ws_tip,
 }

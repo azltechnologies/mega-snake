@@ -5,7 +5,7 @@ This module contains utility functions for common operations.
 import re
 import subprocess
 import time
-from py.util.formatting import ws_advice, ws_warning, WorkspaceError
+from py.util.formatting import ws_advice, ws_warning
 
 
 def run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str]:
@@ -32,12 +32,9 @@ def run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str
             ws_warning(f"{description} failed on attempt {attempt}. Error: {error.stdout}")
             ws_warning(f"Error details: {error.stderr}")
             if attempt == num_retries:
-                WorkspaceError.ws_error(f"{description} failed after {num_retries} attempts. Giving up.", error)
-                raise error
+                raise subprocess.SubprocessError(f"{description} failed after {num_retries} attempts. Error: {error.stderr}") from error
             ws_warning(f"Retrying {description} in 2 seconds...")
             time.sleep(2)  # Wait 2 seconds before retrying
-        except Exception as error:
-            raise WorkspaceError("Error creating diff tree", error) from error
     return result
 
 
@@ -48,28 +45,21 @@ def get_main_branch() -> str:
     Returns:
         str
     """
-    remotes:list[str] = run_operation("git remote", "Getting remotes").stdout.strip().split("\n")
+    remotes: list[str] = run_operation("git remote", "Getting remotes").stdout.strip().split("\n")
     if not remotes:
-        exc = ValueError("No remotes found in the current repository")
-        WorkspaceError.ws_error("No remotes found in the current repository", exc)
-        raise exc
+        raise ValueError("No remotes found in the current repository")
     if len(remotes) > 1:
-        ex = NotImplementedError("Multiple remotes found in the current repository")
-        WorkspaceError.ws_error("Operations with multiple remotes are not supported", ex)
-        raise ex
+        raise NotImplementedError("Multiple remotes found in the current repository; Operations with multiple remotes are not supported")
     ws_warning(f"{len(remotes)}")
     result = run_operation(f"git remote show {remotes[0]}", "Getting main branch").stdout.strip()
     if not result:
-        e = LookupError(f"No main branch found in the current repository for remote {remotes[0]}")
-        WorkspaceError.ws_error("No main branch found", e)
-        raise e
+        raise LookupError(f"No main branch found in the current repository for remote {remotes[0]}")
     pattern = r"^(\s*HEAD branch:\s*)(\S+)"
     match = re.search(pattern, result, re.MULTILINE)
     if match:
         return match.group(2)
-    exception = LookupError("No main branch found in the current repository")
-    WorkspaceError.ws_error("No main branch found", exception)
-    raise exception
+    raise LookupError("No main branch found in the current repository")
+
 
 def get_current_commit() -> str:
     """
@@ -100,6 +90,4 @@ def get_validated_input(prompt: str, valid_values: list[str]) -> str:
         print(f"Invalid input. Please enter one of:\n {' | '.join(valid_values)}")
         tries += 1
         if tries > 3:
-            error = KeyError("Too many invalid inputs. Exiting.")
-            WorkspaceError.ws_error(f"Too many invalid inputs for '{prompt}'. Exiting.", error)
-            raise error
+            raise KeyError(f"Too many invalid inputs for '{prompt}'. Exiting.")

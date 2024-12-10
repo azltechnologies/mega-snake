@@ -3,7 +3,7 @@
 import os
 from typing import Optional
 from directory_tree import DisplayTree
-from py.util.formatting import WorkspaceError, ws_info, ws_success
+from py.util.formatting import ws_info, ws_success
 from py.util.util import run_operation, get_main_branch, get_current_commit
 from py.util.props import AppProperties
 from py.diff_tree.file_type import FileType
@@ -36,9 +36,7 @@ def main(commit_hash: Optional[str] = None) -> None:
             f"git cat-file -t {commit_hash} 2>/dev/null", f"Checking if commit hash '{commit_hash}' is valid"
         ).stdout.strip()
         if commit_validation != "commit":
-            e = ValueError(f"Invalid commit hash: {commit_hash}")
-            WorkspaceError.ws_error(f"Invalid commit hash: {commit_hash}",e)
-            raise e
+            raise ValueError(f"Invalid commit hash: {commit_hash}")
         main_branch = commit_hash
     diff_str: str = run_operation(
         f"git diff-tree -r {main_branch} {current_branch}", f"getting differences between '{main_branch}' and '{current_branch}' branches"

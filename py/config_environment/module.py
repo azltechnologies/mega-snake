@@ -2,7 +2,7 @@
 
 import os
 from typing import Optional, Callable
-from py.util.formatting import WorkspaceError, ws_advice
+from py.util.formatting import ws_advice
 from py.constants import MSG_OPT, GCLOUD_LOGGIN_OPT
 from py.util.props import AppProperties
 from py.config_environment.graphql_schema import create_schema
@@ -24,9 +24,7 @@ def echo(message: str, epilog: Optional[str], type_msg: str) -> None:  # previou
     fun_dict: dict[str, Callable] = MSG_OPT
     valid_filters: set[str] = set(fun_dict.keys())
     if type_msg not in valid_filters:
-        e = ValueError(f"Invalid message type: {type_msg}")
-        WorkspaceError.ws_error(f"message type value must be one of:\n {' | '.join(valid_filters)}", e)
-        raise e
+        raise ValueError(f"Invalid message type: {type_msg}; message type value must be one of:\n {' | '.join(valid_filters)}")
     msg: str = f"{message}\n{epilog}" if epilog else message
     if type_msg == "A":
         fun_dict[type_msg](msg, True)
@@ -102,17 +100,13 @@ def gcloud_login_env(project:Optional[str],type_login: str) -> None:
     """
     valid_filters: set[str] = set(GCLOUD_LOGGIN_OPT.keys())
     if type_login not in valid_filters:
-        e = ValueError(f"Invalid loggin type: {type_login}")
-        WorkspaceError.ws_error(f"logging type value must be one of:\n {' | '.join(valid_filters)}", e)
-        raise e
+        raise ValueError(f"Invalid loggin type: {type_login}; logging type value must be one of:\n {' | '.join(valid_filters)}")
     # checking if gcloud is installed
     exit_status:int = os.system("gcloud --version")
     if exit_status == 0:
         ws_advice("gcloud is installed and the version command ran successfully.")
     else:
-        exc = RuntimeError("There was an error running the gcloud version command.")
-        WorkspaceError.ws_error("There was an error running the gcloud version command.", exc)
-        raise exc
+        raise RuntimeError("There was an error running the gcloud version command.")
     gcloud_login(type_login, project)
 
 

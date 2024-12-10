@@ -12,5 +12,10 @@ function set_env {
     
     python3 -m $py_module --shell "$ws_shell" $args
 
+    # catch exit code
+    $exit_code=$LASTEXITCODE
+
     deactivate
+
+    return $exit_code
 }
