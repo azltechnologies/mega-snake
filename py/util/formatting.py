@@ -8,7 +8,7 @@ import re
 import logging
 from types import TracebackType
 from typing import Optional
-from colorama import init, Fore, Style
+from colorama import init, Fore, Style, Back
 
 # Initialize colopiprama
 init(autoreset=True)
@@ -107,19 +107,19 @@ def get_traceback(e: BaseException) -> str:
 
 def ws_success(message: str) -> None:
     """Print a success message"""
-    print(Fore.CYAN + message)
+    print(Fore.BLUE + Back.CYAN + message)
     logger.info(message, stacklevel=2)
 
 
 def ws_info(message: str) -> None:
     """Print an informational message"""
-    print(Fore.BLUE + message)
+    print(Fore.WHITE + Back.BLUE  + message)
     logger.info(message, stacklevel=2)
 
 
 def ws_warning(message: str) -> None:
     """Print a warning message"""
-    print(Fore.YELLOW + message)
+    print(Fore.BLACK + Back.YELLOW+ message)
     logger.warning(message, stacklevel=2)
 
 
@@ -128,7 +128,7 @@ def _ws_error(error: BaseException, message: Optional[str] = None) -> None:
     """Print an error message"""
     if not message:
         message = str(error)
-    print(Fore.RED + message)
+    print(Fore.BLACK + Back.RED + message)
     # Capture the traceback
     tb = traceback.extract_tb(error.__traceback__)
     func_name: str = "unknown function"
@@ -161,7 +161,7 @@ def ws_advice(message: str, force: bool = False) -> None:
     # check if LOG_LEVEL is set to DEBUG
     log_level = logger.level
     if log_level == logging.DEBUG or force:
-        print(Fore.GREEN + message)
+        print(Fore.GREEN + Back.BLACK + message)
         logger.debug(message, stacklevel=2)
 
 
@@ -172,7 +172,7 @@ def ws_tip(prologue: str, epilogue: Optional[str]) -> None:
     red = Fore.RED
     yellow = Fore.YELLOW
     nc = Style.RESET_ALL  # No Color
-    tip: str = f"{green}Hey! {red}'{prologue}'{green}{yellow}{epilogue}{nc}."
+    tip: str = f"{Back.BLACK}{green}Hey! {red}'{prologue}'{green}{yellow}{epilogue}{nc}."
     print(tip)
     logger.info("%s %s", prologue, epilogue, stacklevel=2)
 

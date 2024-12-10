@@ -17,5 +17,5 @@ function set_env {
 
     deactivate
 
-    return $exit_code
+    $global:LASTEXITCODE = $exit_code
 }
