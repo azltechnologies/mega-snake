@@ -5,8 +5,11 @@ This module contains utility functions for common operations.
 import re
 import subprocess
 import time
+from colorama import init, Fore, Back
 from py.util.formatting import ws_advice, ws_warning
 
+# Initialize colopiprama
+init(autoreset=True)
 
 def run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str]:
     """
@@ -72,7 +75,7 @@ def get_current_commit() -> str:
     return result
 
 
-def get_validated_input(prompt: str, valid_values: list[str]) -> str:
+def get_validated_input(p_prompt: str, valid_values: list[str]) -> str:
     """
     Get user input and validate against allowed values
 
@@ -80,14 +83,17 @@ def get_validated_input(prompt: str, valid_values: list[str]) -> str:
         prompt: str
         valid_values: set[str]
     """
+    warn:str = f"Invalid input. Please enter one of:\n {' | '.join(valid_values)}"
     tries: int = 0
+    prompt = p_prompt
     while True:
         user_input = input(f"\n{prompt}\n").lower()
         # convert to lowercase all the values in valid_values
         valid_values = [value.lower() for value in valid_values]
         if user_input in valid_values:
             return user_input
-        print(f"Invalid input. Please enter one of:\n {' | '.join(valid_values)}")
+        prompt = f"{Back.BLACK}{Fore.YELLOW}{p_prompt}\ttry again\t—\t{3-tries} attempts left"
+        ws_warning(warn)
         tries += 1
         if tries > 3:
             raise KeyError(f"Too many invalid inputs for '{prompt}'. Exiting.")

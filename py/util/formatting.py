@@ -119,7 +119,7 @@ def ws_info(message: str) -> None:
 
 def ws_warning(message: str) -> None:
     """Print a warning message"""
-    print(Fore.BLACK + Back.YELLOW+ message)
+    print(Fore.YELLOW + Back.BLACK+ message)
     logger.warning(message, stacklevel=2)
 
 
@@ -128,7 +128,7 @@ def _ws_error(error: BaseException, message: Optional[str] = None) -> None:
     """Print an error message"""
     if not message:
         message = str(error)
-    print(Fore.BLACK + Back.RED + message)
+    print(Back.BLACK + Fore.RED + message)
     # Capture the traceback
     tb = traceback.extract_tb(error.__traceback__)
     func_name: str = "unknown function"

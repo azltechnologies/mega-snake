@@ -1,13 +1,14 @@
 """ Properties for the application """
 
 from dataclasses import dataclass, field
+import glob
 from configparser import ConfigParser
 from typing import Optional
 import inspect
 import os
 from datetime import datetime
 from py.util import formatting
-from py.constants import SHELL_OPT, LOGGING_NAME_TO_LEVEL,LOGGING_LEVEL_TO_NANE
+from py.constants import SHELL_OPT, LOGGING_NAME_TO_LEVEL, LOGGING_LEVEL_TO_NANE
 
 
 def _check_forbidden_execution(method: str, message: str, reload: bool = False, props: Optional["AppProperties"] = None) -> None:
@@ -78,7 +79,7 @@ class AppProperties:
         return self._log_level
 
     @log_level.setter
-    def log_level(self, value: int)-> None:
+    def log_level(self, value: int) -> None:
         try:
             level: str = LOGGING_LEVEL_TO_NANE[value]
             if level is None:
@@ -88,7 +89,7 @@ class AppProperties:
             raise KeyError(f"Invalid log level: {value}, must be one of {LOGGING_LEVEL_TO_NANE.keys()}") from e
         _check_forbidden_execution("__init__", "log_level setter method execution", True, self)
 
-    def log_level_from_str(self, value: str)-> None:
+    def log_level_from_str(self, value: str) -> None:
         """Set the log level from a string"""
         try:
             level: int = LOGGING_NAME_TO_LEVEL[value]
@@ -98,7 +99,7 @@ class AppProperties:
             raise KeyError(f"Invalid log level: {value}, must be one of {LOGGING_NAME_TO_LEVEL.keys()}") from e
         self.log_level = level
 
-    def __working_path_validator(self, value: str)-> None:
+    def __working_path_validator(self, value: str) -> None:
         # Convert the path to an absolute path
         working_path = os.path.abspath(value)
         # Check if the path exists
@@ -145,13 +146,14 @@ class AppProperties:
         working_path: str = check_property("working_path", properties)
         log_file: str = check_property("log_file_name", properties)
         local_config_file: str = check_property("local_config_file_name", properties)
-        graphql_schema_file:str = check_property("graphql_schema_file_name", properties)
+        graphql_schema_file: str = check_property("graphql_schema_file_name", properties)
         self.log_level_from_str(log_level)
         self.__working_path_validator(working_path)
         self.__log_file_validator(log_file)
         self.__shell_validator(shell)
         self.__local_config_file_validator(local_config_file)
         self.props["graphql_schema_file"] = f"{self.props["working_path"]}/{graphql_schema_file}"
+        self.props["workspace_file"] = find_code_workspace_files(f"{self.props["working_path"]}/..")
         self.__post_init__()
 
     def __post_init__(self) -> None:
@@ -163,7 +165,7 @@ class AppProperties:
     def get_instance() -> "AppProperties":
         """
         Get the instance of the class
-        
+
         Returns:
             AppProperties: The instance of the class
         """
@@ -230,3 +232,20 @@ def init_app_properties(log_level: str, shell: Optional[str]) -> None:
     formatting.ws_advice(f"Set log file: {app_props.retrieve_property("log_file")}")
     formatting.ws_advice(f"Set shell: {app_props.retrieve_property("shell")}")
     formatting.ws_advice(f"Set local config file: {app_props.retrieve_property("local_config_file")}")
+
+
+def find_code_workspace_files(directory: str) -> str:
+    """
+    Find the .code-workspace file in the specified directory
+    """
+    # Find all .code-workspace files in the specified directory
+    workspace_files = glob.glob(os.path.join(directory, "*.code-workspace"))
+
+    # Check if there is more than one .code-workspace file
+    if len(workspace_files) > 1:
+        raise RuntimeError("Multiple .code-workspace files found.")
+    if len(workspace_files) == 0:
+        raise FileNotFoundError("No .code-workspace file found.")
+
+    # Return the absolute path of the .code-workspace file
+    return os.path.abspath(workspace_files[0])

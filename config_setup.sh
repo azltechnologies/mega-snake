@@ -10,11 +10,11 @@ else
 fi
 source $WS_CONFIG_HOME/src/formatting.sh #ya
 set_env() {
-    PROP_FILE="$WS_CONFIG_HOME/config.properties"
+    local PROP_FILE="$WS_CONFIG_HOME/config.properties"
 
-    RE_PY_ENV=$(grep "python_virtual_bash" "$PROP_FILE" | sed 's/python_virtual_bash=//')
-    PY_MODULE=$(grep "python_module" "$PROP_FILE" | sed 's/python_module=//')
-    PYTHON_ENV="$WS_CONFIG_HOME/$RE_PY_ENV"
+    local RE_PY_ENV=$(grep "python_virtual_bash" "$PROP_FILE" | sed 's/python_virtual_bash=//')
+    local PY_MODULE=$(grep "python_module" "$PROP_FILE" | sed 's/python_module=//')
+    local PYTHON_ENV="$WS_CONFIG_HOME/$RE_PY_ENV"
     source "$PYTHON_ENV"
     export PYTHONPATH="$WS_CONFIG_HOME"
     python3 -m $PY_MODULE --shell "$WS_SHELL" "$@"
@@ -27,6 +27,20 @@ set_env() {
     return $exit_code
 }
 ws_tip "set_env" "use python version"
+l_reload() {
+    local PROP_FILE="$WS_CONFIG_HOME/config.properties"
+    local LOCAL_CONFIG=$(grep "local_config_file_name" "$PROP_FILE" | sed 's/local_config_file_name=//')
+    local local_config_file="$PWD/$LOCAL_CONFIG.sh"
+    if [ -f "$local_config_file" ]; then
+        set_env msg -t i "Reloading $local_config_file"
+        source $local_config_file
+    else
+        set_env msg -t w "No local config file found"
+    fi
+}
+
+l_reload
+set_env msg -t t "l_reload" ": use this function to reload the local config file"
 setup_env() {
     export WS_TEMP="./workspace_temp"
 

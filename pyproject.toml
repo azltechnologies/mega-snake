@@ -19,6 +19,9 @@ types-colorama = "0.4.15.20240311"
 virtualenv = "20.27.1"
 astroid = "3.3.5"
 click = "8.1.7"
+jq = "1.8.0"
+json-spec = "0.12.0"
+jsoncomment = "0.4.2"
 
 
 [build-system]
@@ -26,4 +29,22 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.mypy]
-disable-error-code = ["import-untyped"]
+python_version = "3.13"
+disable_error_code = ["import-untyped"]
+mypy_path = "./out"
+
+[tool.pylint.master]
+init-hook = 'import sys; sys.path.append("/Users/carlosmorales/IdeaProjects/stuff/.venv/lib/python3.13/site-packages")'
+load-plugins = ["py.util.custom_checkers"]
+ignore = ["out/*"]
+
+[tool.pylint.messages_control]
+enable = ["MissingReturnTypeChecker"]
+disable = ["R0903", "I1101"]
+
+[tool.pylint.format]
+max-line-length = 200
+
+[tool.pylint.design]
+max-args = 10
+max-positional-arguments = 8
