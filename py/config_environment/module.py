@@ -7,6 +7,7 @@ from py.constants import MSG_OPT, GCLOUD_LOGGIN_OPT
 from py.util.props import AppProperties
 from py.config_environment.graphql_schema import create_schema
 from py.config_environment.gcloud import gcloud_login
+from py.config_environment.java_set import java_set
 
 
 def echo(message: str, epilog: Optional[str], type_msg: str) -> None:  # previously echo
@@ -78,7 +79,7 @@ def set_gradle_version(version: str) -> None:  # previously gradleSet
     pass
 
 
-def set_java_version(version: str) -> None:  # previously javaSet
+def set_java_version(override: bool) -> None:  # previously javaSet
     """
     Sets the java version to be used in the project.
 
@@ -88,10 +89,15 @@ def set_java_version(version: str) -> None:  # previously javaSet
     Returns:
         None
     """
-    pass
+    props_inst: AppProperties = AppProperties.get_instance()
+    workspace_file: str = props_inst.retrieve_property("workspace_file")
+    working_path: str = props_inst.retrieve_property("working_path")
+    local_file = props_inst.retrieve_property("local_config_file")
+    shell = props_inst.retrieve_property("shell")
+    java_set(workspace_file, working_path, local_file, shell, override)
 
 
-def gcloud_login_env(project:Optional[str],type_login: str) -> None:
+def gcloud_login_env(project: Optional[str], type_login: str) -> None:
     """
     Logs into the gcloud account.
 
@@ -102,13 +108,12 @@ def gcloud_login_env(project:Optional[str],type_login: str) -> None:
     if type_login not in valid_filters:
         raise ValueError(f"Invalid loggin type: {type_login}; logging type value must be one of:\n {' | '.join(valid_filters)}")
     # checking if gcloud is installed
-    exit_status:int = os.system("gcloud --version")
+    exit_status: int = os.system("gcloud --version")
     if exit_status == 0:
         ws_advice("gcloud is installed and the version command ran successfully.")
     else:
         raise RuntimeError("There was an error running the gcloud version command.")
     gcloud_login(type_login, project)
-
 
 
 def setting_workspace() -> None:  # previously untrackGradleProps

@@ -128,9 +128,11 @@ class AppProperties:
             raise ValueError(f"Invalid shell: {value}, must be one of {SHELL_OPT}")
         self.props["shell"] = value
 
-    def __local_config_file_validator(self, value: str) -> None:
-        _check_forbidden_execution("__init__", "local_config_file setter method execution")
-        self.props["local_config_file"] = f"{self.props["working_path"]}/{value}"
+    def __adding_prop_validator(self, key: str, value: str) -> None:
+        _check_forbidden_execution("__init__", "new property setter method execution")
+        if not value:
+            raise ValueError(f"Property {key} is not set")
+        self.props[key] = value
 
     def __init__(self, log_level: str, shell: str, properties: dict[str, str]) -> None:
         """
@@ -151,8 +153,8 @@ class AppProperties:
         self.__working_path_validator(working_path)
         self.__log_file_validator(log_file)
         self.__shell_validator(shell)
-        self.__local_config_file_validator(local_config_file)
-        self.props["graphql_schema_file"] = f"{self.props["working_path"]}/{graphql_schema_file}"
+        self.__adding_prop_validator("local_config_file", f"{self.props["working_path"]}/{local_config_file}")
+        self.__adding_prop_validator("graphql_schema_file", f"{self.props["working_path"]}/{graphql_schema_file}")
         self.props["workspace_file"] = find_code_workspace_files(f"{self.props["working_path"]}/..")
         self.__post_init__()
 

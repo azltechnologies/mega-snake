@@ -4,7 +4,7 @@ from typing import Callable, Optional
 import os
 import click
 from .branch_cleanup.module import main as branch_cleanup
-from .config_environment.module import echo as msg, create_graphql_schema as graphql_schema, gcloud_login_env
+from .config_environment.module import echo as msg, create_graphql_schema as graphql_schema, gcloud_login_env, set_java_version as java
 from .constants import MSG_OPT, REMOTE_BRANCHES_OPT, LOGGING_OPT, SHELL_OPT, RELEASE_TYPE_OPT, GCLOUD_LOGGIN_OPT
 from .util.formatting import get_traceback
 from .util.props import init_app_properties
@@ -277,6 +277,24 @@ def gcloud_logout() -> None:
     os.system("gcloud auth application-default revoke 2>/dev/null")
     ws_success("gcloud application-default credentials are now revoked.")
 
+@cli.command(
+    name="setJavaVersion",
+    short_help="Sets the default Java version on the workspace",
+    help="Sets the default Java version on the workspace",
+    epilog="""usage: set_env setJavaVersion [OPTIONS]\n
+    OPTIONS:\n
+        -o | --override: Optional[bool] - Override the current Java version\n
+    """
+)
+@click.option("--override", "-o", is_flag=True, help="Override the current Java version")
+def set_java_version(override: bool) -> None:
+    """
+    Calls the set_java function from the config_environment module
+
+    Args:
+        override: bool
+    """
+    java(override)
 
 if __name__ == "__main__":
     try:
