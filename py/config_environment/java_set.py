@@ -63,10 +63,10 @@ def java_set(workspace_file: str, working_path: str, local_file: str, shell: str
     versions: list[JavaVersion] = get_versions()
     json_data: Any = load_json_with_comments(workspace_file)
     version: Optional[JavaVersion] = None
+    version_local: Optional[JavaVersion] = None
+    version_environment: Optional[JavaVersion] = None
+    version_runtime: Optional[JavaVersion] = None
     if not override:
-        version_local: Optional[JavaVersion] = None
-        version_environment: Optional[JavaVersion] = None
-        version_runtime: Optional[JavaVersion] = None
 
         # Check if the Java version is already set in the workspace settings
         result: Optional[str] = jq.compile(JAVA_JQ_QUERY).input(json_data).first()
