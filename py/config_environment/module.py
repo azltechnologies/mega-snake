@@ -8,6 +8,7 @@ from py.util.props import AppProperties
 from py.config_environment.graphql_schema import create_schema
 from py.config_environment.gcloud import gcloud_login
 from py.config_environment.java_set import java_set
+from py.config_environment.gradle_set import gradle_set
 
 
 def echo(message: str, epilog: Optional[str], type_msg: str) -> None:  # previously echo
@@ -66,28 +67,27 @@ def initial_load() -> None:  # previously initialLoad
     pass
 
 
-def set_gradle_version(version: str) -> None:  # previously gradleSet
+def set_gradle_version(override: bool) -> None:  # previously gradleSet
     """
-    Sets the gradle version to be used in the project.
+    Sets the gradle version for the project.
 
     Args:
-        version (str): The version of gradle to be used.
-
-    Returns:
-        None
+        override (bool): A boolean value to override the current gradle version.
     """
-    pass
+    props_inst: AppProperties = AppProperties.get_instance()
+    workspace_file: str = props_inst.retrieve_property("workspace_file")
+    working_path: str = props_inst.retrieve_property("working_path")
+    local_file = props_inst.retrieve_property("local_config_file")
+    shell = props_inst.retrieve_property("shell")
+    gradle_set(workspace_file, working_path, local_file, shell, override)
 
 
 def set_java_version(override: bool) -> None:  # previously javaSet
     """
-    Sets the java version to be used in the project.
+    Sets the java version for the project.
 
     Args:
-        version (str): The version of java to be used.
-
-    Returns:
-        None
+        override (bool): A boolean value to override the current java version.
     """
     props_inst: AppProperties = AppProperties.get_instance()
     workspace_file: str = props_inst.retrieve_property("workspace_file")

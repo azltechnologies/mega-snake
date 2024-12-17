@@ -18,8 +18,6 @@ ENV_VARIABLE = f"terminal.integrated.env.{OS_MAP[OS]}"
 JAVA_JQ_QUERY = f'.settings["{ENV_VARIABLE}"].JAVA_HOME'
 JAVA_RUNTIME_QUERY = '.settings.["java.configuration.runtimes"]'
 JAVA_RUNTIME_PATH = f"{JAVA_RUNTIME_QUERY} | map(select(.default == true)) | if length == 1 then .[0].path else null end"
-JAVA_HOME = "JAVA_HOME"
-PATH = "PATH"
 
 
 @dataclass(unsafe_hash=True)
@@ -46,6 +44,18 @@ class JavaVersion:
 
     def __str__(self) -> str:
         return f"Id: {self.id}\n\tJava Version: {self.version}\n\tpath: {self.path}\n\tDescription: {self.description}\n"
+
+
+def get_version_number(version: str) -> float:
+    """Convert version string to numeric value for sorting.
+
+    Returns:
+        float: Numeric version value
+    """
+    parts = version.split(".")
+    if len(parts) >= 2:
+        return float(f"{parts[0]}.{parts[1]}")
+    return float(parts[0])
 
 
 def java_set(workspace_file: str, working_path: str, local_file: str, shell: str, override: bool) -> None:
@@ -251,6 +261,8 @@ def get_versions() -> list[JavaVersion]:
     if OS == "Darwin":
         versions: str = run_operation("/usr/libexec/java_home -V 2>&1", "Getting Java versions").stdout.strip()
         matches = re.findall(r"^\s*([0-9\._]+)\s+(.+\")\s*(/.+$)", versions, re.MULTILINE)
+        # order matches by version number
+        matches = sorted(matches, key=lambda x: get_version_number(x[0].strip()), reverse=True)
         version_list = [JavaVersion(version=version[0].strip(), path=version[2].strip(), description=version[1].strip()) for version in matches]
     return version_list
 
