@@ -161,13 +161,18 @@ def set_version_local_config(version: GradleVersion, local_parh: str, shell: str
             local_file_data = file.read()
         match shell:
             case "powershell":
+                local_file_data = re.sub(r"^\s*\$env:GRADLE_HOME\s*=.+$", "", local_file_data, flags=re.MULTILINE)
+                local_file_data = re.sub(r"^\s*\$env:PATH\s*=\s*\"\$env:GRADLE_HOME\\bin:\$env:PATH\"$", "", local_file_data, flags=re.MULTILINE)
                 new_line_gradle = f'$env:GRADLE_HOME = "{version.path}"'
                 new_line_update_path = '$env:PATH = "$env:GRADLE_HOME\\bin:$env:PATH"'
             case "bash" | "zsh":
+                local_file_data = re.sub(r"^\s*export GRADLE_HOME=.+$", "", local_file_data, flags=re.MULTILINE)
+                local_file_data = re.sub(r"^\s*export PATH=\$GRADLE_HOME/bin:\$PATH$", "", local_file_data, flags=re.MULTILINE)
                 new_line_gradle = f"export GRADLE_HOME='{version.path}'"
                 new_line_update_path = "export PATH=$GRADLE_HOME/bin:$PATH"
             case _:
                 raise NotImplementedError(f"{shell} not supported for setting Gradle version")
+        local_file_data = local_file_data.replace("\n\n", "")
         with open(local_parh, "w", encoding="utf-8") as file:
             file.write(f"{new_line_gradle}\n{new_line_update_path}\n{local_file_data}")
         ws_success(f"Gradle version {version.version} stored in local settings as default")

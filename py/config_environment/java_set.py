@@ -158,13 +158,18 @@ def set_version_local_config(version: JavaVersion, local_parh: str, shell: str) 
             local_file_data = file.read()
         match shell:
             case "powershell":
+                local_file_data = re.sub(r"^\s*\$env:JAVA_HOME\s*=.+$", "", local_file_data, flags=re.MULTILINE)
+                local_file_data = re.sub(r"^\s*\$env:PATH\s*=\s*\"\$env:JAVA_HOME\\bin:\$env:PATH\"$", "", local_file_data, flags=re.MULTILINE)
                 new_line_java = f'$env:JAVA_HOME = "{version.path}"'
                 new_line_update_path = '$env:PATH = "$env:JAVA_HOME\\bin:$env:PATH"'
             case "bash" | "zsh":
+                local_file_data = re.sub(r"^\s*export JAVA_HOME=.+$", "", local_file_data, flags=re.MULTILINE)
+                local_file_data = re.sub(r"^\s*export PATH=\$JAVA_HOME/bin:\$PATH$", "", local_file_data, flags=re.MULTILINE)
                 new_line_java = f"export JAVA_HOME='{version.path}'"
                 new_line_update_path = "export PATH=$JAVA_HOME/bin:$PATH"
             case _:
                 raise NotImplementedError(f"{shell} not supported for setting Java version")
+        local_file_data = local_file_data.replace("\n\n", "")
         with open(local_parh, "w", encoding="utf-8") as file:
             file.write(f"{new_line_java}\n{new_line_update_path}\n{local_file_data}")
         ws_success(f"Java version {version.version} stored in local settings as default")
