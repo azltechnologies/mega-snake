@@ -2,7 +2,7 @@
 
 import os
 from typing import Optional
-from py.util.formatting import WorkspaceError, ws_info, ws_success
+from py.util.formatting import ws_info, ws_success
 from py.util.util import get_validated_input
 from py.branch_cleanup.parse_remote_branches import define_branches, RemoteBranch, parsing_branches, delete_branches
 from py.remote_branches.module import main as remoteBranchesDetails, get_output_file
@@ -24,21 +24,17 @@ def main() -> None:
     input_file: str = get_output_file()
     # check if input_file exists
     if not os.path.exists(input_file):
-        e = FileNotFoundError(f"No file found at {input_file}")
-        WorkspaceError.ws_error(e, "File listing the remote branches not found")
-        raise e
+        raise FileNotFoundError(f"No file found at {input_file}; File listing the remote branches not found")
     # read the file
     with open(input_file, "r", encoding="utf-8") as file:
         branches: str = file.read().strip()
     # check if branches is empty
     if not branches:
-        exc = IOError(f"No branches found in the file {input_file}")
-        WorkspaceError.ws_error(exc, f"No records in {input_file}, verify that the file is being written correctly")
-        raise e
+        raise IOError(f"No branches found in the file {input_file}. No records in {input_file}, verify that the file is being written correctly")
     lines: list[str] = branches.split("\n")
     # creating branches list
     opt_branches_list: list[Optional[RemoteBranch]] = list(map(define_branches, lines))
-    branches_list :list[RemoteBranch] = [x for x in opt_branches_list if x is not None]
+    branches_list: list[RemoteBranch] = [x for x in opt_branches_list if x is not None]
     branches_list = sorted(branches_list, reverse=False)
     # parsing branches
     garbage: list[str] = parsing_branches(branches_list)

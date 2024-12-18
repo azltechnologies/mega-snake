@@ -2,11 +2,48 @@
 if [ -n "$BASH_SOURCE" ]; then
     # Para bash
     export WS_CONFIG_HOME="$(readlink -f $(dirname "${BASH_SOURCE[0]}"))"
+    export WS_SHELL="bash"
 else
     # Para zsh
     export WS_CONFIG_HOME="$(readlink -f $(dirname "$0"))"
+    export WS_SHELL="zsh"
 fi
-source $WS_CONFIG_HOME/src/formatting.sh
+source $WS_CONFIG_HOME/src/formatting.sh #ya
+l_reload() {
+    local PROP_FILE="$WS_CONFIG_HOME/config.properties"
+    local LOCAL_CONFIG=$(grep "local_config_file_name" "$PROP_FILE" | sed 's/local_config_file_name=//')
+    local WORKING_PATH=$(grep "working_path" "$PROP_FILE" | sed 's/working_path=//')
+    local local_config_file="$PWD/$WORKING_PATH/$LOCAL_CONFIG.sh"
+    if [ -f "$local_config_file" ]; then
+        set_env msg -t i "Reloading $local_config_file"
+        source $local_config_file
+    else
+        set_env msg -t w "No local config file found"
+    fi
+}
+set_env() {
+    local PROP_FILE="$WS_CONFIG_HOME/config.properties"
+
+    local RE_PY_ENV=$(grep "python_virtual_bash" "$PROP_FILE" | sed 's/python_virtual_bash=//')
+    local PY_MODULE=$(grep "python_module" "$PROP_FILE" | sed 's/python_module=//')
+    local PYTHON_ENV="$WS_CONFIG_HOME/$RE_PY_ENV"
+    source "$PYTHON_ENV"
+    export PYTHONPATH="$WS_CONFIG_HOME"
+    python3 -m $PY_MODULE --shell "$WS_SHELL" "$@"
+
+    # catch exit code
+    local exit_code=$?
+
+    deactivate
+
+    if [ $exit_code -eq 1 ]; then
+        l_reload
+    fi
+
+    return $exit_code
+}
+l_reload
+set_env msg -t t "l_reload" ": use this function to reload the local config file"
 setup_env() {
     export WS_TEMP="./workspace_temp"
 
@@ -38,34 +75,7 @@ setup_env() {
         fi
 
     fi
-    REMOTE_BRANCHES_OUTPUT="$WS_TEMP/remote_branches.txt"
-    DIFF_TREE_OUTPUT="$WS_TEMP/diff_tree"
-    source $WS_CONFIG_HOME/src/diffTree.sh #ya
-    source $WS_CONFIG_HOME/src/branchDetails.sh #ya
-    source $WS_CONFIG_HOME/src/branchCleanUp.sh
     source $WS_CONFIG_HOME/src/expiredCertsJks.sh
-    source $WS_CONFIG_HOME/src/instancesFromDeploymentId.sh
-    create_release() {
-        if [ -z "$4" ]; then
-            4=$(git rev-parse HEAD)
-            # Check if the commit hash is valid
-        elif git cat-file -t "$4" 2>/dev/null | grep -q commit; then
-            ws_success "Valid commit hash: $4"
-        else
-            ws_error "Invalid commit hash"
-            return 1
-        fi
-        python3 $WS_CONFIG_HOME/py/create_release/create.py "$@"
-    }
-    ws_tip "create_release <tag_suffix> <release_type> <release_notes> [branch/commit]" "create a release in the current repo
-        <release_type>:
-            1 - prerelease
-            2 - release
-            3 - latest"
-    parse_gcloud_logs() {
-        $WS_CONFIG_HOME/src/parseJsonLogs.sh $WS_TEMP $WS_CONFIG_HOME
-    }
-    ws_tip "parse_gcloud_logs" "parse gcloud logs in json format"
 }
 ws_tip "setup_env <level>" "start working on a repository and set up the environment
     setup_env <level>

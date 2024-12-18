@@ -5,8 +5,11 @@ This module contains utility functions for common operations.
 import re
 import subprocess
 import time
-from py.util.formatting import ws_advice, ws_warning, WorkspaceError
+from colorama import init, Fore, Back
+from py.util.formatting import ws_advice, ws_warning
 
+# Initialize colopiprama
+init(autoreset=True)
 
 def run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str]:
     """
@@ -32,12 +35,9 @@ def run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str
             ws_warning(f"{description} failed on attempt {attempt}. Error: {error.stdout}")
             ws_warning(f"Error details: {error.stderr}")
             if attempt == num_retries:
-                WorkspaceError.ws_error(error, f"{description} failed after {num_retries} attempts. Giving up.")
-                raise error
+                raise subprocess.SubprocessError(f"{description} failed after {num_retries} attempts. Error: {error.stderr}") from error
             ws_warning(f"Retrying {description} in 2 seconds...")
             time.sleep(2)  # Wait 2 seconds before retrying
-        except Exception as error:
-            raise WorkspaceError("Error creating diff tree", error) from error
     return result
 
 
@@ -48,21 +48,33 @@ def get_main_branch() -> str:
     Returns:
         str
     """
-    result = run_operation("git remote show origin", "Getting main branch").stdout.strip()
+    remotes: list[str] = run_operation("git remote", "Getting remotes").stdout.strip().split("\n")
+    if not remotes:
+        raise ValueError("No remotes found in the current repository")
+    if len(remotes) > 1:
+        raise NotImplementedError("Multiple remotes found in the current repository; Operations with multiple remotes are not supported")
+    result = run_operation(f"git remote show {remotes[0]}", "Getting main branch").stdout.strip()
     if not result:
-        e = LookupError("No main branch found in the current repository")
-        WorkspaceError.ws_error(e,"No main branch found")
-        raise e
+        raise LookupError(f"No main branch found in the current repository for remote {remotes[0]}")
     pattern = r"^(\s*HEAD branch:\s*)(\S+)"
     match = re.search(pattern, result, re.MULTILINE)
     if match:
         return match.group(2)
-    e = LookupError("No main branch found in the current repository")
-    WorkspaceError.ws_error(e, "No main branch found")
-    raise e
+    raise LookupError("No main branch found in the current repository")
 
 
-def get_validated_input(prompt: str, valid_values: list[str]) -> str:
+def get_current_commit() -> str:
+    """
+    Gets the current branch of the repository.
+
+    Returns:
+        str
+    """
+    result = run_operation("git rev-parse HEAD", "Getting current branch").stdout.strip()
+    return result
+
+
+def get_validated_input(p_prompt: str, valid_values: list[str]) -> str:
     """
     Get user input and validate against allowed values
 
@@ -70,16 +82,17 @@ def get_validated_input(prompt: str, valid_values: list[str]) -> str:
         prompt: str
         valid_values: set[str]
     """
+    warn:str = f"Invalid input. Please enter one of:\n {' | '.join(valid_values)}"
     tries: int = 0
+    prompt = p_prompt
     while True:
         user_input = input(f"\n{prompt}\n").lower()
         # convert to lowercase all the values in valid_values
         valid_values = [value.lower() for value in valid_values]
         if user_input in valid_values:
             return user_input
-        print(f"Invalid input. Please enter one of:\n {' | '.join(valid_values)}")
+        prompt = f"{Back.BLACK}{Fore.YELLOW}{p_prompt}\ttry again\t—\t{3-tries} attempts left"
+        ws_warning(warn)
         tries += 1
         if tries > 3:
-            error = KeyError("Too many invalid inputs. Exiting.")
-            WorkspaceError.ws_error(error,f"Too many invalid inputs for '{prompt}'. Exiting.")
-            raise error
+            raise KeyError(f"Too many invalid inputs for '{prompt}'. Exiting.")

@@ -1,0 +1,50 @@
+[tool.poetry]
+name = "py"
+version = "0.1.0"
+description = "cli for setting environment for vscode coding"
+authors = ["Morales Ortega, Carlos Alberto <carlos.mor.ort@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.13"
+pytest = "8.2.0"
+graphql-core = "3.2.5"
+colorama = "0.4.6"
+directory-tree = "1.0.0"
+mypy = "1.13.0"
+mypy-extensions = "1.0.0"
+poetry = "1.8.4"
+pylint = "3.3.1"
+types-colorama = "0.4.15.20240311"
+virtualenv = "20.27.1"
+astroid = "3.3.5"
+click = "8.1.7"
+jq = "1.8.0"
+json-spec = "0.12.0"
+jsoncomment = "0.4.2"
+pyperclip = "1.9.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.mypy]
+python_version = "3.13"
+disable_error_code = ["import-untyped"]
+mypy_path = "./out"
+
+[tool.pylint.master]
+init-hook = 'import sys; sys.path.append("/Users/carlosmorales/IdeaProjects/stuff/.venv/lib/python3.13/site-packages")'
+load-plugins = ["py.util.custom_checkers"]
+ignore-patterns = [".+\\.pyi"]
+
+[tool.pylint.messages_control]
+enable = ["MissingReturnTypeChecker"]
+disable = ["R0903", "I1101"]
+
+[tool.pylint.format]
+max-line-length = 200
+
+[tool.pylint.design]
+max-args = 10
+max-positional-arguments = 8

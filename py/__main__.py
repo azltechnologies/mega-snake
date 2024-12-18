@@ -1,14 +1,34 @@
 """ Sets the environment configuration """
 
+from typing import Callable, Optional
+import sys
 import os
-from typing import Optional
 import click
 from .branch_cleanup.module import main as branch_cleanup
-from .util.logger import get_traceback
+from .config_environment.module import echo as msg, create_graphql_schema as graphql_schema, gcloud_login_env, set_java_version as java, set_gradle_version as gradle, initial_load
+from .constants import MSG_OPT, REMOTE_BRANCHES_OPT, LOGGING_OPT, SHELL_OPT, RELEASE_TYPE_OPT, GCLOUD_LOGGIN_OPT
+from .util.formatting import get_traceback
 from .util.props import init_app_properties
 from .diff_tree.module import main as diff_tree
 from .remote_branches.module import main as remote_branches
-from .util.formatting import WorkspaceError, ws_success, ws_tip
+from .util.formatting import WorkspaceError, ws_advice, ws_success, ws_info, ws_warning
+from .create_release.module import main as create_release
+from .gcloud.parse_instances_deployment_id import bq_instances_by_deployment_id as bq_query
+from .gcloud.parse_json_logs import parse_json_logs as json_logs
+
+
+def cli_metadata(**metadata) -> Callable:
+    """
+    Decorator to add custom metadata to a command
+    """
+
+    def decorator(f) -> Callable:
+        if not hasattr(f, "metadata"):
+            f.flags = {}
+        f.flags.update(metadata)
+        return f
+
+    return decorator
 
 
 @click.group(
@@ -16,15 +36,29 @@ from .util.formatting import WorkspaceError, ws_success, ws_tip
     epilog="requires ...",
     context_settings={"help_option_names": ["-h", "--help"]},
 )
-@click.option("--log-level", "-l", type=click.STRING, default="INFO", help="log level")
+@click.option("--log-level", "-l", type=click.Choice(list(LOGGING_OPT), False), default="INFO", help="log level")
+@click.option("--shell", type=click.Choice(SHELL_OPT, False), required=True, hidden=True)
+@click.option("--skip-initilization", "-s", is_flag=True, help="Skip initialization in those commands that support it")
 @click.pass_context
-def cli(ctx: click.Context, log_level: str) -> None: # mypy: ignore-assignement
+def cli(ctx: click.Context, log_level: str, shell: str, skip_initilization: bool) -> None:
     """cli entry point"""
     try:
-        working_path: Optional[str] = os.getenv("WS_TEMP") # my
-        init_app_properties(log_level, working_path)
-        if ctx.invoked_subcommand:
-            ws_tip("Invoking subcommand:", ctx.invoked_subcommand)
+        cmd_name = ctx.invoked_subcommand
+        if cmd_name:
+            ws_advice(f"Invoking subcommand: {cmd_name}")
+            if skip_initilization:
+                # Access params
+                cmd = cli.get_command(ctx, cmd_name)
+                if not cmd:
+                    raise click.ClickException(f"Command '{cmd_name}' not found")
+                # check if the command has cli_metadata
+                metadata = getattr(cmd.callback, "flags", {})
+                flags: Optional[set[str]] = metadata.get("flags")
+                if flags and "skip" in flags:
+                    ws_info("'skip' flag detected. Skipping initialization.")
+                    return
+                ws_warning("'skip' flag detected but not supported by the invoked command. \n Proceeding with initialization.")
+        init_app_properties(log_level, shell)
     except Exception as e:
         print(f"Error during initialization: {e}")
         print(get_traceback(e))
@@ -33,10 +67,10 @@ def cli(ctx: click.Context, log_level: str) -> None: # mypy: ignore-assignement
 
 @cli.result_callback()
 @click.pass_context
-def post_command(ctx, result, **kwargs):  # pylint: disable=W0613
+def post_command(ctx, result, **kwargs) -> None:
     """Post-command execution logic"""
     if ctx.invoked_subcommand:
-        ws_success(f"Command '{ctx.invoked_subcommand}' completed successfully")
+        ws_advice(f"Command '{ctx.invoked_subcommand}' completed successfully with result: {result} and kwargs: { kwargs}")
 
 
 @cli.command(
@@ -63,9 +97,9 @@ def create_diff_tree(commit_hash: str) -> None:
     epilog="the branch details are created within $WS_TEMP path.",
 )
 @click.option(
-    "--filter_by",
+    "--filter-by",
     "-f",
-    type=click.Choice(["M", "U", "A"], False),
+    type=click.Choice(REMOTE_BRANCHES_OPT, False),
     help="""filter branches by merge status against main branch:\n
     'M' - merged branches\n
     'U' - unmerged branches\n
@@ -95,8 +129,248 @@ def remote_branches_clean_up() -> None:
     branch_cleanup()
 
 
+@cli.command(
+    name="msg",
+    short_help="Prints message to the console and logs it.",
+    help="Prints a message to the console in a custom format and logs it into the workspace configuration log file.",
+    epilog="""
+    usage: set_env msg <message> [OPTIONS]   <type>\n
+    OPTIONS:\n
+        epilog: an optional ending message as a second argument\n
+        type:
+            usage: [-t | --type] <type>\n
+            allowed values:\n
+                S | I | W | E | A | T
+                    S - Success
+                    I - Information -- default
+                    W - Warning
+                    E - Error
+                    A - Advice -- use for Debugging
+                    T - Tip
+    """,
+)
+@click.argument("message", type=click.STRING)
+@click.argument("epilog", type=click.STRING, required=False, default=None)
+@click.option(
+    "--type-msg",
+    "-t",
+    type=click.Choice(list(MSG_OPT.keys()), False),
+    help="""The type of message to be printed:\n
+        'S' - Success\n
+        'I' - Information -- default\n
+        'W' - Warning\n
+        'E' - Error\n
+        'A' - Advice -- use for Debugging\n
+        'T' - Tip\n
+     """,
+    default="I",
+)
+def echo(message: str, epilog: Optional[str], type_msg: str) -> None:
+    """
+    Calls the echo function from the config_environment module
+
+    Args:
+        message: str
+        epilog: str
+        type_msg: str
+    """
+    msg(message, epilog, type_msg)
+
+
+@cli.command(
+    name="createGraphqlSchema",
+    short_help="Creates a GraphQL schema file in the working directory.",
+    help="Creates a GraphQL schema file in the working directory.",
+    epilog="usage: set_env createGraphqlSchema <schema_path>",
+)
+@click.argument("schema_path", type=click.STRING)
+def create_graphql_schema(schema_path: str) -> None:
+    """
+    Calls the create_graphql_schema function from the config_environment module
+
+    Args:
+        schema_path: str
+    """
+    graphql_schema(schema_path)
+
+
+@cli.command(
+    name="createRelease",
+    short_help="Creates a new release on GitHub with the given parameters.",
+    help="Creates a new release on GitHub with the given parameters.",
+    epilog="""
+    usage: set_env createRelease <tag_suffix> <release_type> <release_notes> <release_branch>\n
+    Args:\n
+        tag_suffix: str - suffix to add to the tag\n
+        release_type: int -\n
+            1: --prerelease\n
+            2: --latest=false\n
+            3: --latest\n
+        notes: Optional[str] - release notes
+    """,
+)
+@click.argument("tag_suffix", type=click.STRING, required=True)
+@click.option(
+    "--release-type",
+    "-r",
+    type=click.Choice(list(RELEASE_TYPE_OPT.keys()), False),
+    required=True,
+    help="""Release type:\n
+        'p' - --prerelease\n
+        'r' - --latest=false\n
+        'l' - --latest\n""",
+)
+@click.option("--notes", "-n", type=click.STRING, required=False, default=None)
+@click.option("--branch", "-b", type=click.STRING, required=False, default=None)
+def create_release_github(tag_suffix: str, release_type: str, notes: Optional[str], branch: Optional[str]) -> None:
+    """
+    Calls the create_release function from the create_release module
+
+    Args:
+        tag_suffix: str
+        release_type: str
+        notes: Optional[str]
+        branch: str
+    """
+    create_release(tag_suffix, release_type, notes, branch)
+
+
+@cli.command(
+    name="gcloudLogin",
+    short_help="Logs into gcloud — [supports skip mode]",
+    help="Logs into gcloud and sets the project — [supports skip mode]",
+    epilog="""
+             usage: set_env Login [OPTIONS] [project]\n
+                args:\n
+                    project: Optional[str] - project name\n
+                    type-login: str - login type\n
+                        allowed values:\n
+                            'A' - Application Default\n
+                            'U' - User Account\n
+                            'B' - Both\n
+             """,
+)
+@click.argument("type-login", type=click.Choice(list(GCLOUD_LOGGIN_OPT.keys()), False), required=True)
+@click.argument("project", type=click.STRING, required=False, default=None)
+@cli_metadata(flags={"skip"})
+def gcloud_login_click(project: Optional[str], type_login: str) -> None:
+    """
+    Calls the gcloud_login function from the config_environment module
+
+    Args:
+        project: Optional[str]
+        type_login: str
+    """
+    gcloud_login_env(project, type_login)
+
+
+@cli.command(
+    name="gcloudLogout",
+    short_help="Logs out of gcloud — [supports skip mode]",
+    help="Logs out of gcloud — [supports skip mode]",
+    epilog="usage: set_env Logout",
+)
+@cli_metadata(flags={"skip"})
+def gcloud_logout() -> None:
+    """
+    Logs out of gcloud
+    """
+    os.system("gcloud auth revoke 2>/dev/null")
+    ws_success("gcloud account is now logged out.")
+    os.system("gcloud auth application-default revoke 2>/dev/null")
+    ws_success("gcloud application-default credentials are now revoked.")
+
+@cli.command(
+    name="setJava",
+    short_help="Sets the default Java version on the workspace",
+    help="Sets the default Java version on the workspace",
+    epilog="""usage: set_env setJava [OPTIONS]\n
+    OPTIONS:\n
+        -o | --override: Optional[bool] - Override the current Java version\n
+    """
+)
+@click.option("--override", "-o", is_flag=True, help="Override the current Java version")
+def set_java_version(override: bool) -> None:
+    """
+    Calls the set_java function from the config_environment module
+
+    Args:
+        override: bool
+    """
+    java(override)
+    sys.exit(1)
+
+@cli.command(
+    name="setGradle",
+    short_help="Sets the default Gradle version on the workspace",
+    help="Sets the default Gradle version on the workspace",
+    epilog="""usage: set_env setGradle [OPTIONS]\n
+    OPTIONS:\n
+        -o | --override: Optional[bool] - Override the current Gradle version\n
+    """
+)
+@click.option("--override", "-o", is_flag=True, help="Override the current Gradle version")
+def set_gradle_version(override: bool) -> None:
+    """
+    Calls the set_gradle function from the config_environment module
+
+    Args:
+        override: bool
+    """
+    gradle(override)
+    sys.exit(1)
+
+@cli.command(
+    name="initLocalConfig",
+    short_help="Creates a local configuration file",
+    help="Creates a local configuration file",
+    epilog="""usage: set_env createLocalConfig [OPTIONS]\n
+    OPTIONS:\n
+        -o | --override: Optional[bool] - Override the current local configuration file with a new one\n
+    """
+)
+@click.option("--override", "-o", is_flag=True, help="Override the current local configuration file with a new one")
+def create_local_config(override: bool) -> None:
+    """
+    Calls the create_local_config function from the config_environment module
+
+    Args:
+        override: bool
+    """
+    initial_load(override)
+    sys.exit(1)
+
+@cli.command(
+    name="bqInstancesQuery",
+    short_help="Parse instances by deployment id and copy the command to clipboard.",
+    help="""Parse instances by deployment id and copy the command to clipboard.\n
+    The command is intended to be used in BigQuery to filter instances by deployment id.""",
+    epilog="""usage: set_env bqInstancesQuery <project> <...deployment_ids...>"""
+)
+@click.argument("project", type=click.STRING)
+@click.argument("deployment_ids", nargs=-1, required=True, type=str)
+def bq_instances_query(project:str, deployment_ids: list[str]) -> None:
+    """
+    Calls the bq_instances_by_deployment_id function from the parse_instances_deployment_id module
+    """
+    bq_query(project, deployment_ids)
+
+@cli.command(
+    name="parseJsonLogs",
+    short_help="Parse logs from JSON files and write them to .log files",
+    help="Parse logs from JSON files and write them to .log files in the logs/parsed directory under the working path",
+    epilog="""Requires JSON files in the logs/parsed directory under the working path\n
+    Usage: set_env parseJsonLogs\n
+    """
+)
+def parse_json_logs() -> None:
+    """
+    Calls the parse_json_logs function from the parse_json_logs module
+    """
+    json_logs()
+
 if __name__ == "__main__":
     try:
-        cli(prog_name="set_env")
+        cli.main(prog_name="set_env")
     except Exception as e:
-        raise WorkspaceError("Error during initialization", e) from e
+        raise WorkspaceError("Error during cli execution", e) from e

@@ -2,22 +2,21 @@
 
 import os
 from typing import Optional
-from directory_tree import DisplayTree # type: ignore
-from py.util.formatting import WorkspaceError, ws_info, ws_success
-from py.util.util import run_operation, get_main_branch
-from py.util import props
+from directory_tree import DisplayTree
+from py.util.formatting import ws_info, ws_success
+from py.util.util import run_operation, get_main_branch, get_current_commit
+from py.util.props import AppProperties
 from py.diff_tree.file_type import FileType
 
 
-def main(commit_hash: Optional[str] = None):
+def main(commit_hash: Optional[str] = None) -> None:
     """
     Creates a diff tree of the current branch against master
 
     Args:
         commit_hash: str
     """
-    tree_output: str = f"{props.APP_PROPERTIES.working_path}/diff_tree"
-    diff_tree_file: str = f"{tree_output}/diff_tree.txt"
+    tree_output: str = f"{AppProperties.get_instance().retrieve_property("working_path")}/diff_tree"
     diff_commit_file: str = f"{tree_output}/diff_commit.txt"
     diff_tree_dummy_repo: str = f"{tree_output}/diff_tree_dummy_repo"
 
@@ -27,7 +26,7 @@ def main(commit_hash: Optional[str] = None):
         # create the tree_output directory
         run_operation(f"mkdir -p {diff_tree_dummy_repo}/", "Creating diff tree output directory")
 
-    current_branch: str = run_operation("git rev-parse HEAD", "Getting current branch").stdout.strip()
+    current_branch: str = get_current_commit()
     main_branch: str
     if commit_hash is None:
         main_branch = get_main_branch()
@@ -37,9 +36,7 @@ def main(commit_hash: Optional[str] = None):
             f"git cat-file -t {commit_hash} 2>/dev/null", f"Checking if commit hash '{commit_hash}' is valid"
         ).stdout.strip()
         if commit_validation != "commit":
-            e = ValueError(f"Invalid commit hash: {commit_hash}")
-            WorkspaceError.ws_error(e, f"Invalid commit hash: {commit_hash}")
-            raise e
+            raise ValueError(f"Invalid commit hash: {commit_hash}")
         main_branch = commit_hash
     diff_str: str = run_operation(
         f"git diff-tree -r {main_branch} {current_branch}", f"getting differences between '{main_branch}' and '{current_branch}' branches"
@@ -48,16 +45,15 @@ def main(commit_hash: Optional[str] = None):
     if not diff_str:
         ws_success("No differences found between the current branch and the main branch")
         return
-    differences: list[str] = diff_str.split("\n")
 
     # iterate over the differences and write them to the output file
-    for diff in differences:
+    for diff in diff_str.split("\n"):
         columns: list[str] = diff.split("\t")
         symbol = columns[0].split(" ")[4]
         path: str = columns[1]
         FileType.from_symbol(symbol).add(path)
     create_files(diff_tree_dummy_repo)
-    display_inner_tree(diff_tree_dummy_repo, diff_tree_file)
+    display_inner_tree(diff_tree_dummy_repo, f"{tree_output}/diff_tree.txt")
     # write the commit list to the file
     commits: str = run_operation(
         f" git log --pretty=format:'%ad %H%n%B' --date=short {current_branch}...{main_branch}", "Writing commit list to file"
@@ -67,7 +63,7 @@ def main(commit_hash: Optional[str] = None):
     run_operation(f"code {diff_commit_file}", "opening diff commit file")
 
 
-def create_files(location: str) -> None:
+def create_files(location: str)-> None:
     """
     Creates new files for each file type.
 
@@ -78,7 +74,7 @@ def create_files(location: str) -> None:
         file_type.create_new_file(location)
 
 
-def display_inner_tree(root_dir: str, output_file: str) -> None:
+def display_inner_tree(root_dir: str, output_file: str)-> None:
     """
     Display the tree of a directory's contents, hiding the root directory.
 

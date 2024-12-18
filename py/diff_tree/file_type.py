@@ -3,7 +3,6 @@
 import dataclasses
 import os
 from enum import Enum
-from py.util.formatting import WorkspaceError
 
 
 @dataclasses.dataclass
@@ -46,7 +45,7 @@ class FileType(Enum):
 
     def add(self, file: str) -> None:
         """
-        Increment the number of files added and add the file to the list of files.
+        Increments the added count and appends the file to the files list.
 
         Args:
             file: str
@@ -56,13 +55,10 @@ class FileType(Enum):
 
     def create_new_file(self, location: str) -> None:
         """
-        Returns the new file string path.
+        Creates a new file in the given location.
 
         Args:
             location: str
-
-        Returns:
-            str
         """
         for file in self.files:
             new_file_path: str = f"{location}/{file} - {self.symbol}"
@@ -82,17 +78,12 @@ class FileType(Enum):
         for file_type in cls:
             if file_type.id_type == id_type:
                 return file_type
-        e = ValueError("No FileType found.")
-        WorkspaceError.ws_error(e, f"No FileType with symbol '{id_type}' found.")
-        raise e
+        raise ValueError(f"No FileType with symbol '{id_type}' found.")
 
     @classmethod
     def get_changes(cls) -> str:
         """
         Returns the changes made to the repository.
-
-        Returns:
-            str
         """
         changes: list[str] = []
         count: int = 0

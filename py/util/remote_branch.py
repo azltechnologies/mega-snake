@@ -4,7 +4,6 @@ import dataclasses
 import re
 from typing import Optional
 from datetime import datetime, timezone
-from py.util.formatting import WorkspaceError
 from py.util.util import run_operation
 
 
@@ -25,7 +24,7 @@ class Commit:
         self.message = message
 
     @classmethod
-    def from_branch(cls, branch: str):
+    def from_branch(cls, branch: str) -> "Commit":
         """Get the commit info from a branch"""
         commit_hash: str = run_operation(f"git log -1 --pretty='format:%H'  {branch}", "Getting commit hash").stdout.strip()
         message: str = run_operation(f"git log -1 --pretty='format:%B'  {branch}", "Getting commit message").stdout.strip()
@@ -38,7 +37,7 @@ class Commit:
         return cls(commit_hash, dt, formatted_date, message)
 
     @classmethod
-    def from_strings(cls, commit_hash: str, date_str: str, message: str):
+    def from_strings(cls, commit_hash: str, date_str: str, message: str) -> "Commit":
         """Get the commit info from string values"""
         dt = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%SZ")
         return cls(commit_hash, dt, date_str, message)
@@ -85,9 +84,7 @@ class RemoteBranch:
             message: str = result[6]
             commit: Commit = Commit.from_strings(commit_hash, date, message)
             return cls(branch, merged_on_main, commit, mail, main_common_ancestor)
-        e = ValueError("Invalid input string")
-        WorkspaceError.ws_error(e, "String is empty or None")
-        raise e
+        raise ValueError("Invalid input string. String is empty or None")
 
     @classmethod
     def from_branch(cls, branch: str, filter_by: str, main_branch: str) -> Optional["RemoteBranch"]:
@@ -104,21 +101,17 @@ class RemoteBranch:
         pattern1 = r"(?<=^remotes/origin/)\S+"
         match = re.search(pattern1, branch)
         if not match:
-            e = LookupError(f"Unable to parse local branch name for remote branch: {branch}")
-            WorkspaceError.ws_error(e, f"Issues with branch name: {branch}")
-            raise e
+            raise LookupError(f"Unable to parse local branch name for remote branch: {branch}")
         local_branch: str = match.group(0)
         commit: Commit = Commit.from_branch(branch)
         within_branches: str = run_operation(f"git branch -a --contains {commit.commit_hash}", "Getting branches containing commit").stdout.strip()
         if not within_branches:
-            e = LookupError(f"Commit {commit.commit_hash} not found in any branch")
-            WorkspaceError.ws_error(e, f"Commit {commit.commit_hash} not found in any branch")
-            raise e
+            raise LookupError(f"Commit {commit.commit_hash} not found in any branch")
         pattern: str = rf"\s*remotes/origin/{main_branch}\s*$"
         merged_on_main: bool = bool(re.search(pattern, within_branches, re.MULTILINE))
         if filter_by == "M" and not merged_on_main:
             return None
-        elif filter_by == "U" and merged_on_main and local_branch != main_branch:
+        if filter_by == "U" and merged_on_main and local_branch != main_branch:
             return None
         mail: str = run_operation(f"git log -1 --pretty='format:%ae'  {branch}", "Getting commit author").stdout.strip()
         main_common_ancestor: str = run_operation(f"git merge-base {branch} {main_branch}", "Getting main common ancestor").stdout.strip()
