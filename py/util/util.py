@@ -53,7 +53,6 @@ def get_main_branch() -> str:
         raise ValueError("No remotes found in the current repository")
     if len(remotes) > 1:
         raise NotImplementedError("Multiple remotes found in the current repository; Operations with multiple remotes are not supported")
-    ws_warning(f"{len(remotes)}")
     result = run_operation(f"git remote show {remotes[0]}", "Getting main branch").stdout.strip()
     if not result:
         raise LookupError(f"No main branch found in the current repository for remote {remotes[0]}")
