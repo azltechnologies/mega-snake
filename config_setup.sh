@@ -76,11 +76,6 @@ setup_env() {
 
     fi
     source $WS_CONFIG_HOME/src/expiredCertsJks.sh
-    source $WS_CONFIG_HOME/src/instancesFromDeploymentId.sh
-    parse_gcloud_logs() {
-        $WS_CONFIG_HOME/src/parseJsonLogs.sh $WS_TEMP $WS_CONFIG_HOME
-    }
-    ws_tip "parse_gcloud_logs" "parse gcloud logs in json format"
 }
 ws_tip "setup_env <level>" "start working on a repository and set up the environment
     setup_env <level>
