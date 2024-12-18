@@ -13,6 +13,7 @@ from .diff_tree.module import main as diff_tree
 from .remote_branches.module import main as remote_branches
 from .util.formatting import WorkspaceError, ws_advice, ws_success, ws_info, ws_warning
 from .create_release.module import main as create_release
+from .gcloud.parse_instances_deployment_id import bq_instances_by_deployment_id as bq_query
 
 
 def cli_metadata(**metadata) -> Callable:
@@ -338,6 +339,21 @@ def create_local_config(override: bool) -> None:
     initial_load(override)
     sys.exit(1)
 
+@cli.command(
+    name="bqInstancesQuery",
+    short_help="Parse instances by deployment id and copy the command to clipboard.",
+    help="""Parse instances by deployment id and copy the command to clipboard.\n
+    The command is intended to be used in BigQuery to filter instances by deployment id.""",
+    epilog="""usage: set_env bqInstancesQuery [OPTIONS]\n
+    """
+)
+@click.argument("project", type=click.STRING)
+@click.argument("deployment_ids", nargs=-1, required=True, type=str)
+def bq_instances_query(project:str, deployment_ids: list[str]) -> None:
+    """
+    Calls the bq_instances_by_deployment_id function from the parse_instances_deployment_id module
+    """
+    bq_query(project, deployment_ids)
 
 if __name__ == "__main__":
     try:
