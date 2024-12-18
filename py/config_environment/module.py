@@ -10,6 +10,24 @@ from py.config_environment.gcloud import gcloud_login
 from py.config_environment.java_set import java_set
 from py.config_environment.gradle_set import gradle_set
 
+def get_local_file() -> str:
+    """
+    Returns the local configuration file path.
+
+    Returns:
+        str: The local configuration file path.
+    """
+    props_inst: AppProperties = AppProperties.get_instance()
+    shell = props_inst.retrieve_property("shell")
+    local_file:str = props_inst.retrieve_property("local_config_file")
+    match shell:
+        case "bash" | "zsh":
+            local_file = f"{local_file}.sh"
+        case "powershell":
+            local_file = f"{local_file}.ps1"
+        case _:
+            raise NotImplementedError(f"Shell type not supported: {shell}")
+    return local_file
 
 def echo(message: str, epilog: Optional[str], type_msg: str) -> None:  # previously echo
     """
@@ -56,15 +74,29 @@ def create_graphql_schema(schema_path: str) -> None:
     create_schema(schema_abs, output_file)
 
 
-def initial_load() -> None:  # previously initialLoad
+def initial_load(override: bool) -> None:  # previously initialLoad
     """
     Initializes the configuration system by creating a local config file if it doesn't exist,
     then loads its contents into the environment.
 
-    Returns:
-        None
+    Args:
+        override (bool): A boolean value to override the current gradle version.
     """
-    pass
+    props_inst: AppProperties = AppProperties.get_instance()
+    local_file = get_local_file()
+    if not os.path.exists(local_file) or override:
+        shell = props_inst.retrieve_property("shell")
+        contents: str = "# This file is used to store local configurations for the project.\n"
+        contents += "# You can add custom functions and configurations here.\n"
+        match shell:
+            case "bash" | "zsh":
+                contents += "example() {\n    set_env msg 'Hello, World!'\n}\nexport SOME_VAR='some value'\n"
+            case "powershell":
+                contents = "function example {\n    set_env msg 'Hello, World!'\n}\n$env:SOME_VAR = 'some value'\n"
+            case _:
+                return
+        with open(local_file, "w", encoding="utf-8") as file:
+            file.write(contents)
 
 
 def set_gradle_version(override: bool) -> None:  # previously gradleSet
@@ -77,7 +109,7 @@ def set_gradle_version(override: bool) -> None:  # previously gradleSet
     props_inst: AppProperties = AppProperties.get_instance()
     workspace_file: str = props_inst.retrieve_property("workspace_file")
     working_path: str = props_inst.retrieve_property("working_path")
-    local_file = props_inst.retrieve_property("local_config_file")
+    local_file = get_local_file()
     shell = props_inst.retrieve_property("shell")
     gradle_set(workspace_file, working_path, local_file, shell, override)
 
@@ -92,7 +124,7 @@ def set_java_version(override: bool) -> None:  # previously javaSet
     props_inst: AppProperties = AppProperties.get_instance()
     workspace_file: str = props_inst.retrieve_property("workspace_file")
     working_path: str = props_inst.retrieve_property("working_path")
-    local_file = props_inst.retrieve_property("local_config_file")
+    local_file = get_local_file()
     shell = props_inst.retrieve_property("shell")
     java_set(workspace_file, working_path, local_file, shell, override)
 

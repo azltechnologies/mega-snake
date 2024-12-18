@@ -1,10 +1,11 @@
 """ Sets the environment configuration """
 
 from typing import Callable, Optional
+import sys
 import os
 import click
 from .branch_cleanup.module import main as branch_cleanup
-from .config_environment.module import echo as msg, create_graphql_schema as graphql_schema, gcloud_login_env, set_java_version as java, set_gradle_version as gradle
+from .config_environment.module import echo as msg, create_graphql_schema as graphql_schema, gcloud_login_env, set_java_version as java, set_gradle_version as gradle, initial_load
 from .constants import MSG_OPT, REMOTE_BRANCHES_OPT, LOGGING_OPT, SHELL_OPT, RELEASE_TYPE_OPT, GCLOUD_LOGGIN_OPT
 from .util.formatting import get_traceback
 from .util.props import init_app_properties
@@ -278,10 +279,10 @@ def gcloud_logout() -> None:
     ws_success("gcloud application-default credentials are now revoked.")
 
 @cli.command(
-    name="setJavaVersion",
+    name="setJava",
     short_help="Sets the default Java version on the workspace",
     help="Sets the default Java version on the workspace",
-    epilog="""usage: set_env setJavaVersion [OPTIONS]\n
+    epilog="""usage: set_env setJava [OPTIONS]\n
     OPTIONS:\n
         -o | --override: Optional[bool] - Override the current Java version\n
     """
@@ -295,12 +296,13 @@ def set_java_version(override: bool) -> None:
         override: bool
     """
     java(override)
+    sys.exit(1)
 
 @cli.command(
-    name="setGradleVersion",
+    name="setGradle",
     short_help="Sets the default Gradle version on the workspace",
     help="Sets the default Gradle version on the workspace",
-    epilog="""usage: set_env setGradleVersion [OPTIONS]\n
+    epilog="""usage: set_env setGradle [OPTIONS]\n
     OPTIONS:\n
         -o | --override: Optional[bool] - Override the current Gradle version\n
     """
@@ -314,6 +316,28 @@ def set_gradle_version(override: bool) -> None:
         override: bool
     """
     gradle(override)
+    sys.exit(1)
+
+@cli.command(
+    name="initLocalConfig",
+    short_help="Creates a local configuration file",
+    help="Creates a local configuration file",
+    epilog="""usage: set_env createLocalConfig [OPTIONS]\n
+    OPTIONS:\n
+        -o | --override: Optional[bool] - Override the current local configuration file with a new one\n
+    """
+)
+@click.option("--override", "-o", is_flag=True, help="Override the current local configuration file with a new one")
+def create_local_config(override: bool) -> None:
+    """
+    Calls the create_local_config function from the config_environment module
+
+    Args:
+        override: bool
+    """
+    initial_load(override)
+    sys.exit(1)
+
 
 if __name__ == "__main__":
     try:

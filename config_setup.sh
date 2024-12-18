@@ -9,6 +9,18 @@ else
     export WS_SHELL="zsh"
 fi
 source $WS_CONFIG_HOME/src/formatting.sh #ya
+l_reload() {
+    local PROP_FILE="$WS_CONFIG_HOME/config.properties"
+    local LOCAL_CONFIG=$(grep "local_config_file_name" "$PROP_FILE" | sed 's/local_config_file_name=//')
+    local WORKING_PATH=$(grep "working_path" "$PROP_FILE" | sed 's/working_path=//')
+    local local_config_file="$PWD/$WORKING_PATH/$LOCAL_CONFIG.sh"
+    if [ -f "$local_config_file" ]; then
+        set_env msg -t i "Reloading $local_config_file"
+        source $local_config_file
+    else
+        set_env msg -t w "No local config file found"
+    fi
+}
 set_env() {
     local PROP_FILE="$WS_CONFIG_HOME/config.properties"
 
@@ -24,21 +36,12 @@ set_env() {
 
     deactivate
 
+    if [ $exit_code -eq 1 ]; then
+        l_reload
+    fi
+
     return $exit_code
 }
-ws_tip "set_env" "use python version"
-l_reload() {
-    local PROP_FILE="$WS_CONFIG_HOME/config.properties"
-    local LOCAL_CONFIG=$(grep "local_config_file_name" "$PROP_FILE" | sed 's/local_config_file_name=//')
-    local local_config_file="$PWD/$LOCAL_CONFIG.sh"
-    if [ -f "$local_config_file" ]; then
-        set_env msg -t i "Reloading $local_config_file"
-        source $local_config_file
-    else
-        set_env msg -t w "No local config file found"
-    fi
-}
-
 l_reload
 set_env msg -t t "l_reload" ": use this function to reload the local config file"
 setup_env() {

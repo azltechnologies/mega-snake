@@ -162,7 +162,7 @@ def set_version_local_config(version: GradleVersion, local_parh: str, shell: str
         match shell:
             case "powershell":
                 new_line_gradle = f'$env:GRADLE_HOME = "{version.path}"'
-                new_line_update_path = '$env:PATH = "$env:GRADLE_HOME\\bin;$env:PATH"'
+                new_line_update_path = '$env:PATH = "$env:GRADLE_HOME\\bin:$env:PATH"'
             case "bash" | "zsh":
                 new_line_gradle = f"export GRADLE_HOME='{version.path}'"
                 new_line_update_path = "export PATH=$GRADLE_HOME/bin:$PATH"

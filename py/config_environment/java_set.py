@@ -159,7 +159,7 @@ def set_version_local_config(version: JavaVersion, local_parh: str, shell: str) 
         match shell:
             case "powershell":
                 new_line_java = f'$env:JAVA_HOME = "{version.path}"'
-                new_line_update_path = '$env:PATH = "$env:JAVA_HOME\\bin;$env:PATH"'
+                new_line_update_path = '$env:PATH = "$env:JAVA_HOME\\bin:$env:PATH"'
             case "bash" | "zsh":
                 new_line_java = f"export JAVA_HOME='{version.path}'"
                 new_line_update_path = "export PATH=$JAVA_HOME/bin:$PATH"
