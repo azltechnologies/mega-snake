@@ -9,12 +9,12 @@ from py.config_environment.set_workspace import initial_load
 
 
 @click.group()
-def config_environment() -> None:
+def main() -> None:
     """Configuration related commands"""
 
 
-def add_final_steps(command: click.Command) -> click.Command:
-    """Adds final steps to a command."""
+def add_wrapper(command: click.Command) -> click.Command:
+    """Adds a wrapper to the command."""
 
     @click.pass_context
     def wrapper(ctx, *args, **kwargs) -> None:
@@ -31,8 +31,8 @@ def add_final_steps(command: click.Command) -> click.Command:
     )
 
 
-config_environment.add_command(echo)
-config_environment.add_command(create_graphql_schema)
-config_environment.add_command(set_java_version)
-config_environment.add_command(set_gradle_version)
-config_environment.add_command(initial_load)
+main.add_command(echo)
+main.add_command(create_graphql_schema)
+main.add_command(set_java_version)
+main.add_command(set_gradle_version)
+main.add_command(initial_load)

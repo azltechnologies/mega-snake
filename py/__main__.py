@@ -3,12 +3,11 @@
 from typing import Optional
 import sys
 import click
-from .branch_cleanup.module import main as branch_cleanup
 from .diff_tree.module import main as diff_tree
-from .remote_branches.module import main as remote_branches
 from .create_release.module import main as create_release
-from .gcloud.module import gcloud, add_final_steps as gcloud_result_callback
-from .config_environment.module import config_environment, add_final_steps as config_env_result_callback
+from .remote_branches.module import main as remote_branches, add_wrapper as remote_branches_result_callback
+from .gcloud.module import main as gcloud, add_wrapper as gcloud_result_callback
+from .config_environment.module import main as config_environment, add_wrapper as config_env_result_callback
 from .constants import LOGGING_OPT, SHELL_OPT
 from .util.formatting import get_traceback
 from .util.props import init_app_properties
@@ -62,13 +61,13 @@ def post_command(ctx, result, **kwargs) -> None:
 
 
 cli.add_command(diff_tree)
-cli.add_command(remote_branches)
-cli.add_command(branch_cleanup)
 cli.add_command(create_release)
 for command in config_environment.commands.values():
     cli.add_command(config_env_result_callback(command))
 for command in gcloud.commands.values():
     cli.add_command(gcloud_result_callback(command))
+for command in remote_branches.commands.values():
+    cli.add_command(remote_branches_result_callback(command))
 
 if __name__ == "__main__":
     try:

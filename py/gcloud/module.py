@@ -8,12 +8,12 @@ from py.gcloud.sign import gcloud_login_env, gcloud_logout
 from py.util.formatting import ws_advice
 
 @click.group()
-def gcloud() -> None:
+def main() -> None:
     """gcloud related commands"""
 
 
-def add_final_steps(command: click.Command) -> click.Command:
-    """Adds final steps to a command."""
+def add_wrapper(command: click.Command) -> click.Command:
+    """Adds a wrapper to the command."""
 
     @click.pass_context
     def wrapper(ctx, *args, **kwargs) -> None:
@@ -35,7 +35,7 @@ def add_final_steps(command: click.Command) -> click.Command:
     )
 
 
-gcloud.add_command(bq_instances_by_deployment_id)
-gcloud.add_command(parse_json_logs)
-gcloud.add_command(gcloud_login_env)
-gcloud.add_command(gcloud_logout)
+main.add_command(bq_instances_by_deployment_id)
+main.add_command(parse_json_logs)
+main.add_command(gcloud_login_env)
+main.add_command(gcloud_logout)
