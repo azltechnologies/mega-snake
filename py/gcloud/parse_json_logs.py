@@ -2,10 +2,19 @@
 
 import json
 from pathlib import Path
+import click
 from py.util.props import AppProperties
 from py.util.formatting import ws_advice, ws_warning, ws_success
 
 
+@click.command(
+    name="parseJsonLogs",
+    short_help="Parse logs from JSON files and write them to .log files",
+    help="Parse logs from JSON files and write them to .log files in the logs/parsed directory under the working path",
+    epilog="""Requires JSON files in the logs/parsed directory under the working path\n
+    Usage: set_env parseJsonLogs\n
+    """,
+)
 def parse_json_logs() -> None:
     """
     Parse logs from a JSON file and write them to .log files in the logs/parsed directory
@@ -17,7 +26,7 @@ def parse_json_logs() -> None:
     if log_path.exists():
         for log_file in log_path.glob("*.log"):
             log_file.unlink()
-       
+
     for json_file in log_path.glob("*.json"):
         if not log_path.exists():
             ws_warning(f"directory {log_path} not found")

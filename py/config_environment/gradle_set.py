@@ -7,9 +7,37 @@ import re
 import json
 from typing import Any, Optional
 import jq
+import click
 from jsoncomment import JsonComment
+from py.config_environment.util import get_local_file
 from py.util.util import run_operation, get_validated_input
+from py.util.props import AppProperties
 from py.util.formatting import ws_info, ws_success, ws_advice, ws_warning
+
+
+@click.command(
+    name="setGradle",
+    short_help="Sets the default Gradle version on the workspace",
+    help="Sets the default Gradle version on the workspace",
+    epilog="""usage: set_env setGradle [OPTIONS]\n
+    OPTIONS:\n
+        -o | --override: Optional[bool] - Override the current Gradle version\n
+    """,
+)
+@click.option("--override", "-o", is_flag=True, help="Override the current Gradle version")
+def set_gradle_version(override: bool) -> None:  # previously gradleSet
+    """
+    Sets the gradle version for the project.
+
+    Args:
+        override (bool): A boolean value to override the current gradle version.
+    """
+    props_inst: AppProperties = AppProperties.get_instance()
+    workspace_file: str = props_inst.retrieve_property("workspace_file")
+    working_path: str = props_inst.retrieve_property("working_path")
+    local_file = get_local_file()
+    shell = props_inst.retrieve_property("shell")
+    gradle_set(workspace_file, working_path, local_file, shell, override)
 
 
 OS = platform.system()

@@ -2,8 +2,57 @@
 
 import os
 from typing import Optional
+import click
+from py.constants import GCLOUD_LOGGIN_OPT
 from py.util.formatting import ws_info, ws_success, ws_tip
-from py.util.util import run_operation
+from py.util.util import run_operation, cli_metadata
+
+@click.command(
+    name="gcloudLogin",
+    short_help="Logs into gcloud — [supports skip mode]",
+    help="Logs into gcloud and sets the project — [supports skip mode]",
+    epilog="""
+             usage: set_env Login [OPTIONS] [project]\n
+                args:\n
+                    project: Optional[str] - project name\n
+                    type-login: str - login type\n
+                        allowed values:\n
+                            'A' - Application Default\n
+                            'U' - User Account\n
+                            'B' - Both\n
+             """,
+)
+@click.argument("type-login", type=click.Choice(list(GCLOUD_LOGGIN_OPT.keys()), False), required=True)
+@click.argument("project", type=click.STRING, required=False, default=None)
+@cli_metadata(flags={"skip"})
+def gcloud_login_env(project: Optional[str], type_login: str) -> None:
+    """
+    Logs into the gcloud account.
+
+    Returns:
+        None
+    """
+    valid_filters: set[str] = set(GCLOUD_LOGGIN_OPT.keys())
+    if type_login not in valid_filters:
+        raise ValueError(f"Invalid loggin type: {type_login}; logging type value must be one of:\n {' | '.join(valid_filters)}")
+    gcloud_login(type_login, project)
+
+
+@click.command(
+    name="gcloudLogout",
+    short_help="Logs out of gcloud — [supports skip mode]",
+    help="Logs out of gcloud — [supports skip mode]",
+    epilog="usage: set_env Logout",
+)
+@cli_metadata(flags={"skip"})
+def gcloud_logout() -> None:
+    """
+    Logs out of gcloud
+    """
+    os.system("gcloud auth revoke 2>/dev/null")
+    ws_success("gcloud account is now logged out.")
+    os.system("gcloud auth application-default revoke 2>/dev/null")
+    ws_success("gcloud application-default credentials are now revoked.")
 
 
 def gcloud_login(type_login: str, project: Optional[str]) -> None:

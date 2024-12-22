@@ -2,8 +2,8 @@
 """
     Create a GitHub release for the current project.
 """
-import sys
 from typing import Optional
+import click
 import py.create_release.release_handler as handler
 from py.create_release.release import Release, get_latest_release
 from py.util.formatting import ws_info, ws_success
@@ -13,6 +13,26 @@ from py.constants import RELEASE_TYPE_OPT
 NUM_RETRIES = 3
 
 
+@click.command(
+    name="createRelease",
+    short_help="Creates a new release on GitHub with the given parameters.",
+    help="Creates a new release on GitHub with the given parameters.",
+    epilog="""
+    usage: set_env createRelease <tag_suffix> <release_type> [release_notes] [release_branch]\n
+    Args:\n
+        tag_suffix: str - suffix to add to the tag\n
+        release_type: char -\n
+            'p' : --prerelease\n
+            'r' : --latest=false\n
+            'l' : --latest\n
+        notes: Optional[str] - release notes,
+        branch: str - branch to create the release from. Default is the current branch.
+    """,
+)
+@click.argument("tag-suffix", type=click.STRING, required=True)
+@click.argument("release-type", type=click.Choice(list(RELEASE_TYPE_OPT.keys()), False), required=True)
+@click.argument("notes", type=click.STRING, required=False, default=None)
+@click.argument("branch", type=click.STRING, required=False, default=None)
 def main(tag_suffix: str, release_type: str, notes: Optional[str], branch: Optional[str]) -> None:
     """
     Creates a new release on GitHub with the given parameters.
@@ -39,20 +59,20 @@ def main(tag_suffix: str, release_type: str, notes: Optional[str], branch: Optio
     if release_type.lower() == "l":
         prompt: str = "\nAre you sure you want to create a new latest release? y/n: "
         yes_no_options: list[str] = ["y", "n"]
-        if get_validated_input(prompt, yes_no_options) == "y":
+        if get_validated_input(prompt, yes_no_options) == "n":
             ws_info("Exiting.")
-            sys.exit(0)
+            return
     if release_type not in RELEASE_TYPE_OPT:
         raise ValueError(f"Invalid release type: {release_type}; Please enter one of:\n {' | '.join(RELEASE_TYPE_OPT.keys())}")
+
+    # getting the release notes
+    notes_release: str = get_notes(notes)
+
     # getting the latest release
     latest_release: Release = get_latest_release()
 
     # getting the new tag
     new_tag: str = latest_release.get_release_tag(tag_suffix)
-
-    # getting the release notes
-    notes_release: str = get_notes(notes)
-
     # publishing the release
     handler.publish_release(new_tag, tag_flag, notes_release, branch)
 

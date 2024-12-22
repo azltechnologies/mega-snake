@@ -80,7 +80,7 @@ def on_crash(exctype: type[BaseException], value: BaseException, trace: Tracebac
     """
     if exctype == WorkspaceError:
         err_code: int = getattr(value, "error_code")
-        if err_code != 1:
+        if err_code != 100:
             sys.exit(err_code)
     old_hook(exctype, value, trace)
 
@@ -188,7 +188,7 @@ def ws_error(message: str, exception: Optional[BaseException] = None) -> None:
 class WorkspaceError(BaseException):
     """Custom exception for workspace operations"""
 
-    def __init__(self, message: str, parent_exception: BaseException, error_code: int = 1) -> None:
+    def __init__(self, message: str, parent_exception: BaseException, error_code: int = 100) -> None:
         sys.excepthook = on_crash
         self.message = message
         self.parent_exception = parent_exception

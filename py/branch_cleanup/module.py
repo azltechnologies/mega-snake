@@ -2,12 +2,19 @@
 
 import os
 from typing import Optional
+import click
 from py.util.formatting import ws_info, ws_success
 from py.util.util import get_validated_input
 from py.branch_cleanup.parse_remote_branches import define_branches, RemoteBranch, parsing_branches, delete_branches
 from py.remote_branches.module import main as remoteBranchesDetails, get_output_file
 
 
+@click.command(
+    name="remoteBranchesCleanUp",
+    short_help="Helper function for deleting branches merged branches from the remote repository.",
+    help="Iterates over the remote branches asking the user which merged branches to delete",
+    epilog="Requires user input to delete branches",
+)
 def main() -> None:
     """
     Deletes branches that have been merged into the main branch from the remote repository

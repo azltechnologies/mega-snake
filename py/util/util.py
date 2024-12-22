@@ -5,11 +5,13 @@ This module contains utility functions for common operations.
 import re
 import subprocess
 import time
+from typing import Callable
 from colorama import init, Fore, Back
 from py.util.formatting import ws_advice, ws_warning
 
 # Initialize colopiprama
 init(autoreset=True)
+
 
 def run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str]:
     """
@@ -82,7 +84,7 @@ def get_validated_input(p_prompt: str, valid_values: list[str]) -> str:
         prompt: str
         valid_values: set[str]
     """
-    warn:str = f"Invalid input. Please enter one of:\n {' | '.join(valid_values)}"
+    warn: str = f"Invalid input. Please enter one of:\n {' | '.join(valid_values)}"
     tries: int = 0
     prompt = p_prompt
     while True:
@@ -96,3 +98,17 @@ def get_validated_input(p_prompt: str, valid_values: list[str]) -> str:
         tries += 1
         if tries > 3:
             raise KeyError(f"Too many invalid inputs for '{prompt}'. Exiting.")
+
+
+def cli_metadata(**metadata) -> Callable:
+    """
+    Decorator to add custom metadata to a command
+    """
+
+    def decorator(f) -> Callable:
+        if not hasattr(f, "metadata"):
+            f.flags = {}
+        f.flags.update(metadata)
+        return f
+
+    return decorator

@@ -3,6 +3,7 @@
 import re
 import os
 from typing import Optional
+import click
 from py.util.formatting import ws_info
 from py.util.remote_branch import RemoteBranch
 from py.util.util import run_operation, get_main_branch
@@ -14,13 +15,32 @@ def get_output_file() -> str:
     """Returns the path to the output file"""
     return f"{AppProperties.get_instance().retrieve_property("working_path")}/remote_branches.txt"
 
-
+@click.command(
+    name="remoteBranchesDetails",
+    short_help="Gets details of remote branches",
+    help="Creates a detailed list of remote branches filtered by type",
+    epilog="""The branch details are created within $WS_TEMP path.\n
+    usage: set_env remoteBranchesDetails [OPTIONS]\n
+    OPTIONS:\n
+        -f | --filter-by: Optional[str] - filter branches by merge status against main branch\n
+    """,
+)
+@click.option(
+    "--filter-by",
+    "-f",
+    type=click.Choice(REMOTE_BRANCHES_OPT, False),
+    help="""filter branches by merge status against main branch:\n
+    'M' - merged branches\n
+    'U' - unmerged branches\n
+    'A' - all branches (default)\n""",
+    default="A",
+)
 def main(filter_by: str) -> None:
     """
     Creates a detailed list of remote branches filtered by type
 
     Args:
-        filter: str
+        filter_by: str | "A"
     """
     if filter_by not in REMOTE_BRANCHES_OPT:
         raise ValueError(f"Invalid filter: {filter_by}; filter value must be one of:\n {' | '.join(REMOTE_BRANCHES_OPT)}")

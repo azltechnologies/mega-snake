@@ -2,6 +2,7 @@
 
 import os
 from typing import Optional
+import click
 from directory_tree import DisplayTree
 from py.util.formatting import ws_info, ws_success
 from py.util.util import run_operation, get_main_branch, get_current_commit
@@ -9,6 +10,17 @@ from py.util.props import AppProperties
 from py.diff_tree.file_type import FileType
 
 
+@click.command(
+    name="createDiffTree",
+    short_help="Creates diff tree and commit list of current changes",
+    help="Creates a diff tree of changes and a commit list of the current branch against master or a specified commit hash",
+    epilog="""The directory tree and commit list are created within $WS_TEMP path.\n
+    usage: set_env createDiffTree [OPTIONS]\n
+    OPTIONS:\n
+        -c | --commit-hash: Optional[str] - Commit hash to compare against instead of master\n
+    """,
+)
+@click.option("--commit-hash", "-c", type=click.STRING, default=None, help="Commit hash to compare against instead of master")
 def main(commit_hash: Optional[str] = None) -> None:
     """
     Creates a diff tree of the current branch against master
