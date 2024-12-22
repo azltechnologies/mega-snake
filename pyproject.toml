@@ -35,7 +35,7 @@ mypy_path = "./out"
 
 [tool.pylint.master]
 init-hook = 'import sys; sys.path.append("/Users/carlosmorales/IdeaProjects/stuff/.venv/lib/python3.13/site-packages")'
-load-plugins = ["py.util.custom_checkers"]
+load-plugins = ["py.pylint.custom_checkers"]
 ignore-patterns = [".+\\.pyi", "/opt/.*"]
 
 [tool.pylint.messages_control]
