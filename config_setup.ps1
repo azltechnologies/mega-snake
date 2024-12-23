@@ -35,7 +35,7 @@ function set_env {
 
     $global:LASTEXITCODE = $exit_code
 
-    if ($exit_code -eq 1) {
+    if ($exit_code -eq 21) {
         . l_reload
     }
 }

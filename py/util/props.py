@@ -149,8 +149,8 @@ class AppProperties:
         log_file: str = check_property("log_file_name", properties)
         local_config_file: str = check_property("local_config_file_name", properties)
         graphql_schema_file: str = check_property("graphql_schema_file_name", properties)
-        self.log_level_from_str(log_level)
         self.__working_path_validator(working_path)
+        self.log_level_from_str(log_level)
         self.__log_file_validator(log_file)
         self.__shell_validator(shell)
         self.__adding_prop_validator("local_config_file", f"{self.props["working_path"]}/{local_config_file}")
@@ -202,7 +202,7 @@ def read_properties(file_path: str) -> dict:
 
 
 # Initialize the configuration object
-def init_app_properties(log_level: str, shell: Optional[str]) -> None:
+def init_app_properties(log_level: str, shell: Optional[str], light_weight: bool) -> None:
     """
     Setup the application properties and initialize the logger
 
@@ -224,7 +224,12 @@ def init_app_properties(log_level: str, shell: Optional[str]) -> None:
 
     if not shell:
         raise EnvironmentError("Environment variable 'WS_SHELL' is not set")
-    AppProperties(log_level, shell, properties)
+    try:
+        AppProperties(log_level, shell, properties)
+    except FileNotFoundError as e:
+        if light_weight:
+            return
+        raise e
     app_props: AppProperties = AppProperties.get_instance()
     path: str = app_props.retrieve_property("log_file")
     level: int = app_props.log_level

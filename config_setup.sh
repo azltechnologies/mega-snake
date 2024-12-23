@@ -36,7 +36,7 @@ set_env() {
 
     deactivate
 
-    if [ $exit_code -eq 1 ]; then
+    if [ $exit_code -eq 21 ]; then
         l_reload
     fi
 

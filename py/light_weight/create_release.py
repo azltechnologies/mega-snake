@@ -4,8 +4,8 @@
 """
 from typing import Optional
 import click
-import py.create_release.release_handler as handler
-from py.create_release.release import Release, get_latest_release
+import py.light_weight.release_handler as handler
+from py.light_weight.release import Release, get_latest_release
 from py.util.formatting import ws_info, ws_success
 from py.util.util import get_validated_input, get_current_commit
 from py.constants import RELEASE_TYPE_OPT
@@ -33,7 +33,7 @@ NUM_RETRIES = 3
 @click.argument("release-type", type=click.Choice(list(RELEASE_TYPE_OPT.keys()), False), required=True)
 @click.argument("notes", type=click.STRING, required=False, default=None)
 @click.argument("branch", type=click.STRING, required=False, default=None)
-def main(tag_suffix: str, release_type: str, notes: Optional[str], branch: Optional[str]) -> None:
+def create_release(tag_suffix: str, release_type: str, notes: Optional[str], branch: Optional[str]) -> None:
     """
     Creates a new release on GitHub with the given parameters.
 

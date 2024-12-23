@@ -120,7 +120,8 @@ def ws_info(message: str) -> None:
 def ws_warning(message: str) -> None:
     """Print a warning message"""
     print(Fore.YELLOW + Back.BLACK+ message)
-    logger.warning(message, stacklevel=2)
+    if logger.hasHandlers():
+        logger.warning(message, stacklevel=2)
 
 
 # specify that this function raises an exception
