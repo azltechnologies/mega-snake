@@ -5,7 +5,7 @@ This module contains utility functions for common operations.
 import re
 import subprocess
 import time
-from typing import Callable, Union
+from typing import Callable
 import click
 from colorama import init, Fore, Back
 from py.util.formatting import ws_advice, ws_warning
@@ -118,35 +118,32 @@ def cli_metadata(**metadata) -> Callable:
 def wrapper_decorator(sub_wrapper: Callable) -> Callable:
     """Decorator to wrap a command with additional logic"""
 
-    def decorator(command) -> Union[Callable, click.Command]:
+    def decorator(command) -> click.Command:
         """
         Decorator that can handle both Click Commands and regular functions
         """
-        if isinstance(command, click.Command):
 
-            @click.pass_context
-            def wrapper(ctx, *args, **kwargs) -> None:
-                sub_wrapper(ctx, *args, **kwargs)
-                return ctx.invoke(command, *args, **kwargs)
+        @click.pass_context
+        def wrapper(ctx, *args, **kwargs) -> None:
+            sub_wrapper(ctx, *args, **kwargs)
+            return ctx.invoke(command, *args, **kwargs)
 
-            def update_flags(source) -> None:
-                """Update flags from the source object to the wrapper"""
-                if source_flags := getattr(source, "flags", {}):
-                    if not hasattr(wrapper, "flags"):
-                        setattr(wrapper, "flags", {})
-                    getattr(wrapper, "flags").update(source_flags)
+        def update_flags(source) -> None:
+            """Update flags from the source object to the wrapper"""
+            if source_flags := getattr(source, "flags", {}):
+                if not hasattr(wrapper, "flags"):
+                    setattr(wrapper, "flags", {})
+                getattr(wrapper, "flags").update(source_flags)
 
-            update_flags(sub_wrapper)
-            update_flags(command.callback)
+        update_flags(sub_wrapper)
+        update_flags(command.callback)
 
-            return click.Command(
-                name=command.name,
-                callback=wrapper,
-                params=command.params,
-                help=command.help,
-                short_help=command.short_help,
-                epilog=command.epilog,
-            )
-        return decorator
-
+        return click.Command(
+            name=command.name,
+            callback=wrapper,
+            params=command.params,
+            help=command.help,
+            short_help=command.short_help,
+            epilog=command.epilog,
+        )
     return decorator
