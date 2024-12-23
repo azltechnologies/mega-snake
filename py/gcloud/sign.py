@@ -4,8 +4,9 @@ import os
 from typing import Optional
 import click
 from py.constants import GCLOUD_LOGGIN_OPT
-from py.util.formatting import ws_info, ws_success, ws_tip
+from py.util.formatting import ws_info, ws_success, ws_tip, Color
 from py.util.util import run_operation, cli_metadata
+
 
 @click.command(
     name="gcloudLogin",
@@ -117,7 +118,8 @@ def project_set(project: str) -> None:
     """
     current_project: str = run_operation("gcloud config get-value project", "Getting current project").stdout.strip()
     if project.strip() != current_project:
-        ws_tip("Current project:", current_project)
+        dict_color: dict[Color, str] = {Color.RED: "current_project: ", Color.GREEN: current_project}
+        ws_tip(dict_color)
         exit_status = os.system(f"gcloud config set project {project}")
         if exit_status != 0:
             raise RuntimeError(f"There was an error running the gcloud config set project {project} command.")

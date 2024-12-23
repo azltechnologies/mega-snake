@@ -3,6 +3,7 @@
 from typing import Optional, Callable
 import click
 from py.constants import MSG_OPT
+from py.util.formatting import Color
 
 
 @click.command(
@@ -26,7 +27,8 @@ from py.constants import MSG_OPT
     """,
 )
 @click.argument("message", type=click.STRING)
-@click.argument("epilog", type=click.STRING, required=False, default=None)
+@click.option("--prologue", "-p", type=click.STRING, required=False, default=None, help="An optional starting message.")
+@click.option("--epilog", "-e", type=click.STRING, required=False, default=None, help="An optional ending message.")
 @click.option(
     "--type-msg",
     "-t",
@@ -41,7 +43,7 @@ from py.constants import MSG_OPT
      """,
     default="I",
 )
-def echo(message: str, epilog: Optional[str], type_msg: str) -> None:  # previously echo
+def echo(message: str, prologue: Optional[str], epilog: Optional[str], type_msg: str) -> None:  # previously echo
     """
     Prints a message to the console and logs it into the workspace configuration log file.
 
@@ -58,9 +60,17 @@ def echo(message: str, epilog: Optional[str], type_msg: str) -> None:  # previou
     if type_msg not in valid_filters:
         raise ValueError(f"Invalid message type: {type_msg}; message type value must be one of:\n {' | '.join(valid_filters)}")
     msg: str = f"{message}\n{epilog}" if epilog else message
+    if prologue:
+        msg = f"{prologue}\n{msg}"
     if type_msg == "A":
         fun_dict[type_msg](msg, True)
     if type_msg == "T":
-        fun_dict[type_msg](message, epilog)
+        dict_color: dict[Color,str] = {}
+        if prologue:
+            dict_color[Color.YELLOW] = prologue
+        dict_color[Color.GREEN] = message
+        if epilog:
+            dict_color[Color.RED] = epilog
+        fun_dict[type_msg](dict_color)
     else:
         fun_dict[type_msg](msg)

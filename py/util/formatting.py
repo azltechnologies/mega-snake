@@ -1,5 +1,6 @@
 """ This module contains functions for formatting output messages to the console. """
 
+from enum import Enum
 import subprocess
 import sys
 import os
@@ -12,6 +13,12 @@ from colorama import init, Fore, Style, Back
 
 # Initialize colopiprama
 init(autoreset=True)
+
+class Color(Enum):
+    """Color enumeration for console output"""
+    RED = Fore.RED
+    GREEN = Fore.GREEN
+    YELLOW = Fore.YELLOW
 
 ERROR_CODES: dict[type, int] = {
     RuntimeError: 101,
@@ -166,16 +173,15 @@ def ws_advice(message: str, force: bool = False) -> None:
         logger.debug(message, stacklevel=2)
 
 
-def ws_tip(prologue: str, epilogue: Optional[str]) -> None:
+def ws_tip(messages: dict[Color,str]) -> None:
     """Print a tip message"""
-    epilogue = f" {epilogue}" if epilogue else ""
-    green = Fore.GREEN
-    red = Fore.RED
-    yellow = Fore.YELLOW
+    msg: str = ""
+    for color, message in messages.items():
+        msg += f"{color.value}{message}"
     nc = Style.RESET_ALL  # No Color
-    tip: str = f"{Back.BLACK}{green}Hey! {red}'{prologue}'{green}{yellow}{epilogue}{nc}."
+    tip: str = f"{Back.BLACK}{msg}{nc}."
     print(tip)
-    logger.info("%s %s", prologue, epilogue, stacklevel=2)
+    logger.info(msg, stacklevel=2)
 
 
 def ws_error(message: str, exception: Optional[BaseException] = None) -> None:
