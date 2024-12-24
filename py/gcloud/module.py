@@ -1,6 +1,5 @@
 """gcloud module for the CLI."""
 
-import os
 import click
 from py.gcloud.parse_instances_deployment_id import bq_instances_by_deployment_id
 from py.gcloud.parse_json_logs import parse_json_logs

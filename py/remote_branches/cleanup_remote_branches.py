@@ -19,7 +19,7 @@ def remote_branches_cleanup() -> None:
     """
     Deletes branches that have been merged into the main branch from the remote repository
     """
-    prompt: str = "Do you want to rerun the remoteBranchesDetails function? (y/n)"
+    prompt: str = "Do you want to rerun the remoteBranchesDetails function?"
     yes_no_options: list[str] = ["y", "n"]
     if get_validated_input(prompt, yes_no_options) == "y":
         filter_options: list[str] = ["a", "m"]

@@ -165,7 +165,7 @@ def select_version(versions: list[GradleVersion]) -> GradleVersion:
     prompt += "\nAvailable versions:\n"
     for v in versions:
         prompt += f"{v}"
-    prompt += f"\nSelect a version by entering its Id:\n{' | '.join(version_list)}\n"
+    prompt += "\nSelect a version by entering its Id"
     selection: str = get_validated_input(prompt, version_list)
     version = next((v for v in versions if v.id == int(selection)), None)
     if not version:

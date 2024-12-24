@@ -38,11 +38,9 @@ def expired_certs(jks_path: str, password: str, verbose: bool) -> None:
 
     # Validate keytool parameters
     list_cmd: str = f"keytool -v -list -keystore '{jks_path}' -storepass '{password}'"
-    exit_status: int = get_command_return_code(list_cmd)
-    if exit_status == 0:
-        ws_info("Validation of parameters in keytool command succeeded.")
-    else:
+    if get_command_return_code(list_cmd) != 0:
         raise RuntimeError("keytool command failed on implementing parameters.")
+    ws_info("Validation of parameters in keytool command succeeded.")
 
     # Get all aliases
     try:
@@ -71,12 +69,11 @@ def expired_certs(jks_path: str, password: str, verbose: bool) -> None:
                     valid_from = datetime.strptime(date_str[0].replace("Valid from:", "").strip(), "%a %b %d %H:%M:%S %Z %Y")
                     valid_until = datetime.strptime(date_str[1].strip(), "%a %b %d %H:%M:%S %Z %Y")
 
-            current_date = datetime.now()
             color_dict: dict[Color, str]
             if not valid_from or not valid_until:
                 ws_warning(f"Certificate with alias {alias} has no valid date information.")
                 continue
-            if valid_from <= current_date <= valid_until:
+            if valid_from <= datetime.now() <= valid_until:
                 color_dict = {
                     Color.GREEN: f"Certificate with alias {Color.RED.value}{alias}{Color.GREEN.value} is valid until: ",
                     Color.YELLOW: str(valid_until),

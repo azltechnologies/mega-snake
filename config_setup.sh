@@ -43,7 +43,7 @@ set_env() {
     return $exit_code
 }
 l_reload
-set_env msg -t t "l_reload" ": use this function to reload the local config file"
+set_env msg -t t -p "l_reload" ": use this function to reload the local config file"
 setup_env() {
     export WS_TEMP="./workspace_temp"
 

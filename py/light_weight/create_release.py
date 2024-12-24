@@ -57,7 +57,7 @@ def create_release(tag_suffix: str, release_type: str, notes: Optional[str], bra
     handler.git_fetch()
 
     if release_type.lower() == "l":
-        prompt: str = "\nAre you sure you want to create a new latest release? y/n: "
+        prompt: str = "\nAre you sure you want to create a new latest release?"
         yes_no_options: list[str] = ["y", "n"]
         if get_validated_input(prompt, yes_no_options) == "n":
             ws_info("Exiting.")

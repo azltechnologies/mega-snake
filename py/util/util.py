@@ -7,7 +7,7 @@ import subprocess
 import time
 from typing import Callable
 import click
-from colorama import init, Fore, Back
+from colorama import init, Fore, Back, Style
 from py.util.formatting import ws_advice, ws_warning
 
 # Initialize colopiprama
@@ -93,20 +93,21 @@ def get_validated_input(p_prompt: str, valid_values: list[str]) -> str:
         prompt: str
         valid_values: set[str]
     """
-    warn: str = f"Invalid input. Please enter one of:\n {' | '.join(valid_values)}"
+    instructions: str = f"Please enter one of:\n {' | '.join(valid_values)}"
+    warn: str = f"Invalid input. {instructions}"
     tries: int = 0
     prompt = p_prompt
     while True:
-        user_input = input(f"\n{prompt}\n").lower()
+        user_input = input(f"\n{prompt}\n").lower() if tries > 0 else input(f"\n{prompt}\n{instructions}\n").lower()
         # convert to lowercase all the values in valid_values
         valid_values = [value.lower() for value in valid_values]
         if user_input in valid_values:
             return user_input
-        prompt = f"{Back.BLACK}{Fore.YELLOW}{p_prompt}\ttry again\t—\t{3-tries} attempts left"
+        prompt = f"{Back.BLACK}{Fore.YELLOW}{p_prompt}\ttry again\t—\t{Fore.RED}{3-tries} attempts left\n{instructions}\n{Style.RESET_ALL}"
         ws_warning(warn)
         tries += 1
         if tries > 3:
-            raise KeyError(f"Too many invalid inputs for '{prompt}'. Exiting.")
+            raise KeyError(f"Too many invalid inputs for '{p_prompt} —— {instructions}'. Exiting.")
 
 
 def cli_metadata(**metadata) -> Callable:
