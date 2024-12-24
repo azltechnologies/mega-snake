@@ -75,7 +75,6 @@ setup_env() {
         fi
 
     fi
-    source $WS_CONFIG_HOME/src/expiredCertsJks.sh
 }
 ws_tip "setup_env <level>" "start working on a repository and set up the environment
     setup_env <level>

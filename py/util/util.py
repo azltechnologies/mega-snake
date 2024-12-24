@@ -44,6 +44,14 @@ def run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str
     return result
 
 
+def get_command_return_code(command: str) -> int:
+    """
+    Gets the return code of the given command.
+    """
+    result = subprocess.run(command, shell=True, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return result.returncode
+
+
 def get_main_branch() -> str:
     """
     Gets the main branch of the repository.
@@ -146,4 +154,5 @@ def wrapper_decorator(sub_wrapper: Callable) -> Callable:
             short_help=command.short_help,
             epilog=command.epilog,
         )
+
     return decorator

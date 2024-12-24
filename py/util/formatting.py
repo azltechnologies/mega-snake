@@ -19,6 +19,7 @@ class Color(Enum):
     RED = Fore.RED
     GREEN = Fore.GREEN
     YELLOW = Fore.YELLOW
+    BLUE = Fore.BLUE
 
 ERROR_CODES: dict[type, int] = {
     RuntimeError: 101,
@@ -179,7 +180,7 @@ def ws_tip(messages: dict[Color,str]) -> None:
     for color, message in messages.items():
         msg += f"{color.value}{message}"
     nc = Style.RESET_ALL  # No Color
-    tip: str = f"{Back.BLACK}{msg}{nc}."
+    tip: str = f"{Back.BLACK}{msg}{nc}"
     print(tip)
     logger.info(msg, stacklevel=2)
 

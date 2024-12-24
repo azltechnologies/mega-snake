@@ -4,6 +4,7 @@ import click
 from py.util.util import cli_metadata
 from py.light_weight.echo import echo
 from py.light_weight.create_release import create_release
+from py.light_weight.jks_expired_certs import expired_certs
 from py.util.util import wrapper_decorator
 
 
@@ -22,3 +23,4 @@ add_wrapper = wrapper_decorator(wrapper)
 
 main.add_command(echo)
 main.add_command(create_release)
+main.add_command(expired_certs)

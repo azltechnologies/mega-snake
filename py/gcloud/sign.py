@@ -5,7 +5,7 @@ from typing import Optional
 import click
 from py.constants import GCLOUD_LOGGIN_OPT
 from py.util.formatting import ws_info, ws_success, ws_tip, Color
-from py.util.util import run_operation, cli_metadata
+from py.util.util import run_operation, cli_metadata, get_command_return_code
 
 
 @click.command(
@@ -50,10 +50,12 @@ def gcloud_logout() -> None:
     """
     Logs out of gcloud
     """
-    os.system("gcloud auth revoke 2>/dev/null")
-    ws_success("gcloud account is now logged out.")
-    os.system("gcloud auth application-default revoke 2>/dev/null")
-    ws_success("gcloud application-default credentials are now revoked.")
+    exit_code:int =os.system("gcloud auth revoke")
+    if exit_code == 0:
+        ws_success("gcloud account is now logged out.")
+    exit_code = os.system("gcloud auth application-default revoke")
+    if exit_code == 0:
+        ws_success("gcloud application-default credentials are now revoked.")
 
 
 def gcloud_login(type_login: str, project: Optional[str]) -> None:
@@ -82,7 +84,7 @@ def user_login() -> None:
     Returns:
         None
     """
-    exit_status: int = os.system("gcloud auth application-default print-access-token")
+    exit_status: int = get_command_return_code("gcloud auth application-default print-access-token")
     if exit_status == 0:
         ws_info("gcloud application-default credentials were already set.")
     else:
@@ -99,7 +101,7 @@ def app_login() -> None:
     Returns:
         None
     """
-    exit_status = os.system("gcloud auth print-access-token")
+    exit_status = get_command_return_code("gcloud auth print-access-token")
     if exit_status == 0:
         ws_info("gcloud account was already set.")
     else:
