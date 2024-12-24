@@ -19,6 +19,13 @@ from py.config_environment.util import get_local_file
 @click.option("--override", "-o", is_flag=True, help="Override the current local configuration file with a new one")
 def initial_load(override: bool) -> None:  # previously initialLoad
     """
+    Calls the execute function to initialize the configuration system.
+    """
+    execute(override)
+
+
+def execute(override: bool) -> None:  # previously initialLoad
+    """
     Initializes the configuration system by creating a local config file if it doesn't exist,
     then loads its contents into the environment.
 
@@ -33,9 +40,9 @@ def initial_load(override: bool) -> None:  # previously initialLoad
         contents += "# You can add custom functions and configurations here.\n"
         match shell:
             case "bash" | "zsh":
-                contents += "example() {\n    set_env msg 'Hello, World!'\n}\nexport SOME_VAR='some value'\n"
+                contents += "example() {\n    set_env msg 'Hello, World!'\n}\nexport ORG_GRADLE_PROJECT_example_password='some value'\n"
             case "powershell":
-                contents = "function example {\n    set_env msg 'Hello, World!'\n}\n$env:SOME_VAR = 'some value'\n"
+                contents = "function example {\n    set_env msg 'Hello, World!'\n}\n$env:ORG_GRADLE_PROJECT_example_password = 'some value'\n"
             case _:
                 return
         with open(local_file, "w", encoding="utf-8") as file:

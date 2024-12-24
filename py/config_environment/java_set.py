@@ -5,6 +5,7 @@ import os
 import platform
 import re
 import json
+import shutil
 from typing import Any, Optional
 import jq
 import click
@@ -27,18 +28,30 @@ from py.util.formatting import ws_info, ws_success, ws_advice, ws_warning
 @click.option("--override", "-o", is_flag=True, help="Override the current Java version")
 def set_java_version(override: bool) -> None:
     """
-    Sets the java version for the project.
+    Calls the execute function to set the Java version for the project.
 
     Args:
         override (bool): A boolean value to override the current java version.
     """
     props_inst: AppProperties = AppProperties.get_instance()
     workspace_file: str = props_inst.retrieve_property("workspace_file")
+    execute(override, workspace_file)
+
+def execute(override: bool, workspace_file: str) -> None:
+    """
+    Sets the java version for the project.
+
+    Args:
+        override (bool): A boolean value to override the current java version.
+        workspace_file (str): Path to the workspace settings file
+    """
+    props_inst: AppProperties = AppProperties.get_instance()
     working_path: str = props_inst.retrieve_property("working_path")
+    resources_path: str = props_inst.retrieve_property("resources_path")
     local_file = get_local_file()
     shell = props_inst.retrieve_property("shell")
     java_set(workspace_file, working_path, local_file, shell, override)
-
+    add_java_formatter(workspace_file, resources_path)
 
 OS = platform.system()
 OS_MAP = {"Windows": "windows", "Linux": "linux", "Darwin": "osx"}
@@ -46,6 +59,7 @@ ENV_VARIABLE = f"terminal.integrated.env.{OS_MAP[OS]}"
 JAVA_JQ_QUERY = f'.settings["{ENV_VARIABLE}"].JAVA_HOME'
 JAVA_RUNTIME_QUERY = '.settings.["java.configuration.runtimes"]'
 JAVA_RUNTIME_PATH = f"{JAVA_RUNTIME_QUERY} | map(select(.default == true)) | if length == 1 then .[0].path else null end"
+JAVA_FORMAT_QUERY = '.settings["java.format.settings.url"]'
 
 
 @dataclass(unsafe_hash=True)
@@ -342,3 +356,32 @@ def find_local_java_home(path: str, shell: str) -> Optional[str]:
                 if matches:
                     return matches[0].strip()
     return None
+
+def add_java_formatter(workspace_file: str, resources_path: str) -> None:
+    """Add Java formatter xml to the vscode folder"""
+    formatter_path: str = f"{resources_path}/java-formatter.xml"
+    assert os.path.exists(formatter_path), f"Java formatter file not found at {formatter_path}. Its supposed to be in the resources folder. This is a bug."
+    vscode_path: str = f"{os.getcwd()}/.vscode"
+    if not os.path.exists(vscode_path):
+        os.makedirs(vscode_path, exist_ok=True)
+        ws_success(f"Created .vscode folder at {vscode_path}")
+    local_formatter_path: str = f"{vscode_path}/java-formatter.xml"
+    json_data: Any = load_json_with_comments(workspace_file)
+    result: Optional[str] = jq.compile(JAVA_FORMAT_QUERY).input(json_data).first()
+    if result:
+        ws_info(f"Java formatter file already set in the workspace settings at {result}")
+    else:
+        jq_query = f'{JAVA_FORMAT_QUERY} = {json.dumps(local_formatter_path)}'
+        updated_json_data: Optional[str] = jq.compile(jq_query).input(json_data).first()
+        if not updated_json_data:
+            raise RuntimeError("Failed to set Java formatter in workspace settings")
+        temp_file = f"{vscode_path}/java_formatter.json"
+        update_workspace(updated_json_data, temp_file, workspace_file)
+    if os.path.exists(local_formatter_path):
+        ws_info(f"Java formatter file already exists at {local_formatter_path}")
+        return
+    ws_info(f"Copying Java formatter file from {formatter_path} to {local_formatter_path}")
+    shutil.copyfile(formatter_path, local_formatter_path)
+    ws_success(f"Java formatter file copied to {local_formatter_path}")
+
+

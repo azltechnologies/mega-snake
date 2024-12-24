@@ -5,6 +5,7 @@ from py.config_environment.graphql_schema import create_graphql_schema
 from py.config_environment.java_set import set_java_version
 from py.config_environment.gradle_set import set_gradle_version
 from py.config_environment.local_config import initial_load
+from py.config_environment.create_working_env import create_working_env
 from py.util.util import wrapper_decorator
 
 
@@ -25,3 +26,4 @@ main.add_command(create_graphql_schema)
 main.add_command(set_java_version)
 main.add_command(set_gradle_version)
 main.add_command(initial_load)
+main.add_command(create_working_env)
