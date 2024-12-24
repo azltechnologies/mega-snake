@@ -4,7 +4,7 @@ import click
 from py.config_environment.graphql_schema import create_graphql_schema
 from py.config_environment.java_set import set_java_version
 from py.config_environment.gradle_set import set_gradle_version
-from py.config_environment.set_workspace import initial_load
+from py.config_environment.local_config import initial_load
 from py.util.util import wrapper_decorator
 
 

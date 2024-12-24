@@ -41,13 +41,3 @@ def initial_load(override: bool) -> None:  # previously initialLoad
         with open(local_file, "w", encoding="utf-8") as file:
             file.write(contents)
         ws_success(f"Local configuration file created: {local_file}")
-
-
-def setting_workspace() -> None:  # previously untrackGradleProps
-    """
-    Sets the workspace for the project.
-
-    Returns:
-        None
-    """
-    pass
