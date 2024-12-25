@@ -1,16 +1,15 @@
 """This module provides functions to set a specific Gradle version as the default version on the workspace."""
 
-from dataclasses import dataclass, field
 import os
 import platform
 import re
 import json
 from typing import Any, Optional
+import typing
 import jq
 import click
-from jsoncomment import JsonComment
-from py.config_environment.util import get_local_file
-from py.util.util import run_operation, get_validated_input
+from py.config_environment.util import get_local_file, update_workspace, ToolVersion, get_version_number, select_version, set_version_environment
+from py.util.util import run_operation, load_json_with_comments
 from py.util.props import AppProperties
 from py.util.formatting import ws_info, ws_success, ws_advice, ws_warning
 
@@ -36,6 +35,7 @@ def set_gradle_version(override: bool) -> None:  # previously gradleSet
     workspace_file: str = props_inst.retrieve_property("workspace_file")
     execute(override, workspace_file)
 
+
 def execute(override: bool, workspace_file: str) -> None:
     """
     Sets the gradle version for the project.
@@ -50,6 +50,7 @@ def execute(override: bool, workspace_file: str) -> None:
     shell = props_inst.retrieve_property("shell")
     gradle_set(workspace_file, working_path, local_file, shell, override)
 
+
 OS = platform.system()
 OS_MAP = {"Windows": "windows", "Linux": "linux", "Darwin": "osx"}
 ENV_VARIABLE = f"terminal.integrated.env.{OS_MAP[OS]}"
@@ -59,8 +60,7 @@ GRADLE_JQ_QUERY = f'.settings["{ENV_VARIABLE}"].GRADLE_HOME'
 GRADLE_WRAPPER_QUERY = '.settings["java.import.gradle.wrapper.enabled"]'
 
 
-@dataclass(unsafe_hash=True)
-class GradleVersion:
+class GradleVersion(ToolVersion):
     """GradleVersion class represents a Gradle installation.
 
     Attributes:
@@ -68,31 +68,10 @@ class GradleVersion:
         path (str): Installation path
     """
 
-    version: str
-    path: str
-    default: bool = field(default=False)
-    id: int = field(init=False)
-
     _id_counter: int = 0  # Class variable to keep track of the count
-
-    def __post_init__(self) -> None:
-        type(self)._id_counter += 1
-        self.id = type(self)._id_counter
 
     def __str__(self) -> str:
         return f"Id: {self.id}\n\tGradle Version: {self.version}\n\tpath: {self.path}\n"
-
-
-def get_version_number(version: str) -> float:
-    """Convert version string to numeric value for sorting.
-
-    Returns:
-        float: Numeric version value
-    """
-    parts = version.split(".")
-    if len(parts) >= 2:
-        return float(f"{parts[0]}.{parts[1]}")
-    return float(parts[0])
 
 
 def gradle_set(workspace_file: str, working_path: str, local_file: str, shell: str, override: bool) -> None:
@@ -108,6 +87,9 @@ def gradle_set(workspace_file: str, working_path: str, local_file: str, shell: s
     """
 
     versions: list[GradleVersion] = get_versions()
+    if not versions:
+        ws_warning("No Gradle versions found on the system. Please install a valid version")
+        return
     json_data: Any = load_json_with_comments(workspace_file)
     version: Optional[GradleVersion] = None
     version_local: Optional[GradleVersion] = None
@@ -144,7 +126,7 @@ def gradle_set(workspace_file: str, working_path: str, local_file: str, shell: s
 
     if not version:
         ws_info("Selecting Gradle version to set as default on the workspace")
-        version = select_version(versions)
+        version = typing.cast(GradleVersion, select_version(typing.cast(list[ToolVersion], versions)))
         version.default = True
     if not version_local:
         set_version_local_config(version, local_file, shell)
@@ -155,32 +137,23 @@ def gradle_set(workspace_file: str, working_path: str, local_file: str, shell: s
         if not version_number:
             json_data = set_version_number(versions, json_data)
         if not version_environment:
-            json_data = set_version_environment(versions, json_data)
-        update_workspace(json_data, temp_file, workspace_file)
+            json_data = set_version_environment(typing.cast(list[ToolVersion], versions), json_data, GRADLE_JQ_QUERY)
+        workspace_update(json_data, temp_file, workspace_file)
     ws_success(f"Gradle version {version.version} set as default on the workspace")
 
 
-def select_version(versions: list[GradleVersion]) -> GradleVersion:
+def workspace_update(json_data: Any, temp_path: str, workspace_file: str) -> None:
     """
-    Prompts the user to select a valid Gradle version from the list of available versions.
+    Updates the workspace settings file with the selected Gradle version.
 
     Args:
-        versions (list[GradleVersion]): List of GradleVersion objects
-
-    Returns:
-        GradleVersion: The selected Gradle version
+        json_data (Any): Workspace settings data
+        temp_path (str): Path to the temporary file
+        workspace_parh (str): Path to the workspace settings file
     """
-    version_list: list[str] = [str(v.id) for v in versions]
-    prompt = "Select a Gradle version to set as default on the workspace"
-    prompt += "\nAvailable versions:\n"
-    for v in versions:
-        prompt += f"{v}"
-    prompt += "\nSelect a version by entering its Id"
-    selection: str = get_validated_input(prompt, version_list)
-    version = next((v for v in versions if v.id == int(selection)), None)
-    if not version:
-        raise RuntimeError(f"Gradle version with id {selection} not found")
-    return version
+    jq_query = f"{GRADLE_WRAPPER_QUERY} = {json.dumps(False)}"
+    updated_json_data = jq.compile(jq_query).input(json_data).first()
+    update_workspace(updated_json_data, temp_path, workspace_file)
 
 
 def set_version_local_config(version: GradleVersion, local_parh: str, shell: str) -> None:
@@ -258,50 +231,6 @@ def set_version_number(versions: list[GradleVersion], json_data: dict) -> str:
     return updated_json_data
 
 
-def set_version_environment(versions: list[GradleVersion], json_data: dict) -> str:
-    """
-    The provided version is set as the default version on the workspace.
-
-    Args:
-        versions (GradleVersion): List of Gradle versions
-        json_data (dict): Workspace settings data
-
-    Returns:
-        str: Updated JSON data
-    """
-    vers: Optional[GradleVersion] = next((v for v in versions if v.default), None)
-    if not vers:
-        raise RuntimeError("Default Java version not found in the list of Java versions")
-    jq_query = f"{GRADLE_JQ_QUERY} = {json.dumps(str(vers.path))}"
-    updated_json_data: Optional[str] = jq.compile(jq_query).input(json_data).first()
-    if not updated_json_data:
-        raise RuntimeError("Failed to set Java version in workspace settings")
-    return updated_json_data
-
-
-def update_workspace(json_data: Any, temp_parh: str, workspace_file: str) -> None:
-    """
-    Updates the workspace settings file with the selected Gradle version.
-
-    Args:
-        json_data (Any): Workspace settings data
-        temp_parh (str): Path to the temporary file
-        workspace_parh (str): Path to the workspace settings file
-    """
-    jq_query = f"{GRADLE_WRAPPER_QUERY} = {json.dumps(False)}"
-    updated_json_data = jq.compile(jq_query).input(json_data).first()
-    if not updated_json_data:
-        raise RuntimeError("Failed to set Gradle version in workspace settings")
-    with open(temp_parh, "w", encoding="utf-8") as file:
-        json.dump(updated_json_data, file, indent=2)
-    ws_advice(f"attemping to replace {workspace_file} with {temp_parh}")
-    try:
-        os.replace(temp_parh, workspace_file)
-    except OSError as e:
-        raise OSError(f"Failed to replace {workspace_file} with {temp_parh} while setting Gradle version") from e
-    ws_advice(f"{temp_parh} deleted after successful replacement")
-
-
 def get_versions() -> list[GradleVersion]:
     """Get Gradle versions installed on the system.
 
@@ -322,21 +251,6 @@ def get_versions() -> list[GradleVersion]:
         matches = sorted(matches, key=lambda x: get_version_number(x[1].strip()), reverse=True)
         version_list = [GradleVersion(version=version[1].strip(), path=version[0].strip() + "/libexec") for version in matches]
     return version_list
-
-
-def load_json_with_comments(file_path: str) -> dict:
-    """Load a JSON file with comments.
-
-    Args:
-        file_path (str): Path to the JSON file
-
-    Returns:
-        dict: JSON data
-    """
-    with open(file_path, "r", encoding="utf-8") as file:
-        json_str = file.read()
-        parser = JsonComment(json)
-        return parser.loads(json_str)
 
 
 def find_local_gradle_home(path: str, shell: str) -> Optional[str]:

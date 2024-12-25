@@ -8,7 +8,7 @@ from .light_weight.module import main as create_release, add_wrapper as create_r
 from .remote_branches.module import main as remote_branches, add_wrapper as remote_branches_result_callback
 from .gcloud.module import main as gcloud, add_wrapper as gcloud_result_callback
 from .config_environment.module import main as config_environment, add_wrapper as config_env_result_callback
-from .constants import LOGGING_OPT, SHELL_OPT
+from .constants import LOGGING_OPT, SHELL_OPT, APP_NAME
 from .util.formatting import get_traceback
 from .util.props import init_app_properties
 from .util.formatting import WorkspaceError, ws_advice
@@ -70,6 +70,6 @@ for command in remote_branches.commands.values():
 
 if __name__ == "__main__":
     try:
-        cli.main(prog_name="set_env")
+        cli.main(prog_name=APP_NAME)
     except Exception as e:
         raise WorkspaceError("Error during cli execution", e) from e

@@ -4,6 +4,10 @@ from typing import Callable
 from logging import WARNING, INFO, DEBUG, NOTSET, ERROR
 from py.util import formatting
 
+# Constants
+
+APP_NAME: str = "set_env"
+
 REMOTE_BRANCHES_OPT: list[str] = ["M", "U", "A"]
 
 LOGGING_NAME_TO_LEVEL = {

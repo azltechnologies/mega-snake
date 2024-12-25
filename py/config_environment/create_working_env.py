@@ -5,17 +5,18 @@ from pathlib import Path
 import shutil
 import json
 import re
-import click
 from typing import Any, Optional
+import click
 import jq
+from py.constants import APP_NAME
 from py.util.props import AppProperties
 from py.util.formatting import ws_success
-from py.config_environment.util import get_local_file
+from py.config_environment.util import get_local_file, update_workspace
 from py.config_environment.java_set import execute as set_java
 from py.config_environment.gradle_set import execute as set_gradle, set_gradle_version as gradle_command
 from py.config_environment.local_config import execute as initial_load
-from py.util.formatting import ws_advice, ws_info, ws_warning, ws_tip, Color
-from py.util.util import get_command_return_code, get_validated_input, cli_metadata, get_main_branch, get_remote_url
+from py.util.formatting import ws_advice, ws_info, ws_warning
+from py.util.util import get_command_return_code, get_validated_input, cli_metadata, get_main_branch, get_remote_url, load_json_with_comments
 
 
 @click.command(
@@ -64,11 +65,12 @@ def create_working_env() -> None:  # previously untrackGradleProps
         )
     else:
         set_gradle(False, workspace_file)
+    add_default_settings(workspace_file, working_path)
 
 
 FOLDER = os.path.basename(os.getcwd())
-MAIN_BRANCH = get_main_branch()
-REMOTE_URL = get_remote_url()
+GIT_BLAME_QUERY = '.settings.["git-blame.gitWebUrl"]'
+
 
 def get_workspace_file() -> str:
     """
@@ -143,3 +145,19 @@ def git_exclude(working_path: str) -> None:
     # Writing git exclude file
     with open(ex_file, "w", encoding="utf-8") as file:
         file.write(exclude)
+
+
+def add_default_settings(workspace_file: str, working_path: str) -> None:
+    """
+    Adds default settings to the workspace file.
+
+    Args:
+        workspace_file (str): The workspace file path
+    """
+    json_data: dict[str, Any] = load_json_with_comments(workspace_file)
+    result = jq.compile(GIT_BLAME_QUERY).input(json_data).first()
+    if not result:
+        jq_query = f'{GIT_BLAME_QUERY} = "{get_remote_url()}/tree/$ID"'
+        json_data = jq.compile(jq_query).input(json_data).first()
+        temp_file = f"{working_path}/blame.json"
+        update_workspace(json_data, temp_file, workspace_file)

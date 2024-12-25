@@ -2,17 +2,32 @@
 This module contains utility functions for common operations.
 """
 
+import json
 import re
 import subprocess
 import time
 from typing import Callable, Optional
 import click
 from colorama import init, Fore, Back, Style
+from jsoncomment import JsonComment
 from py.util.formatting import ws_advice, ws_warning
 
 # Initialize colopiprama
 init(autoreset=True)
 
+def load_json_with_comments(file_path: str) -> dict:
+    """Load a JSON file with comments.
+
+    Args:
+        file_path (str): Path to the JSON file
+
+    Returns:
+        dict: JSON data
+    """
+    with open(file_path, "r", encoding="utf-8") as file:
+        json_str = file.read()
+        parser = JsonComment(json)
+        return parser.loads(json_str)
 
 def run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str]:
     """

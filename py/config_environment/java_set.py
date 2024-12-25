@@ -1,17 +1,16 @@
 """This module provides functions to set a specific Java version as the default version on the workspace."""
 
-from dataclasses import dataclass, field
 import os
 import platform
 import re
 import json
 import shutil
 from typing import Any, Optional
+import typing
 import jq
 import click
-from jsoncomment import JsonComment
-from py.config_environment.util import get_local_file
-from py.util.util import run_operation, get_validated_input
+from py.config_environment.util import get_local_file, update_workspace, ToolVersion, get_version_number, select_version, set_version_environment
+from py.util.util import run_operation, load_json_with_comments
 from py.util.props import AppProperties
 from py.util.formatting import ws_info, ws_success, ws_advice, ws_warning
 
@@ -37,6 +36,7 @@ def set_java_version(override: bool) -> None:
     workspace_file: str = props_inst.retrieve_property("workspace_file")
     execute(override, workspace_file)
 
+
 def execute(override: bool, workspace_file: str) -> None:
     """
     Sets the java version for the project.
@@ -53,6 +53,7 @@ def execute(override: bool, workspace_file: str) -> None:
     java_set(workspace_file, working_path, local_file, shell, override)
     add_java_formatter(workspace_file, resources_path)
 
+
 OS = platform.system()
 OS_MAP = {"Windows": "windows", "Linux": "linux", "Darwin": "osx"}
 ENV_VARIABLE = f"terminal.integrated.env.{OS_MAP[OS]}"
@@ -62,8 +63,7 @@ JAVA_RUNTIME_PATH = f"{JAVA_RUNTIME_QUERY} | map(select(.default == true)) | if 
 JAVA_FORMAT_QUERY = '.settings["java.format.settings.url"]'
 
 
-@dataclass(unsafe_hash=True)
-class JavaVersion:
+class JavaVersion(ToolVersion):
     """JavaVersion class represents a Java installation.
 
     Attributes:
@@ -72,32 +72,15 @@ class JavaVersion:
         description (str): Additional description/details
     """
 
-    version: str
-    path: str
     description: str
-    default: bool = field(default=False)
-    id: int = field(init=False)
+    _id_counter: int = 0
 
-    _id_counter: int = 0  # Class variable to keep track of the count
-
-    def __post_init__(self) -> None:
-        type(self)._id_counter += 1
-        self.id = type(self)._id_counter
+    def __init__(self, version: str, path: str, description: str) -> None:
+        super().__init__(version, path)
+        self.description = description
 
     def __str__(self) -> str:
         return f"Id: {self.id}\n\tJava Version: {self.version}\n\tpath: {self.path}\n\tDescription: {self.description}\n"
-
-
-def get_version_number(version: str) -> float:
-    """Convert version string to numeric value for sorting.
-
-    Returns:
-        float: Numeric version value
-    """
-    parts = version.split(".")
-    if len(parts) >= 2:
-        return float(f"{parts[0]}.{parts[1]}")
-    return float(parts[0])
 
 
 def java_set(workspace_file: str, working_path: str, local_file: str, shell: str, override: bool) -> None:
@@ -113,6 +96,9 @@ def java_set(workspace_file: str, working_path: str, local_file: str, shell: str
     """
 
     versions: list[JavaVersion] = get_versions()
+    if not versions:
+        ws_warning("No Java versions found on the system. Please install a valid Java version")
+        return
     json_data: Any = load_json_with_comments(workspace_file)
     version: Optional[JavaVersion] = None
     version_local: Optional[JavaVersion] = None
@@ -147,7 +133,7 @@ def java_set(workspace_file: str, working_path: str, local_file: str, shell: str
 
     if not version:
         ws_info("Selecting Java version to set as default on the workspace")
-        version = select_version(versions)
+        version = typing.cast(JavaVersion, select_version(typing.cast(list[ToolVersion], versions)))
         version.default = True
     if not version_local:
         set_version_local_config(version, local_file, shell)
@@ -156,32 +142,9 @@ def java_set(workspace_file: str, working_path: str, local_file: str, shell: str
         if not version_runtime:
             json_data = set_version_runtime(versions, json_data)
         if not version_environment:
-            json_data = set_version_environment(versions, json_data)
+            json_data = set_version_environment(typing.cast(list[ToolVersion], versions), json_data, JAVA_JQ_QUERY)
         update_workspace(json_data, temp_file, workspace_file)
     ws_success(f"Java version {version.version} set as default on the workspace")
-
-
-def select_version(versions: list[JavaVersion]) -> JavaVersion:
-    """
-    Prompts the user to select a valid Java version from the list of available versions.
-
-    Args:
-        versions (list[JavaVersion]): List of JavaVersion objects
-
-    Returns:
-        JavaVersion: The selected Java version
-    """
-    version_list: list[str] = [str(v.id) for v in versions]
-    prompt = "Select a Java version to set as default on the workspace"
-    prompt += "\nAvailable versions:\n"
-    for v in versions:
-        prompt += f"{v}"
-    prompt += "\nSelect a version by entering its Id"
-    selection: str = get_validated_input(prompt, version_list)
-    version = next((v for v in versions if v.id == int(selection)), None)
-    if not version:
-        raise RuntimeError(f"Java version with id {selection} not found")
-    return version
 
 
 def set_version_local_config(version: JavaVersion, local_parh: str, shell: str) -> None:
@@ -250,48 +213,6 @@ def set_version_runtime(versions: list[JavaVersion], json_data: Any) -> str:
     return updated_json_data
 
 
-def set_version_environment(versions: list[JavaVersion], json_data: dict) -> str:
-    """
-    The provided version is set as the default version on the workspace.
-
-    Args:
-        versions (JavaVersion): List of Java versions
-        json_data (dict): Workspace settings data
-
-    Returns:
-        str: Updated JSON data
-    """
-    vers: Optional[JavaVersion] = next((v for v in versions if v.default), None)
-    if not vers:
-        raise RuntimeError("Default Java version not found in the list of Java versions")
-    jq_query = f"{JAVA_JQ_QUERY} = {json.dumps(str(vers.path))}"
-    updated_json_data: Optional[str] = jq.compile(jq_query).input(json_data).first()
-    if not updated_json_data:
-        raise RuntimeError("Failed to set Java version in workspace settings")
-    return updated_json_data
-
-
-def update_workspace(json_data: Any, temp_parh: str, workspace_file: str) -> None:
-    """
-    Updates the workspace settings file with the selected Java version.
-
-    Args:
-        json_data (Any): Workspace settings data
-        temp_parh (str): Path to the temporary file
-        workspace_parh (str): Path to the workspace settings file
-    """
-    if not json_data:
-        raise RuntimeError("Failed to set Java version in workspace settings")
-    with open(temp_parh, "w", encoding="utf-8") as file:
-        json.dump(json_data, file, indent=2)
-    ws_advice(f"attemping to replace {workspace_file} with {temp_parh}")
-    try:
-        os.replace(temp_parh, workspace_file)
-    except OSError as e:
-        raise OSError(f"Failed to replace {workspace_file} with {temp_parh} while setting Java version") from e
-    ws_advice(f"{temp_parh} deleted after successful replacement")
-
-
 def get_versions() -> list[JavaVersion]:
     """Get Java versions installed on the system.
 
@@ -312,21 +233,6 @@ def get_versions() -> list[JavaVersion]:
         matches = sorted(matches, key=lambda x: get_version_number(x[0].strip()), reverse=True)
         version_list = [JavaVersion(version=version[0].strip(), path=version[2].strip(), description=version[1].strip()) for version in matches]
     return version_list
-
-
-def load_json_with_comments(file_path: str) -> dict:
-    """Load a JSON file with comments.
-
-    Args:
-        file_path (str): Path to the JSON file
-
-    Returns:
-        dict: JSON data
-    """
-    with open(file_path, "r", encoding="utf-8") as file:
-        json_str = file.read()
-        parser = JsonComment(json)
-        return parser.loads(json_str)
 
 
 def find_local_java_home(path: str, shell: str) -> Optional[str]:
@@ -357,10 +263,13 @@ def find_local_java_home(path: str, shell: str) -> Optional[str]:
                     return matches[0].strip()
     return None
 
+
 def add_java_formatter(workspace_file: str, resources_path: str) -> None:
     """Add Java formatter xml to the vscode folder"""
     formatter_path: str = f"{resources_path}/java-formatter.xml"
-    assert os.path.exists(formatter_path), f"Java formatter file not found at {formatter_path}. Its supposed to be in the resources folder. This is a bug."
+    assert os.path.exists(
+        formatter_path
+    ), f"Java formatter file not found at {formatter_path}. Its supposed to be in the resources folder. This is a bug."
     vscode_path: str = f"{os.getcwd()}/.vscode"
     if not os.path.exists(vscode_path):
         os.makedirs(vscode_path, exist_ok=True)
@@ -371,7 +280,7 @@ def add_java_formatter(workspace_file: str, resources_path: str) -> None:
     if result:
         ws_info(f"Java formatter file already set in the workspace settings at {result}")
     else:
-        jq_query = f'{JAVA_FORMAT_QUERY} = {json.dumps(local_formatter_path)}'
+        jq_query = f"{JAVA_FORMAT_QUERY} = {json.dumps(local_formatter_path)}"
         updated_json_data: Optional[str] = jq.compile(jq_query).input(json_data).first()
         if not updated_json_data:
             raise RuntimeError("Failed to set Java formatter in workspace settings")
@@ -383,5 +292,3 @@ def add_java_formatter(workspace_file: str, resources_path: str) -> None:
     ws_info(f"Copying Java formatter file from {formatter_path} to {local_formatter_path}")
     shutil.copyfile(formatter_path, local_formatter_path)
     ws_success(f"Java formatter file copied to {local_formatter_path}")
-
-
