@@ -27,18 +27,28 @@ from py.util.formatting import ws_info, ws_success, ws_advice, ws_warning
 @click.option("--override", "-o", is_flag=True, help="Override the current Gradle version")
 def set_gradle_version(override: bool) -> None:  # previously gradleSet
     """
-    Sets the gradle version for the project.
+    Calls the execute function to set the Gradle version on the workspace.
 
     Args:
         override (bool): A boolean value to override the current gradle version.
     """
     props_inst: AppProperties = AppProperties.get_instance()
     workspace_file: str = props_inst.retrieve_property("workspace_file")
+    execute(override, workspace_file)
+
+def execute(override: bool, workspace_file: str) -> None:
+    """
+    Sets the gradle version for the project.
+
+    Args:
+        override (bool): A boolean value to override the current gradle version.
+        workspace_file (str): Path to the workspace settings file
+    """
+    props_inst: AppProperties = AppProperties.get_instance()
     working_path: str = props_inst.retrieve_property("working_path")
     local_file = get_local_file()
     shell = props_inst.retrieve_property("shell")
     gradle_set(workspace_file, working_path, local_file, shell, override)
-
 
 OS = platform.system()
 OS_MAP = {"Windows": "windows", "Linux": "linux", "Darwin": "osx"}

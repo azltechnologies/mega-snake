@@ -12,9 +12,10 @@ from py.util.props import AppProperties
 from py.util.formatting import ws_success
 from py.config_environment.util import get_local_file
 from py.config_environment.java_set import execute as set_java
+from py.config_environment.gradle_set import execute as set_gradle, set_gradle_version as gradle_command
 from py.config_environment.local_config import execute as initial_load
 from py.util.formatting import ws_advice, ws_info, ws_warning, ws_tip, Color
-from py.util.util import get_command_return_code, get_validated_input, cli_metadata
+from py.util.util import get_command_return_code, get_validated_input, cli_metadata, get_main_branch, get_remote_url
 
 
 @click.command(
@@ -53,9 +54,21 @@ def create_working_env() -> None:  # previously untrackGradleProps
         git_exclude(working_path)
     initial_load(False)
     set_java(False, workspace_file)
+    # verifying if build.gradle or build.gradle.kts exists
+    build_file: str = f"{os.getcwd()}/build.gradle"
+    build_kts_file: str = f"{os.getcwd()}/build.gradle.kts"
+    if not os.path.exists(build_file) and not os.path.exists(build_kts_file):
+        ws_warning(
+            f"build.gradle or build.gradle.kts file not found in the current directory. "
+            f"Please run '{gradle_command.name}' command if you want to set the gradle version anyway."
+        )
+    else:
+        set_gradle(False, workspace_file)
+
 
 FOLDER = os.path.basename(os.getcwd())
-
+MAIN_BRANCH = get_main_branch()
+REMOTE_URL = get_remote_url()
 
 def get_workspace_file() -> str:
     """

@@ -5,7 +5,7 @@ This module contains utility functions for common operations.
 import re
 import subprocess
 import time
-from typing import Callable
+from typing import Callable, Optional
 import click
 from colorama import init, Fore, Back, Style
 from py.util.formatting import ws_advice, ws_warning
@@ -52,39 +52,6 @@ def get_command_return_code(command: str) -> int:
     return result.returncode
 
 
-def get_main_branch() -> str:
-    """
-    Gets the main branch of the repository.
-
-    Returns:
-        str
-    """
-    remotes: list[str] = run_operation("git remote", "Getting remotes").stdout.strip().split("\n")
-    if not remotes:
-        raise ValueError("No remotes found in the current repository")
-    if len(remotes) > 1:
-        raise NotImplementedError("Multiple remotes found in the current repository; Operations with multiple remotes are not supported")
-    result = run_operation(f"git remote show {remotes[0]}", "Getting main branch").stdout.strip()
-    if not result:
-        raise LookupError(f"No main branch found in the current repository for remote {remotes[0]}")
-    pattern = r"^(\s*HEAD branch:\s*)(\S+)"
-    match = re.search(pattern, result, re.MULTILINE)
-    if match:
-        return match.group(2)
-    raise LookupError("No main branch found in the current repository")
-
-
-def get_current_commit() -> str:
-    """
-    Gets the current branch of the repository.
-
-    Returns:
-        str
-    """
-    result = run_operation("git rev-parse HEAD", "Getting current branch").stdout.strip()
-    return result
-
-
 def get_validated_input(p_prompt: str, valid_values: list[str]) -> str:
     """
     Get user input and validate against allowed values
@@ -108,6 +75,66 @@ def get_validated_input(p_prompt: str, valid_values: list[str]) -> str:
         tries += 1
         if tries > 3:
             raise KeyError(f"Too many invalid inputs for '{p_prompt} —— {instructions}'. Exiting.")
+
+
+def get_remote() -> Optional[str]:
+    """
+    Gets the remote of the repository.
+
+    Returns:
+        str
+    """
+    result: str = run_operation("git remote", "Getting remotes").stdout.strip()
+    if not result:
+        return None
+    remotes: list[str] = result.split("\n")
+    if len(remotes) == 1:
+        return remotes[0]
+    options: list[str] = [str(i) for i in range(0, len(remotes))]
+    prompt: str = "Multiple remotes found in the current repository; Please select one of the following:\n"
+    for index, remote in enumerate(remotes):
+        prompt += f"\t{index}: {remote}\n"
+    remote_index = int(get_validated_input(prompt, options))
+    return remotes[remote_index]
+
+def get_remote_url() -> Optional[str]:
+    """
+    Gets the remote URL of the repository.
+    """
+    remote = get_remote()
+    if not remote:
+        return None
+    return re.sub(r"\.git$", "", run_operation(f"git remote get-url {remote}", "Getting remote URL").stdout.strip())
+
+def get_main_branch() -> str:
+    """
+    Gets the main branch of the repository.
+
+    Returns:
+        str
+    """
+    remote: Optional[str] = get_remote()
+    if not remote:
+        return run_operation("git symbolic-ref --short HEAD", "Getting current local branch").stdout.strip()
+    result = run_operation(f"git remote show {remote}", "Getting main branch").stdout.strip()
+    if not result:
+        raise LookupError(f"No main branch found in the current repository for remote {remote}")
+    pattern = r"^(\s*HEAD branch:\s*)(\S+)"
+    match = re.search(pattern, result, re.MULTILINE)
+    if match:
+        return match.group(2)
+    raise LookupError("No main branch found in the current repository")
+
+
+def get_current_commit() -> str:
+    """
+    Gets the current branch of the repository.
+
+    Returns:
+        str
+    """
+    result = run_operation("git rev-parse HEAD", "Getting current branch").stdout.strip()
+    return result
 
 
 def cli_metadata(**metadata) -> Callable:
