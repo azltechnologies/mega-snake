@@ -5,20 +5,21 @@ from pathlib import Path
 import shutil
 import json
 import re
-from typing import Any, Optional
+from typing import Any
 import click
 import jq
 from py.constants import APP_NAME
 from py.util.props import AppProperties
 from py.util.formatting import ws_success
-from py.config_environment.util import get_local_file, update_workspace
+from py.config_environment.util import update_workspace
 from py.config_environment.models.github_queries import PrQueries, IssuesQueries
 from py.config_environment.models.log_viewer_watcher import LogWatcher
+from py.config_environment.models.vscode_launch import VscodeLaunch, SUBSTITUTE_SHELL_TAG, SUBSTITUTE_PROJECT_TAG
 from py.config_environment.java_set import execute as set_java
 from py.config_environment.gradle_set import execute as set_gradle, set_gradle_version as gradle_command
 from py.config_environment.local_config import execute as initial_load
 from py.util.formatting import ws_advice, ws_info, ws_warning
-from py.util.util import get_command_return_code, get_validated_input, cli_metadata, get_main_branch, get_remote_url, load_json_with_comments
+from py.util.util import get_command_return_code, get_validated_input, cli_metadata, get_remote_url, load_json_with_comments
 
 
 @click.command(
@@ -63,7 +64,7 @@ def create_working_env() -> None:  # previously untrackGradleProps
     if not os.path.exists(build_file) and not os.path.exists(build_kts_file):
         ws_warning(
             f"build.gradle or build.gradle.kts file not found in the current directory. "
-            f"Please run '{gradle_command.name}' command if you want to set the gradle version anyway."
+            f"Please run '{APP_NAME} {gradle_command.name}' command if you want to set the gradle version anyway."
         )
     else:
         set_gradle(False, workspace_file)
@@ -181,6 +182,28 @@ def add_default_settings(workspace_file: str, working_path: str) -> None:
             update_file = True
             json_data = res
             res = None
+    res = VscodeLaunch.add_launch_version(json_data)
+    if res:
+        update_file = True
+        json_data = res
+        res = None
+    for launch in VscodeLaunch:
+        res = launch.add_launch_config(json_data, launch_substituter)
+        if res:
+            update_file = True
+            json_data = res
+            res = None
     if update_file:
         temp_file = f"{working_path}/blame.json"
         update_workspace(json_data, temp_file, workspace_file)
+
+def launch_substituter(launch:str) -> str:
+    """
+    Substitutes launch tags with values
+    """
+    # verify if the launch contains the tags
+    if SUBSTITUTE_SHELL_TAG in launch:
+        launch = launch.replace(SUBSTITUTE_SHELL_TAG, AppProperties.get_instance().retrieve_property("shell"))
+    if SUBSTITUTE_PROJECT_TAG in launch:
+        launch = launch.replace(SUBSTITUTE_PROJECT_TAG, FOLDER)
+    return launch

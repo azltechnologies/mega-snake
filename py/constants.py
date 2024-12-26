@@ -7,6 +7,8 @@ from py.util import formatting
 # Constants
 
 APP_NAME: str = "set_env"
+MODULE_NAME: str = "py"
+INTERPRETER_PATH: str = ".venv/bin/python3.13"
 
 REMOTE_BRANCHES_OPT: list[str] = ["M", "U", "A"]
 

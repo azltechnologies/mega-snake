@@ -8,6 +8,7 @@ import inspect
 import os
 from datetime import datetime
 from py.util import formatting
+from py.util.util import get_validated_input
 from py.constants import SHELL_OPT, LOGGING_NAME_TO_LEVEL, LOGGING_LEVEL_TO_NANE
 
 
@@ -166,6 +167,7 @@ class AppProperties:
         self.__resources_path_validator(resources_path)
         try:
             self.__working_path_validator(working_path)
+            self.__adding_prop_validator("workspace_file", find_code_workspace_files(f"{self.props["working_path"]}/.."))
         except FileNotFoundError as e:
             self.__adding_prop_validator("local_config_file", f"{self.props["working_path"]}/{local_config_file}")
             self.__shell_validator(shell)
@@ -179,7 +181,6 @@ class AppProperties:
         self.__shell_validator(shell)
         self.__adding_prop_validator("local_config_file", f"{self.props["working_path"]}/{local_config_file}")
         self.__adding_prop_validator("graphql_schema_file", f"{self.props["working_path"]}/{graphql_schema_file}")
-        self.__adding_prop_validator("workspace_file", find_code_workspace_files(f"{self.props["working_path"]}/.."))
         self.__post_init__()
 
     def __post_init__(self) -> None:
@@ -275,7 +276,11 @@ def find_code_workspace_files(directory: str) -> str:
 
     # Check if there is more than one .code-workspace file
     if len(workspace_files) > 1:
-        raise RuntimeError("Multiple .code-workspace files found.")
+        options: list[str] = [str(i) for i in range(0, len(workspace_files))]
+        prompt:str = "Multiple .code-workspace files found. Please select one:\n"
+        for index, workspace_file in enumerate(workspace_files):
+            prompt += f"\t{index}: {workspace_file}\n"
+        return os.path.abspath(workspace_files[int(get_validated_input(prompt, options))])
     if len(workspace_files) == 0:
         raise FileNotFoundError("No .code-workspace file found.")
 

@@ -26,6 +26,8 @@ def load_json_with_comments(file_path: str) -> dict:
     """
     with open(file_path, "r", encoding="utf-8") as file:
         json_str = file.read()
+        if not json_str:
+            return {}
         parser = JsonComment(json)
         return parser.loads(json_str)
 
