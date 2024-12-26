@@ -12,7 +12,7 @@ from py.constants import APP_NAME
 from py.util.props import AppProperties
 from py.util.formatting import ws_success
 from py.config_environment.util import get_local_file, update_workspace
-from py.config_environment.models.github_pr_queries import PrQueries
+from py.config_environment.models.github_queries import PrQueries, IssuesQueries
 from py.config_environment.models.log_viewer_watcher import LogWatcher
 from py.config_environment.java_set import execute as set_java
 from py.config_environment.gradle_set import execute as set_gradle, set_gradle_version as gradle_command
@@ -165,6 +165,12 @@ def add_default_settings(workspace_file: str, working_path: str) -> None:
         update_file = True
     for pr_query in PrQueries:
         res = pr_query.add_query(json_data)
+        if res:
+            update_file = True
+            json_data = res
+            res = None
+    for issue_query in IssuesQueries:
+        res = issue_query.add_query(json_data)
         if res:
             update_file = True
             json_data = res

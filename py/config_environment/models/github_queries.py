@@ -1,0 +1,76 @@
+"""Module for the different PR queries."""
+
+from enum import Enum
+import json
+from typing import Any, Optional
+import jq
+
+GH_PR_QUERY = '.settings.["githubPullRequests.queries"]'
+GH_ISSUES_QUERY = '.settings.["githubIssues.queries"]'
+
+
+class BaseQueries:
+    """Enum for the different PR queries."""
+
+    def __init__(self, label: str, query: str):
+        self.label = label
+        self.query = query
+
+    def to_dict(self) -> dict[str, Any]:
+        """Converts the enum to a dictionary."""
+        return {"label": self.label, "query": self.query}
+
+    def add_query_record(self, json_data: dict[str, Any], p_query: str) -> Optional[dict[str, Any]]:
+        """Adds the query to the workspace settings."""
+        json_input = json_data
+        result = jq.compile(p_query).input(json_data).first()
+        search_query: str = f'{p_query}| map(select(.label == "{self.label}"))'
+        if result:
+            length_query: str = f"{search_query} | length"
+            result = jq.compile(length_query).input(json_data).first()
+            if result == 1:
+                return None
+            if result > 1:
+                delete_query = search_query.replace("==", "!=")
+                result = jq.compile(delete_query).input(json_data).first()
+                jq_query = f"{p_query} = {json.dumps(result)}"
+                json_input = jq.compile(jq_query).input(json_input).first()
+        jq_query = f"{p_query} += [{json.dumps(self.to_dict())}]"
+        return jq.compile(jq_query).input(json_input).first()
+
+
+class PrQueries(BaseQueries, Enum):
+    """Enum for the different PR queries."""
+
+    MY_CLOSED_PRS = ("My Closed PRs", "is:closed author:${user}")
+    WAITING_FOR_REVIEW = ("Waiting for My Review", "is:open review-requested:${user}")
+    ASSIGNED_TO_ME = ("Assigned to Me", "is:open assignee:${user}")
+    CREATED_BY_ME = ("Created by Me", "is:open author:${user}")
+
+    def add_query(self, json_data: dict[str, Any]) -> Optional[dict[str, Any]]:
+        """Adds the query to the workspace settings."""
+        return super().add_query_record(json_data, GH_PR_QUERY)
+
+
+
+class IssuesQueries(BaseQueries, Enum):
+    """Enum for the different PR queries."""
+
+    MY_ISSUES = ("My Issues", "is:open assignee:${user} repo:${owner}/${repository}", ["milestone"])
+    CREATED_ISSUES = ("Created Issues", "author:${user} state:open repo:${owner}/${repository} sort:created-desc")
+    RECENT_ISSUES = ("Recent Issues", "state:open repo:${owner}/${repository} sort:updated-desc")
+
+    def __init__(self, label: str, query: str, group_by: Optional[list[str]] = None):
+        super().__init__(label, query)
+        self.group_by = group_by
+
+    def add_query(self, json_data: dict[str, Any]) -> Optional[dict[str, Any]]:
+        """Adds the query to the workspace settings."""
+        return super().add_query_record(json_data, GH_ISSUES_QUERY)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Converts the enum to a dictionary."""
+        result = super().to_dict()
+        if self.group_by:
+            result["groupBy"] = self.group_by
+        return result
