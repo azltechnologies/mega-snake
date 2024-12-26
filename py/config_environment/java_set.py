@@ -9,7 +9,8 @@ from typing import Any, Optional
 import typing
 import jq
 import click
-from py.config_environment.util import get_local_file, update_workspace, ToolVersion, get_version_number, select_version, set_version_environment
+from py.config_environment.util import get_local_file, update_workspace, get_version_number
+from py.config_environment.models.tools_version import ToolVersion, select_version, set_version_environment
 from py.util.util import run_operation, load_json_with_comments
 from py.util.props import AppProperties
 from py.util.formatting import ws_info, ws_success, ws_advice, ws_warning

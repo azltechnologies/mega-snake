@@ -12,6 +12,8 @@ from py.constants import APP_NAME
 from py.util.props import AppProperties
 from py.util.formatting import ws_success
 from py.config_environment.util import get_local_file, update_workspace
+from py.config_environment.models.github_pr_queries import PrQueries
+from py.config_environment.models.log_viewer_watcher import LogWatcher
 from py.config_environment.java_set import execute as set_java
 from py.config_environment.gradle_set import execute as set_gradle, set_gradle_version as gradle_command
 from py.config_environment.local_config import execute as initial_load
@@ -154,10 +156,25 @@ def add_default_settings(workspace_file: str, working_path: str) -> None:
     Args:
         workspace_file (str): The workspace file path
     """
+    update_file:bool = False
     json_data: dict[str, Any] = load_json_with_comments(workspace_file)
     result = jq.compile(GIT_BLAME_QUERY).input(json_data).first()
     if not result:
         jq_query = f'{GIT_BLAME_QUERY} = "{get_remote_url()}/tree/$ID"'
         json_data = jq.compile(jq_query).input(json_data).first()
+        update_file = True
+    for pr_query in PrQueries:
+        res = pr_query.add_query(json_data)
+        if res:
+            update_file = True
+            json_data = res
+            res = None
+    for watcher in LogWatcher:
+        res = watcher.add_watcher(json_data, working_path)
+        if res:
+            update_file = True
+            json_data = res
+            res = None
+    if update_file:
         temp_file = f"{working_path}/blame.json"
         update_workspace(json_data, temp_file, workspace_file)
