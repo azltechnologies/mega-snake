@@ -39,5 +39,6 @@ function set_env {
         . l_reload
     }
 }
+set_env msg -t t -p "set_env" ": use this function to set the environment configuration"
 . l_reload
 set_env msg -t t -p "l_reload" ": source this function to reload the local config file"
