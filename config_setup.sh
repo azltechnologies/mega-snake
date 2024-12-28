@@ -8,7 +8,6 @@ else
     export WS_CONFIG_HOME="$(readlink -f $(dirname "$0"))"
     export WS_SHELL="zsh"
 fi
-source $WS_CONFIG_HOME/src/formatting.sh #ya
 l_reload() {
     local PROP_FILE="$WS_CONFIG_HOME/config.properties"
     local LOCAL_CONFIG=$(grep "local_config_file_name" "$PROP_FILE" | sed 's/local_config_file_name=//')
