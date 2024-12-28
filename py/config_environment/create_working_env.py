@@ -21,7 +21,7 @@ from py.config_environment.java_set import execute as set_java
 from py.config_environment.gradle_set import execute as set_gradle, set_gradle_version as gradle_command
 from py.config_environment.local_config import execute as initial_load
 from py.util.formatting import ws_advice, ws_info, ws_warning
-from py.util.util import get_command_return_code, get_validated_input, cli_metadata, get_remote_url, load_json_with_comments
+from py.util.util import get_command_return_code, get_validated_input, cli_metadata, get_remote_url, load_json_with_comments, get_input_or_default
 
 
 @click.command(
@@ -70,13 +70,26 @@ def create_working_env() -> None:  # previously untrackGradleProps
         )
     else:
         set_gradle(False, workspace_file)
-    add_recommended_extensions(workspace_file)
+    _add_recommended_extensions(workspace_file)
     add_default_settings(workspace_file, working_path)
 
 
 FOLDER = os.path.basename(os.getcwd())
 GIT_BLAME_QUERY = '.settings.["git-blame.gitWebUrl"]'
 EXTENSIONS_QUERY = ".extensions.recommendations"
+DEFAULT_PROPS: dict[str, Any] = {
+    "snake.java.remoteDebug.port": 5005,
+    "snake.java.remoteDebug.profile": "dev",
+    "snake.java.remoteDebug.jar": "build/libs/*.jar",
+    "terminal.integrated.scrollback": 9000,
+    "editor.largeFileOptimizations": False,
+    "editor.maxTokenizationLineLength": 2000000,
+    "logViewer.followTailMode": "auto",
+    "logViewer.chunkSizeKb": 81920,
+    "java.jdt.ls.vmargs": "-XX:+UseParallelGC -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90 -Dsun.zip.disableMemoryMapping=true -Xmx4G -Xms100m -Xlog:disable",
+}
+FILE_ASSOCIATIONS: dict[str, str] = {"**/.github/workflows/*.yml": "github-actions-workflow", "*.yml": "yaml", "*.gradle": "gradle"}
+
 
 def get_workspace_file() -> str:
     """
@@ -150,7 +163,8 @@ def git_exclude(working_path: str) -> None:
     with open(ex_file, "w", encoding="utf-8") as file:
         file.write(exclude)
 
-def add_recommended_extensions(workspace_file: str) -> None:
+
+def _add_recommended_extensions(workspace_file: str) -> None:
     """
     Adds recommended extensions to the workspace file.
 
@@ -160,17 +174,17 @@ def add_recommended_extensions(workspace_file: str) -> None:
     update_file: bool = False
     json_data: dict[str, Any] = load_json_with_comments(workspace_file)
     result = jq.compile(EXTENSIONS_QUERY).input(json_data).all()
-    if not result:
-        jq_query = f'{EXTENSIONS_QUERY} = {json.dumps(WORKSPACE_EXTENSIONS)}'
+    if not result or not result[0]:
+        jq_query = f"{EXTENSIONS_QUERY} = {json.dumps(WORKSPACE_EXTENSIONS)}"
         json_data = jq.compile(jq_query).input(json_data).first()
         update_file = True
     else:
         ext_list: list[str] = []
         for ext in WORKSPACE_EXTENSIONS:
-            if ext not in result:
+            if ext not in result[0]:
                 ext_list.append(ext)
         if ext_list:
-            jq_query = f'{EXTENSIONS_QUERY} += {json.dumps(ext_list)}'
+            jq_query = f"{EXTENSIONS_QUERY} += {json.dumps(ext_list)}"
             json_data = jq.compile(jq_query).input(json_data).first()
             update_file = True
     if update_file:
@@ -185,72 +199,154 @@ def add_default_settings(workspace_file: str, working_path: str) -> None:
 
     Args:
         workspace_file (str): The workspace file path
+        working_path (str): The working path
     """
-    update_file: bool = False
     json_data: dict[str, Any] = load_json_with_comments(workspace_file)
-    result = jq.compile(GIT_BLAME_QUERY).input(json_data).first()
-    if not result:
-        jq_query = f'{GIT_BLAME_QUERY} = "{get_remote_url()}/tree/$ID"'
-        json_data = jq.compile(jq_query).input(json_data).first()
-        update_file = True
-    for pr_query in PrQueries:
-        res = pr_query.add_query(json_data)
-        if res:
-            update_file = True
-            json_data = res
-            res = None
-    for issue_query in IssuesQueries:
-        res = issue_query.add_query(json_data)
-        if res:
-            update_file = True
-            json_data = res
-            res = None
-    for watcher in LogWatcher:
-        res = watcher.add_watcher(json_data, working_path)
-        if res:
-            update_file = True
-            json_data = res
-            res = None
-    res = VscodeTask.add_tasks_version(json_data)
-    if res:
-        update_file = True
-        json_data = res
-        res = None
-    for input_task in [a for a in VscodeInput if a.enum_type != InputType.LAUNCH]:
-        res = input_task.add_tasks_input(json_data, TASKS_INPUT_QUERY)
-        if res:
-            update_file = True
-            json_data = res
-            res = None
-    for input_launch in [a for a in VscodeInput if a.enum_type != InputType.TASK]:
-        res = input_launch.add_tasks_input(json_data, LAUNCH_INPUT_QUERY)
-        if res:
-            update_file = True
-            json_data = res
-            res = None
-    for task in VscodeTask:
-        res = task.add_tasks_task(json_data,working_path)
-        if res:
-            update_file = True
-            json_data = res
-            res = None
-    res = VscodeLaunch.add_launch_version(json_data)
-    if res:
-        update_file = True
-        json_data = res
-        res = None
-    for launch in VscodeLaunch:
-        res = launch.add_launch_config(json_data, launch_substituter, working_path)
-        if res:
-            update_file = True
-            json_data = res
-            res = None
+    update_file: bool = False
+
+    json_data, updated = _update_git_blame(json_data)
+    update_file = update_file or updated
+
+    json_data, updated = _update_github_queries(json_data)
+    update_file = update_file or updated
+
+    json_data, updated = _update_log_watchers(json_data, working_path)
+    update_file = update_file or updated
+
+    json_data, updated = _update_vscode_tasks(json_data, working_path)
+    update_file = update_file or updated
+
+    json_data, updated = _update_vscode_launch(json_data, working_path)
+    update_file = update_file or updated
+
+    json_data, updated = _update_input_props(json_data)
+    update_file = update_file or updated
+
+    json_data, updated = _update_file_associations(json_data)
+    update_file = update_file or updated
+
     if update_file:
         temp_file = f"{working_path}/blame.json"
         update_workspace(json_data, temp_file, workspace_file)
         ws_success("Workspace settings updated successfully")
     else:
         ws_advice("Workspace settings already up-to-date")
+
+
+def _update_git_blame(json_data: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    """Update git blame settings in workspace"""
+    result = jq.compile(GIT_BLAME_QUERY).input(json_data).first()
+    if not result:
+        jq_query = f'{GIT_BLAME_QUERY} = "{get_remote_url()}/tree/$ID"'
+        json_data = jq.compile(jq_query).input(json_data).first()
+        return json_data, True
+    return json_data, False
+
+
+def _update_github_queries(json_data: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    """Update GitHub PR and Issues queries"""
+    updated = False
+    for pr_query in PrQueries:
+        res = pr_query.add_query(json_data)
+        if res:
+            updated = True
+            json_data = res
+
+    for issue_query in IssuesQueries:
+        res = issue_query.add_query(json_data)
+        if res:
+            updated = True
+            json_data = res
+
+    return json_data, updated
+
+
+def _update_log_watchers(json_data: dict[str, Any], working_path: str) -> tuple[dict[str, Any], bool]:
+    """Update log watchers configuration"""
+    updated = False
+    for watcher in LogWatcher:
+        res = watcher.add_watcher(json_data, working_path)
+        if res:
+            updated = True
+            json_data = res
+    return json_data, updated
+
+
+def _update_vscode_tasks(json_data: dict[str, Any], working_path: str) -> tuple[dict[str, Any], bool]:
+    """Update VSCode tasks configuration"""
+    updated = False
+
+    res = VscodeTask.add_tasks_version(json_data)
+    if res:
+        updated = True
+        json_data = res
+
+    for input_type in [a for a in VscodeInput if a.enum_type != InputType.LAUNCH]:
+        res = input_type.add_tasks_input(json_data, TASKS_INPUT_QUERY)
+        if res:
+            updated = True
+            json_data = res
+
+    for task in VscodeTask:
+        res = task.add_tasks_task(json_data, working_path)
+        if res:
+            updated = True
+            json_data = res
+
+    return json_data, updated
+
+
+def _update_vscode_launch(json_data: dict[str, Any], working_path: str) -> tuple[dict[str, Any], bool]:
+    """Update VSCode launch configuration"""
+    updated = False
+
+    res = VscodeLaunch.add_launch_version(json_data)
+    if res:
+        updated = True
+        json_data = res
+
+    for input_type in [a for a in VscodeInput if a.enum_type != InputType.TASK]:
+        res = input_type.add_tasks_input(json_data, LAUNCH_INPUT_QUERY)
+        if res:
+            updated = True
+            json_data = res
+
+    for launch in VscodeLaunch:
+        res = launch.add_launch_config(json_data, launch_substituter, working_path)
+        if res:
+            updated = True
+            json_data = res
+
+    return json_data, updated
+
+
+def _update_input_props(json_data: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    """Update VSCode input properties"""
+    updated = False
+    for key, value in DEFAULT_PROPS.items():
+        snake_query: str = f'.settings.["{key}"]'
+        result = jq.compile(snake_query).input(json_data).first()
+        if result is None:
+            prompt: str = f"Enter the value a value for {key}"
+            value = get_input_or_default(prompt, value)
+            jq_query = f"{snake_query} = {json.dumps(value)}"
+            json_data = jq.compile(jq_query).input(json_data).first()
+            updated = True
+
+    return json_data, updated
+
+
+def _update_file_associations(json_data: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    """Update file associations in workspace"""
+    updated = False
+    for key, value in FILE_ASSOCIATIONS.items():
+        file_query: str = f'.settings.["files.associations"].["{key}"]'
+        result = jq.compile(file_query).input(json_data).first()
+        if not result:
+            jq_query = f"{file_query} = {json.dumps(value)}"
+            json_data = jq.compile(jq_query).input(json_data).first()
+            updated = True
+    return json_data, updated
 
 
 def launch_substituter(launch: str) -> str:

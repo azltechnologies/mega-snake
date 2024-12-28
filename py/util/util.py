@@ -6,7 +6,7 @@ import json
 import re
 import subprocess
 import time
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 import click
 from colorama import init, Fore, Back, Style
 from jsoncomment import JsonComment
@@ -68,6 +68,23 @@ def get_command_return_code(command: str) -> int:
     result = subprocess.run(command, shell=True, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return result.returncode
 
+
+def get_input_or_default(prompt: str, default: Any) -> str:
+    """
+    Get user input or return default value
+
+    Args:
+        prompt: str
+        default: str
+    """
+    user_input = input(f"{prompt} (default: {default})\n")
+    if user_input.strip() == "":
+        return default
+    try:
+        return type(default)(user_input)
+    except (ValueError, TypeError):
+        ws_warning(f"Invalid input. Value must be of type {type(default).__name__}. Using default value: {default}")
+        return default
 
 def get_validated_input(p_prompt: str, valid_values: list[str]) -> str:
     """
