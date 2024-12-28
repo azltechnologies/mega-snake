@@ -6,17 +6,19 @@ from typing import Any, Optional
 import jq
 
 LOG_WATCHER_QUERY = '.settings.["logViewer.watch"]'
+SUBSTITUTE_LOG_DATE_TAG = "_*.log"
+PATTEN_DATE_PREFFIX = "$(python -c \"from datetime import datetime; print(f'"
+PATTEN_DATE_SUFFIX = "_{datetime.now().strftime('%Y-%m-%d')}.log')\")"
 
 
 class LogWatcher(Enum):
     """Enum for the different PR queries."""
 
-    GRADLE_BUILD_NO_TEST = ("GRADLE CLEAN BUILD NO TEST", "logs/clean_build_no_test_*.log")
-    GRADLE_BUIL = ("GRADLE CLEAN BUILD", "logs/clean_build_*.log")
-    GENERIC = ("GENERIC LOG", "logs/output_*.log")
-    JAVA_DEBUG = ("JAVA DEBUG LOG", "logs/java_debug_*.log")
-    PYTHON_SNAKE = ("PYTHON SNAKE LOG", "logs/python_snake_*.log")
-
+    GRADLE_BUILD_NO_TEST = ("GRADLE CLEAN BUILD NO TEST", f"logs/clean_build_no_test{SUBSTITUTE_LOG_DATE_TAG}")
+    GRADLE_BUIL = ("GRADLE CLEAN BUILD", f"logs/clean_build{SUBSTITUTE_LOG_DATE_TAG}")
+    GENERIC = ("GENERIC LOG", f"logs/output{SUBSTITUTE_LOG_DATE_TAG}")
+    JAVA_DEBUG = ("JAVA DEBUG LOG", f"logs/java_debug{SUBSTITUTE_LOG_DATE_TAG}")
+    PYTHON_SNAKE = ("PYTHON SNAKE LOG", f"logs/python_snake{SUBSTITUTE_LOG_DATE_TAG}")
 
     def __init__(self, title: str, pattern: str):
         self.title = title
@@ -25,6 +27,15 @@ class LogWatcher(Enum):
     def to_dict(self, working_path: str) -> dict[str, Any]:
         """Converts the enum to a dictionary."""
         return {"title": self.title, "pattern": f"{working_path}/{self.pattern}", "autoScroll": True}
+
+    def get_pattern_date(self, working_path: str) -> str:
+        """
+        Returns the pattern with the date suffix.
+
+        Args:
+            working_path (str): The working path to append to the pattern
+        """
+        return f"{PATTEN_DATE_PREFFIX}{working_path}/{self.pattern.replace(SUBSTITUTE_LOG_DATE_TAG, PATTEN_DATE_SUFFIX)}"
 
     def add_watcher(self, json_data: dict[str, Any], working_path: str) -> Optional[dict[str, Any]]:
         """Adds the query to the workspace settings."""

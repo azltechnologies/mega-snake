@@ -157,7 +157,7 @@ def add_default_settings(workspace_file: str, working_path: str) -> None:
     Args:
         workspace_file (str): The workspace file path
     """
-    update_file:bool = False
+    update_file: bool = False
     json_data: dict[str, Any] = load_json_with_comments(workspace_file)
     result = jq.compile(GIT_BLAME_QUERY).input(json_data).first()
     if not result:
@@ -188,7 +188,7 @@ def add_default_settings(workspace_file: str, working_path: str) -> None:
         json_data = res
         res = None
     for launch in VscodeLaunch:
-        res = launch.add_launch_config(json_data, launch_substituter)
+        res = launch.add_launch_config(json_data, launch_substituter, working_path)
         if res:
             update_file = True
             json_data = res
@@ -196,8 +196,12 @@ def add_default_settings(workspace_file: str, working_path: str) -> None:
     if update_file:
         temp_file = f"{working_path}/blame.json"
         update_workspace(json_data, temp_file, workspace_file)
+        ws_success("Workspace settings updated successfully")
+    else:
+        ws_advice("Workspace settings already up-to-date")
 
-def launch_substituter(launch:str) -> str:
+
+def launch_substituter(launch: str) -> str:
     """
     Substitutes launch tags with values
     """
