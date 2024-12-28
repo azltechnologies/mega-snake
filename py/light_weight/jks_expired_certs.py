@@ -13,11 +13,11 @@ from py.util.util import run_operation, get_command_return_code
     short_help="Check for expired certificates in a JKS file",
     help="Analyze certificates in a Java KeyStore (JKS) file and report their validity status",
     epilog="""
-    Usage: set_env expiredCertsJks JKS_PATH [--password PASSWORD]
+    Usage: snake expiredCertsJks JKS_PATH [--password PASSWORD]
     
     Examples:
-      set_env expiredCertsJks /path/to/keystore.jks
-      set_env expiredCertsJks /path/to/keystore.jks --password mypassword
+      snake expiredCertsJks /path/to/keystore.jks
+      snake expiredCertsJks /path/to/keystore.jks --password mypassword
     Options:
         --password, -p: Custom password for the JKS file (default: changeit)
     """,

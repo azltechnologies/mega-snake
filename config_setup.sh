@@ -14,13 +14,13 @@ l_reload() {
     local WORKING_PATH=$(grep "working_path" "$PROP_FILE" | sed 's/working_path=//')
     local local_config_file="$PWD/$WORKING_PATH/$LOCAL_CONFIG.sh"
     if [ -f "$local_config_file" ]; then
-        set_env msg -t i "Reloading $local_config_file"
+        snake msg -t i "Reloading $local_config_file"
         source $local_config_file
     else
-        set_env msg -t w "No local config file found"
+        snake msg -t w "No local config file found"
     fi
 }
-set_env() {
+snake() {
     local PROP_FILE="$WS_CONFIG_HOME/config.properties"
 
     local RE_PY_ENV=$(grep "python_virtual_bash" "$PROP_FILE" | sed 's/python_virtual_bash=//')
@@ -41,6 +41,6 @@ set_env() {
 
     return $exit_code
 }
-set_env msg -t t -p "set_env" ": use this function to set the environment configuration"
+snake msg -t t -p "snake" ": use this function to set the environment configuration"
 l_reload
-set_env msg -t t -p "l_reload" ": use this function to reload the local config file"
+snake msg -t t -p "l_reload" ": use this function to reload the local config file"

@@ -19,7 +19,7 @@ from py.util.formatting import ws_info, ws_success, ws_advice, ws_warning
     name="setGradle",
     short_help="Sets the default Gradle version on the workspace",
     help="Sets the default Gradle version on the workspace",
-    epilog="""usage: set_env setGradle [OPTIONS]\n
+    epilog="""usage: snake setGradle [OPTIONS]\n
     OPTIONS:\n
         -o | --override: Optional[bool] - Override the current Gradle version\n
     """,

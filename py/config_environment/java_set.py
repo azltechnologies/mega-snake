@@ -20,7 +20,7 @@ from py.util.formatting import ws_info, ws_success, ws_advice, ws_warning
     name="setJava",
     short_help="Sets the default Java version on the workspace",
     help="Sets the default Java version on the workspace",
-    epilog="""usage: set_env setJava [OPTIONS]\n
+    epilog="""usage: snake setJava [OPTIONS]\n
     OPTIONS:\n
         -o | --override: Optional[bool] - Override the current Java version\n
     """,

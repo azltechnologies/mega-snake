@@ -15,7 +15,7 @@ from py.diff_tree.file_type import FileType
     short_help="Creates diff tree and commit list of current changes",
     help="Creates a diff tree of changes and a commit list of the current branch against master or a specified commit hash",
     epilog="""The directory tree and commit list are created within $WS_TEMP path.\n
-    usage: set_env createDiffTree [OPTIONS]\n
+    usage: snake createDiffTree [OPTIONS]\n
     OPTIONS:\n
         -c | --commit-hash: Optional[str] - Commit hash to compare against instead of master\n
     """,

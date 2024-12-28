@@ -10,7 +10,7 @@ from py.util.formatting import ws_advice, ws_success
     short_help="Parse instances by deployment id and copy the command to clipboard.",
     help="""Parse instances by deployment id and copy the command to clipboard.\n
     The command is intended to be used in BigQuery to filter instances by deployment id.""",
-    epilog="""usage: set_env bqInstancesQuery <project> <...deployment_ids...>""",
+    epilog="""usage: snake bqInstancesQuery <project> <...deployment_ids...>""",
 )
 @click.argument("project", type=click.STRING)
 @click.argument("deployment_ids", nargs=-1, required=True, type=str)

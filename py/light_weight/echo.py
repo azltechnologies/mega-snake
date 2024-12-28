@@ -11,7 +11,7 @@ from py.util.formatting import Color
     short_help="Prints message to the console and logs it.",
     help="Prints a message to the console in a custom format and logs it into the workspace configuration log file.",
     epilog="""
-    usage: set_env msg <message> [OPTIONS]   <type>\n
+    usage: snake msg <message> [OPTIONS]   <type>\n
     OPTIONS:\n
         epilog: an optional ending message as a second argument\n
         type:

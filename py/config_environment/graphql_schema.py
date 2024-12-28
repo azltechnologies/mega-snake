@@ -13,7 +13,7 @@ from py.util.util import run_operation
     name="createGraphqlSchema",
     short_help="Creates a GraphQL schema file in the working directory.",
     help="Creates a GraphQL schema file in the working directory.",
-    epilog="usage: set_env createGraphqlSchema <schema_path>",
+    epilog="usage: snake createGraphqlSchema <schema_path>",
 )
 @click.argument("schema_path", type=click.STRING)
 def create_graphql_schema(schema_path: str) -> None:

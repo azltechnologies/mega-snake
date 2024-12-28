@@ -13,7 +13,7 @@ from py.util.util import run_operation, cli_metadata, get_command_return_code
     short_help="Logs into gcloud — [supports skip mode]",
     help="Logs into gcloud and sets the project — [supports skip mode]",
     epilog="""
-             usage: set_env Login [OPTIONS] [project]\n
+             usage: snake Login [OPTIONS] [project]\n
                 args:\n
                     project: Optional[str] - project name\n
                     type-login: str - login type\n
@@ -43,7 +43,7 @@ def gcloud_login_env(project: Optional[str], type_login: str) -> None:
     name="gcloudLogout",
     short_help="Logs out of gcloud — [supports skip mode]",
     help="Logs out of gcloud — [supports skip mode]",
-    epilog="usage: set_env Logout",
+    epilog="usage: snake Logout",
 )
 @cli_metadata(flags={"skip"})
 def gcloud_logout() -> None:

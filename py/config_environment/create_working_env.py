@@ -28,7 +28,7 @@ from py.util.util import get_command_return_code, get_validated_input, cli_metad
     name="createWorkingEnv",
     short_help="Sets the default Java version on the workspace",
     help="Sets the default Java version on the workspace",
-    epilog="""usage: set_env setJava [OPTIONS]\n
+    epilog="""usage: snake setJava [OPTIONS]\n
     OPTIONS:\n
         -o | --override: Optional[bool] - Override the current Java version\n
     """,

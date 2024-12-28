@@ -12,7 +12,7 @@ from py.util.formatting import ws_advice, ws_warning, ws_success
     short_help="Parse logs from JSON files and write them to .log files",
     help="Parse logs from JSON files and write them to .log files in the logs/parsed directory under the working path",
     epilog="""Requires JSON files in the logs/parsed directory under the working path\n
-    Usage: set_env parseJsonLogs\n
+    Usage: snake parseJsonLogs\n
     """,
 )
 def parse_json_logs() -> None:
