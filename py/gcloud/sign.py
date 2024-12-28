@@ -23,7 +23,7 @@ from py.util.util import run_operation, cli_metadata, get_command_return_code
                             'B' - Both\n
              """,
 )
-@click.argument("type-login", type=click.Choice(list(GCLOUD_LOGGIN_OPT.keys()), False), required=True)
+@click.argument("type-login", type=click.Choice(list(GCLOUD_LOGGIN_OPT.keys()), False), required=False, default="B")
 @click.argument("project", type=click.STRING, required=False, default=None)
 @cli_metadata(flags={"skip"})
 def gcloud_login_env(project: Optional[str], type_login: str) -> None:

@@ -6,9 +6,10 @@ from py.gcloud.parse_json_logs import parse_json_logs
 from py.gcloud.sign import gcloud_login_env, gcloud_logout
 from py.util.formatting import ws_advice
 from py.util.util import wrapper_decorator, get_command_return_code
+from py.util.cli_group import CliGroup
 
 
-@click.group()
+@click.group(cls=CliGroup)
 def main() -> None:
     """gcloud related commands"""
 
@@ -28,5 +29,5 @@ add_wrapper = wrapper_decorator(wrapper)
 
 main.add_command(bq_instances_by_deployment_id)
 main.add_command(parse_json_logs)
-main.add_command(gcloud_login_env)
+main.add_command_with_alias(gcloud_login_env, ["gl"])
 main.add_command(gcloud_logout)
