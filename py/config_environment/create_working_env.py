@@ -8,13 +8,15 @@ import re
 from typing import Any
 import click
 import jq
-from py.constants import APP_NAME
+from py.constants import APP_NAME, WORKSPACE_EXTENSIONS
 from py.util.props import AppProperties
 from py.util.formatting import ws_success
 from py.config_environment.util import update_workspace
 from py.config_environment.models.github_queries import PrQueries, IssuesQueries
 from py.config_environment.models.log_viewer_watcher import LogWatcher
-from py.config_environment.models.vscode_launch import VscodeLaunch, SUBSTITUTE_SHELL_TAG, SUBSTITUTE_PROJECT_TAG
+from py.config_environment.models.vscode_task import VscodeTask, TASKS_INPUT_QUERY
+from py.config_environment.models.vscode_input import VscodeInput, InputType
+from py.config_environment.models.vscode_launch import VscodeLaunch, LAUNCH_INPUT_QUERY, SUBSTITUTE_SHELL_TAG, SUBSTITUTE_PROJECT_TAG
 from py.config_environment.java_set import execute as set_java
 from py.config_environment.gradle_set import execute as set_gradle, set_gradle_version as gradle_command
 from py.config_environment.local_config import execute as initial_load
@@ -68,12 +70,13 @@ def create_working_env() -> None:  # previously untrackGradleProps
         )
     else:
         set_gradle(False, workspace_file)
+    add_recommended_extensions(workspace_file)
     add_default_settings(workspace_file, working_path)
 
 
 FOLDER = os.path.basename(os.getcwd())
 GIT_BLAME_QUERY = '.settings.["git-blame.gitWebUrl"]'
-
+EXTENSIONS_QUERY = ".extensions.recommendations"
 
 def get_workspace_file() -> str:
     """
@@ -89,13 +92,12 @@ def get_workspace_file() -> str:
     ws_warning("Vscode workspace file not found in current directory")
     if get_validated_input("Would you like to create a new default workspace file?", ["y", "n"]).lower() == "n":
         raise RuntimeError("Vscode workspace file is required to configure the working environment. Exiting...")
-    else:
-        workspace_content: dict[str, Any] = {"folders": [{"name": "main", "path": "."}], "settings": {}}
-        workspace_file = f"{os.getcwd()}/{FOLDER}.code-workspace"
-        with open(workspace_file, "w", encoding="utf-8") as file:
-            json.dump(workspace_content, file, indent=4)
-        ws_success(f"Vscode workspace file created at {workspace_file}")
-        return workspace_file
+    workspace_content: dict[str, Any] = {"folders": [{"name": "main", "path": "."}], "settings": {}}
+    workspace_file = f"{os.getcwd()}/{FOLDER}.code-workspace"
+    with open(workspace_file, "w", encoding="utf-8") as file:
+        json.dump(workspace_content, file, indent=4)
+    ws_success(f"Vscode workspace file created at {workspace_file}")
+    return workspace_file
 
 
 def get_working_path() -> str:
@@ -114,10 +116,9 @@ def get_working_path() -> str:
     ws_warning("Working path not found in current directory")
     if get_validated_input("Would you like to create a new default working path?", ["y", "n"]).lower() == "n":
         raise RuntimeError("Working path is required to configure the working environment. Exiting...")
-    else:
-        os.makedirs(working_path, exist_ok=True)
-        ws_success(f"Working path created at {working_path}")
-        return working_path
+    os.makedirs(working_path, exist_ok=True)
+    ws_success(f"Working path created at {working_path}")
+    return working_path
 
 
 def git_exclude(working_path: str) -> None:
@@ -149,6 +150,34 @@ def git_exclude(working_path: str) -> None:
     with open(ex_file, "w", encoding="utf-8") as file:
         file.write(exclude)
 
+def add_recommended_extensions(workspace_file: str) -> None:
+    """
+    Adds recommended extensions to the workspace file.
+
+    Args:
+        workspace_file (str): The workspace file path
+    """
+    update_file: bool = False
+    json_data: dict[str, Any] = load_json_with_comments(workspace_file)
+    result = jq.compile(EXTENSIONS_QUERY).input(json_data).all()
+    if not result:
+        jq_query = f'{EXTENSIONS_QUERY} = {json.dumps(WORKSPACE_EXTENSIONS)}'
+        json_data = jq.compile(jq_query).input(json_data).first()
+        update_file = True
+    else:
+        ext_list: list[str] = []
+        for ext in WORKSPACE_EXTENSIONS:
+            if ext not in result:
+                ext_list.append(ext)
+        if ext_list:
+            jq_query = f'{EXTENSIONS_QUERY} += {json.dumps(ext_list)}'
+            json_data = jq.compile(jq_query).input(json_data).first()
+            update_file = True
+    if update_file:
+        temp_file = f"{os.path.dirname(workspace_file)}/extensions.json"
+        update_workspace(json_data, temp_file, workspace_file)
+        ws_success("Recommended extensions added to the workspace file")
+
 
 def add_default_settings(workspace_file: str, working_path: str) -> None:
     """
@@ -178,6 +207,29 @@ def add_default_settings(workspace_file: str, working_path: str) -> None:
             res = None
     for watcher in LogWatcher:
         res = watcher.add_watcher(json_data, working_path)
+        if res:
+            update_file = True
+            json_data = res
+            res = None
+    res = VscodeTask.add_tasks_version(json_data)
+    if res:
+        update_file = True
+        json_data = res
+        res = None
+    for input_task in [a for a in VscodeInput if a.enum_type != InputType.LAUNCH]:
+        res = input_task.add_tasks_input(json_data, TASKS_INPUT_QUERY)
+        if res:
+            update_file = True
+            json_data = res
+            res = None
+    for input_launch in [a for a in VscodeInput if a.enum_type != InputType.TASK]:
+        res = input_launch.add_tasks_input(json_data, LAUNCH_INPUT_QUERY)
+        if res:
+            update_file = True
+            json_data = res
+            res = None
+    for task in VscodeTask:
+        res = task.add_tasks_task(json_data,working_path)
         if res:
             update_file = True
             json_data = res

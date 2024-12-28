@@ -41,3 +41,20 @@ MSG_OPT: dict[str, Callable] = {
 RELEASE_TYPE_OPT: dict[str, str] = {"p": "--prerelease", "r": "--latest=false", "l": "--latest"}
 
 GCLOUD_LOGGIN_OPT: dict[str, str] = {"U": "user", "A": "application", "B": "both"}
+
+WORKSPACE_EXTENSIONS: list[str] = [
+    "augustocdias.tasks-shell-input",
+    "berublan.vscode-log-viewer",
+    "bradzacher.vscode-copy-filename",
+    "github.vscode-github-actions",
+    "github.vscode-pull-request-github",
+    "graphql.vscode-graphql-syntax",
+    "graphql.vscode-graphql",
+    "letmaik.git-tree-compare",
+    "mhutchie.git-graph",
+    "natqe.reload",
+    "sandcastle.vscode-open",
+    "solomonkinard.git-blame",
+    "vscjava.vscode-gradle",
+    "vscjava.vscode-java-pack",
+]

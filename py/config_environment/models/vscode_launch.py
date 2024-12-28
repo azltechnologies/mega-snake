@@ -7,9 +7,11 @@ from typing import Any, Callable, Optional
 import jq
 from py.constants import MODULE_NAME, INTERPRETER_PATH
 from py.config_environment.models.log_viewer_watcher import LogWatcher
+from py.config_environment.models.vscode_task import VscodeTask
 
 LAUNCH_CONFIG_QUERY = ".launch.configurations"
 LAUNCH_VERSION_QUERY = ".launch.version"
+LAUNCH_INPUT_QUERY = ".launch.inputs"
 SUBSTITUTE_SHELL_TAG = "[SUBS_SHELL]"
 SUBSTITUTE_PROJECT_TAG = "[SUBS_PROJECT]"
 
@@ -24,9 +26,10 @@ class VscodeLaunch(Enum):
         None,
         None,
         None,
+        [VscodeTask.JAVA_REMOTE_DEBUG],
         {"port": 5005, "hostName": "localhost", "projectName": SUBSTITUTE_PROJECT_TAG},
     )
-    DEBUG_PYTHON_FILE = ("PYTHON DEBUG (File)", "debugpy", "launch", None, None, LogWatcher.GENERIC, {"program": "${file}"})
+    DEBUG_PYTHON_FILE = ("PYTHON DEBUG (File)", "debugpy", "launch", None, None, LogWatcher.GENERIC, None,{"program": "${file}"})
     DEBUG_PYTHON_MODULE = (
         "PYTHON DEBUG (Module)",
         "debugpy",
@@ -34,6 +37,7 @@ class VscodeLaunch(Enum):
         {"PYTHONPATH": "${fileDirnameBasename}"},
         None,
         LogWatcher.GENERIC,
+        None,
         {"module": "${fileDirnameBasename}"},
     )
     DEBUG_PYTHON_SNAKE = (
@@ -42,6 +46,7 @@ class VscodeLaunch(Enum):
         "launch",
         None,
         ["--shell", SUBSTITUTE_SHELL_TAG, "-l", "debug", "msg", "hello world!"],
+        None,
         None,
         {
             "module": MODULE_NAME,
@@ -58,6 +63,7 @@ class VscodeLaunch(Enum):
         env: Optional[dict[str, str]],
         args: Optional[list[str]],
         watcher: Optional[LogWatcher],
+        depends_on: Optional[list[VscodeTask]],
         extra_args: Optional[dict[str, Any]],
     ):
         self.task_name = task_name
@@ -66,6 +72,7 @@ class VscodeLaunch(Enum):
         self.env = env if env else {}
         self.args = args if args else []
         self.watcher = watcher
+        self.depends_on = depends_on if depends_on else []
         self.extra_args = extra_args if extra_args else {}
 
     def to_dict(self, working_path: str) -> dict[str, Any]:
@@ -73,14 +80,21 @@ class VscodeLaunch(Enum):
         result: dict[str, Any] = {"name": self.task_name, "type": self.task_type, "request": self.request}
         if self.env:
             result["env"] = self.env
-        if self.watcher:
-            output: str = f'> "{self.watcher.get_pattern_date(working_path)}" 2>&1'
-            self.args.append(output)
+        self.add_logger_args(working_path)
         if self.args:
-            result["args"] = self.args
+            if self.task_type == "debugpy":
+                result["args"] = " ".join(self.args)
+            else:
+                result["args"] = self.args
         for key, value in self.extra_args.items():
             result[key] = value
         return result
+
+    def add_logger_args(self, working_path: str) -> None:
+        """Adds the redirect arg to the task."""
+        if self.watcher:
+            output:str = self.watcher.get_pattern_date(working_path)
+            self.args.extend(output.split(" "))
 
     @staticmethod
     def add_launch_version(json_data: dict[str, Any]) -> Optional[dict[str, Any]]:

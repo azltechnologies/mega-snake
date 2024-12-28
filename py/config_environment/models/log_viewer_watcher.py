@@ -4,18 +4,19 @@ from enum import Enum
 import json
 from typing import Any, Optional
 import jq
+from py.config_environment.models.vscode_input import VscodeInput
 
 LOG_WATCHER_QUERY = '.settings.["logViewer.watch"]'
 SUBSTITUTE_LOG_DATE_TAG = "_*.log"
-PATTEN_DATE_PREFFIX = "$(python -c \"from datetime import datetime; print(f'"
-PATTEN_DATE_SUFFIX = "_{datetime.now().strftime('%Y-%m-%d')}.log')\")"
+SUBSTITUTE_LOGFILE_TAG = "[SUBS_LOGFILE]"
+REDIRECT_STR = f"> {SUBSTITUTE_LOGFILE_TAG}.log' 2>&1"
 
 
 class LogWatcher(Enum):
     """Enum for the different PR queries."""
 
     GRADLE_BUILD_NO_TEST = ("GRADLE CLEAN BUILD NO TEST", f"logs/clean_build_no_test{SUBSTITUTE_LOG_DATE_TAG}")
-    GRADLE_BUIL = ("GRADLE CLEAN BUILD", f"logs/clean_build{SUBSTITUTE_LOG_DATE_TAG}")
+    GRADLE_BUILD = ("GRADLE CLEAN BUILD", f"logs/clean_build{SUBSTITUTE_LOG_DATE_TAG}")
     GENERIC = ("GENERIC LOG", f"logs/output{SUBSTITUTE_LOG_DATE_TAG}")
     JAVA_DEBUG = ("JAVA DEBUG LOG", f"logs/java_debug{SUBSTITUTE_LOG_DATE_TAG}")
     PYTHON_SNAKE = ("PYTHON SNAKE LOG", f"logs/python_snake{SUBSTITUTE_LOG_DATE_TAG}")
@@ -35,7 +36,14 @@ class LogWatcher(Enum):
         Args:
             working_path (str): The working path to append to the pattern
         """
-        return f"{PATTEN_DATE_PREFFIX}{working_path}/{self.pattern.replace(SUBSTITUTE_LOG_DATE_TAG, PATTEN_DATE_SUFFIX)}"
+        # Replace the date tag with current timestamp
+        log_path = self.pattern.replace(SUBSTITUTE_LOG_DATE_TAG, f"_{VscodeInput.TODAY_TIMESTAMP.get_input_call()}")
+
+        # Construct full path
+        full_path = f"'{working_path}/{log_path}"
+
+        # Create redirect string with the full path
+        return REDIRECT_STR.replace(SUBSTITUTE_LOGFILE_TAG, full_path)
 
     def add_watcher(self, json_data: dict[str, Any], working_path: str) -> Optional[dict[str, Any]]:
         """Adds the query to the workspace settings."""
