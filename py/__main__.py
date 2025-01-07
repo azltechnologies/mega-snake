@@ -59,7 +59,7 @@ def post_command(ctx, result, **kwargs) -> None:
         sys.exit(exit_code)
 
 
-cli.add_command(diff_tree)
+cli.add_command_with_alias(diff_tree, ["dt","tree"])
 for command in create_release.commands.values():
     cli.add_command(create_release_result_callback(command))
 for command in config_environment.commands.values():
