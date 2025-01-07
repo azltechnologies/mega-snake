@@ -7,14 +7,14 @@ function l_reload {
     $working_path = $(Get-Content $properties_file | Select-String -Pattern "working_path" | ForEach-Object { $_ -replace "working_path=", "" })
     $local_config_file = "$PWD/$working_path/$local_config.ps1"
     if (Test-Path $local_config_file) {
-        set_env msg -t i "Reloading $local_config_file"
+        snake msg -t i "Reloading $local_config_file"
         . $local_config_file
     }
     else {
-        set_env msg -t w  "No local config file found"
+        snake msg -t w  "No local config file found"
     }
 }
-function set_env {
+function snake {
     $ws_config_home = $PSScriptRoot
     $ws_shell = "powershell"
     $properties_file = "$ws_config_home/config.properties"
@@ -35,9 +35,10 @@ function set_env {
 
     $global:LASTEXITCODE = $exit_code
 
-    if ($exit_code -eq 1) {
+    if ($exit_code -eq 21) {
         . l_reload
     }
 }
+snake msg -t t -p "snake" ": use this function to set the environment configuration"
 . l_reload
-set_env msg -t t "l_reload" ": source this function to reload the local config file"
+snake msg -t t -p "l_reload" ": source this function to reload the local config file"

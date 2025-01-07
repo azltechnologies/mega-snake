@@ -8,6 +8,7 @@ import inspect
 import os
 from datetime import datetime
 from py.util import formatting
+from py.util.util import get_validated_input
 from py.constants import SHELL_OPT, LOGGING_NAME_TO_LEVEL, LOGGING_LEVEL_TO_NANE
 
 
@@ -99,11 +100,24 @@ class AppProperties:
             raise KeyError(f"Invalid log level: {value}, must be one of {LOGGING_NAME_TO_LEVEL.keys()}") from e
         self.log_level = level
 
+    def __resources_path_validator(self, value: str) -> None:
+        resources_path = f'{os.getenv("PYTHONPATH")}/{value}'
+        # Check if the path exists
+        assert os.path.exists(resources_path),f"Path {resources_path} does not exist in PYTHONPATH, please check the properties file as it should be a relative path. This is a bug."
+        # Check if the path is a directory
+        if not os.path.isdir(resources_path):
+            raise NotADirectoryError(f"Path {resources_path} is not a directory")
+        # Check if the path is readable
+        if not os.access(resources_path, os.R_OK):
+            raise PermissionError(f"Path {resources_path} is not readable")
+        self.props["resources_path"] = resources_path
+
     def __working_path_validator(self, value: str) -> None:
         # Convert the path to an absolute path
         working_path = os.path.abspath(value)
         # Check if the path exists
         if not os.path.exists(working_path):
+            self.props["working_path"] = working_path
             raise FileNotFoundError(f"Path {working_path} does not exist")
         # Check if the path is a directory
         if not os.path.isdir(working_path):
@@ -145,17 +159,28 @@ class AppProperties:
         """
         self._props = {}
         # Check if the required properties are set
+        resources_path: str = check_property("resources_path", properties)
         working_path: str = check_property("working_path", properties)
         log_file: str = check_property("log_file_name", properties)
         local_config_file: str = check_property("local_config_file_name", properties)
         graphql_schema_file: str = check_property("graphql_schema_file_name", properties)
+        self.__resources_path_validator(resources_path)
+        try:
+            self.__working_path_validator(working_path)
+            self.__adding_prop_validator("workspace_file", find_code_workspace_files(f"{self.props["working_path"]}/.."))
+        except FileNotFoundError as e:
+            self.__adding_prop_validator("local_config_file", f"{self.props["working_path"]}/{local_config_file}")
+            self.__shell_validator(shell)
+            try:
+                self.__adding_prop_validator("workspace_file", find_code_workspace_files(f"{self.props["working_path"]}/.."))
+            except FileNotFoundError:
+                self.props["workspace_file"] = ""
+            raise e
         self.log_level_from_str(log_level)
-        self.__working_path_validator(working_path)
         self.__log_file_validator(log_file)
         self.__shell_validator(shell)
         self.__adding_prop_validator("local_config_file", f"{self.props["working_path"]}/{local_config_file}")
         self.__adding_prop_validator("graphql_schema_file", f"{self.props["working_path"]}/{graphql_schema_file}")
-        self.props["workspace_file"] = find_code_workspace_files(f"{self.props["working_path"]}/..")
         self.__post_init__()
 
     def __post_init__(self) -> None:
@@ -202,7 +227,7 @@ def read_properties(file_path: str) -> dict:
 
 
 # Initialize the configuration object
-def init_app_properties(log_level: str, shell: Optional[str]) -> None:
+def init_app_properties(log_level: str, shell: Optional[str], light_weight: bool) -> None:
     """
     Setup the application properties and initialize the logger
 
@@ -224,7 +249,12 @@ def init_app_properties(log_level: str, shell: Optional[str]) -> None:
 
     if not shell:
         raise EnvironmentError("Environment variable 'WS_SHELL' is not set")
-    AppProperties(log_level, shell, properties)
+    try:
+        AppProperties(log_level, shell, properties)
+    except FileNotFoundError as e:
+        if light_weight:
+            return
+        raise e
     app_props: AppProperties = AppProperties.get_instance()
     path: str = app_props.retrieve_property("log_file")
     level: int = app_props.log_level
@@ -240,12 +270,17 @@ def find_code_workspace_files(directory: str) -> str:
     """
     Find the .code-workspace file in the specified directory
     """
+    directory = os.path.abspath(directory)
     # Find all .code-workspace files in the specified directory
     workspace_files = glob.glob(os.path.join(directory, "*.code-workspace"))
 
     # Check if there is more than one .code-workspace file
     if len(workspace_files) > 1:
-        raise RuntimeError("Multiple .code-workspace files found.")
+        options: list[str] = [str(i) for i in range(0, len(workspace_files))]
+        prompt:str = "Multiple .code-workspace files found. Please select one:\n"
+        for index, workspace_file in enumerate(workspace_files):
+            prompt += f"\t{index}: {workspace_file}\n"
+        return os.path.abspath(workspace_files[int(get_validated_input(prompt, options))])
     if len(workspace_files) == 0:
         raise FileNotFoundError("No .code-workspace file found.")
 

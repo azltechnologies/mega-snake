@@ -3,7 +3,7 @@
 import dataclasses
 from datetime import datetime
 import subprocess
-import py.create_release.release_handler as handler
+import py.light_weight.release_handler as handler
 from py.util.formatting import ws_info, ws_advice
 
 

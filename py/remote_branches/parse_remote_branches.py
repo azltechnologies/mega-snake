@@ -6,7 +6,7 @@
 import subprocess
 from typing import Optional
 from py.util.formatting import ws_success
-from py.util.remote_branch import RemoteBranch
+from py.remote_branches.remote_branch import RemoteBranch
 from py.util.util import run_operation, get_main_branch, get_validated_input
 
 

@@ -1,7 +1,6 @@
 """Class Module representing a file type in the repository changes."""
 
 import dataclasses
-import os
 from enum import Enum
 
 
@@ -17,8 +16,8 @@ class FileType(Enum):
 
     Methods:
         add: None
-        create_new_file: None
         from_symbol: FileType
+        get_changes: str
 
     """
 
@@ -52,20 +51,6 @@ class FileType(Enum):
         """
         self.added += 1
         self.files.append(file)
-
-    def create_new_file(self, location: str) -> None:
-        """
-        Creates a new file in the given location.
-
-        Args:
-            location: str
-        """
-        for file in self.files:
-            new_file_path: str = f"{location}/{file} - {self.symbol}"
-            os.makedirs(os.path.dirname(new_file_path), exist_ok=True)
-            # create the new empty file
-            with open(new_file_path, "w", encoding="utf-8") as new_file:
-                new_file.write("")
 
     @classmethod
     def from_symbol(cls, id_type: str) -> "FileType":

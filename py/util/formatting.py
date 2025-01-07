@@ -1,5 +1,6 @@
 """ This module contains functions for formatting output messages to the console. """
 
+from enum import Enum
 import subprocess
 import sys
 import os
@@ -12,6 +13,13 @@ from colorama import init, Fore, Style, Back
 
 # Initialize colopiprama
 init(autoreset=True)
+
+class Color(Enum):
+    """Color enumeration for console output"""
+    RED = Fore.RED
+    GREEN = Fore.GREEN
+    YELLOW = Fore.YELLOW
+    BLUE = Fore.BLUE
 
 ERROR_CODES: dict[type, int] = {
     RuntimeError: 101,
@@ -80,7 +88,7 @@ def on_crash(exctype: type[BaseException], value: BaseException, trace: Tracebac
     """
     if exctype == WorkspaceError:
         err_code: int = getattr(value, "error_code")
-        if err_code != 1:
+        if err_code != 100:
             sys.exit(err_code)
     old_hook(exctype, value, trace)
 
@@ -120,7 +128,8 @@ def ws_info(message: str) -> None:
 def ws_warning(message: str) -> None:
     """Print a warning message"""
     print(Fore.YELLOW + Back.BLACK+ message)
-    logger.warning(message, stacklevel=2)
+    if logger.hasHandlers():
+        logger.warning(message, stacklevel=2)
 
 
 # specify that this function raises an exception
@@ -165,16 +174,15 @@ def ws_advice(message: str, force: bool = False) -> None:
         logger.debug(message, stacklevel=2)
 
 
-def ws_tip(prologue: str, epilogue: Optional[str]) -> None:
+def ws_tip(messages: dict[Color,str]) -> None:
     """Print a tip message"""
-    epilogue = f" {epilogue}" if epilogue else ""
-    green = Fore.GREEN
-    red = Fore.RED
-    yellow = Fore.YELLOW
+    msg: str = ""
+    for color, message in messages.items():
+        msg += f"{color.value}{message}"
     nc = Style.RESET_ALL  # No Color
-    tip: str = f"{Back.BLACK}{green}Hey! {red}'{prologue}'{green}{yellow}{epilogue}{nc}."
+    tip: str = f"{Back.BLACK}{msg}{nc}"
     print(tip)
-    logger.info("%s %s", prologue, epilogue, stacklevel=2)
+    logger.info(msg, stacklevel=2)
 
 
 def ws_error(message: str, exception: Optional[BaseException] = None) -> None:
@@ -188,7 +196,7 @@ def ws_error(message: str, exception: Optional[BaseException] = None) -> None:
 class WorkspaceError(BaseException):
     """Custom exception for workspace operations"""
 
-    def __init__(self, message: str, parent_exception: BaseException, error_code: int = 1) -> None:
+    def __init__(self, message: str, parent_exception: BaseException, error_code: int = 100) -> None:
         sys.excepthook = on_crash
         self.message = message
         self.parent_exception = parent_exception

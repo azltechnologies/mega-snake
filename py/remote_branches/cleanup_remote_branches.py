@@ -2,24 +2,31 @@
 
 import os
 from typing import Optional
+import click
 from py.util.formatting import ws_info, ws_success
 from py.util.util import get_validated_input
-from py.branch_cleanup.parse_remote_branches import define_branches, RemoteBranch, parsing_branches, delete_branches
-from py.remote_branches.module import main as remoteBranchesDetails, get_output_file
+from py.remote_branches.parse_remote_branches import define_branches, RemoteBranch, parsing_branches, delete_branches
+from py.remote_branches.details_remote_branches import remote_branches_details, get_output_file
 
 
-def main() -> None:
+@click.command(
+    name="remoteBranchesCleanUp",
+    short_help="Helper function for deleting branches merged branches from the remote repository.",
+    help="Iterates over the remote branches asking the user which merged branches to delete",
+    epilog="Requires user input to delete branches",
+)
+def remote_branches_cleanup() -> None:
     """
     Deletes branches that have been merged into the main branch from the remote repository
     """
-    prompt: str = "Do you want to rerun the remoteBranchesDetails function? (y/n)"
+    prompt: str = "Do you want to rerun the remoteBranchesDetails function?"
     yes_no_options: list[str] = ["y", "n"]
     if get_validated_input(prompt, yes_no_options) == "y":
         filter_options: list[str] = ["a", "m"]
         prompt = "Filter branches by (a)ll or (m)erged?"
         user_input: str = get_validated_input(prompt, filter_options).upper()
         ws_info(f"Filtering branches by: {user_input}")
-        remoteBranchesDetails(user_input)
+        remote_branches_details(user_input)
         ws_success(f"Successfully ran `remoteBranchesDetails -f {user_input}` function")
     input_file: str = get_output_file()
     # check if input_file exists

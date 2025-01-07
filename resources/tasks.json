@@ -1,31 +1,39 @@
 {
     "tasks": {
+        "inputs": [
+            {
+                "id": "timestampFile",
+                "type": "command",
+                "command": "workbench.action.tasks.runTask",
+                "args": {
+                    "task": "Timestamp"
+                }
+            },
+            {
+                "id": "dependsOnTask",
+                "type": "pickString",
+                "options": [
+                    "Task A",
+                    "Task B"
+                ],
+                "default": "Task A",
+                "description": "Choose the dependent task"
+            }
+        ],
         "version": "2.0.0",
         "tasks": [
             {
-                "label": "Activate Python Virtual Environment",
+                "label": "Timestamp",
                 "type": "shell",
-                "command": "bash",
+                "command": "python3",
                 "args": [
                     "-c",
-                    "source $WS_CONFIG_HOME/.venv/bin/activate"
+                    "from datetime import datetime; print(datetime.now().strftime(\"%Y-%m-%d\"));"
                 ],
-                "group": "build",
                 "problemMatcher": [],
-                "detail": "Activates the Python virtual environment"
-            },
-            {
-                "label": "Deactivate Python Virtual Environment",
-                "type": "shell",
-                "command": "bash",
-                "args": [
-                    "-c",
-                    "deactivate",
-                    "exit"
-                ],
-                "group": "build",
-                "problemMatcher": [],
-                "detail": "Deactivates the Python virtual environment"
+                "presentation": {
+                    "reveal": "never"
+                },
             },
             {
                 "label": "Gradle Clean Build No Tests",
@@ -56,17 +64,17 @@
                 "type": "shell",
                 "command": "bash",
                 "args": [
-                  "-c",
-                  "java -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005 -Dspring.profiles.active=stage -Dspring.config.additional-location=workspace_temp/secrets/stage/applicationSecrets.yml -jar ${config:jarFilePath} > '$PWD/workspace_temp/java_debug.log' 2>&1"
+                    "-c",
+                    "java -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005 -Dspring.profiles.active=stage -Dspring.config.additional-location=workspace_temp/secrets/stage/applicationSecrets.yml -jar ${config:jarFilePath} > '$PWD/workspace_temp/java_debug.log' 2>&1"
                 ],
                 "problemMatcher": [],
                 "isBackground": false,
                 "group": {
-                  "kind": "build",
-                  "isDefault": true
+                    "kind": "build",
+                    "isDefault": true
                 },
                 "detail": "Runs the Java app with debugger and redirects output to java.log"
-              }
+            }
         ]
     }
 }
