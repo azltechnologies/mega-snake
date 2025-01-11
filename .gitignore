@@ -4,3 +4,5 @@ py/lib
 py/bin
 py/include
 pyvenv.cfg
+.gradle
+build/

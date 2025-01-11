@@ -25,8 +25,12 @@ function snake {
     $python_env = "$ws_config_home/$re_py_env"
     & $python_env
     $env:PYTHONPATH = "$ws_config_home"
-    
-    python3 -m $py_module --shell "$ws_shell" $args
+
+    if ($args.Count -eq 0) {
+        python3 -m $py_module --shell "$ws_shell" --help
+    } else {
+        python3 -m $py_module --shell "$ws_shell" $args
+    }
 
     # catch exit code
     $exit_code = $LASTEXITCODE

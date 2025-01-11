@@ -28,7 +28,12 @@ snake() {
     local PYTHON_ENV="$WS_CONFIG_HOME/$RE_PY_ENV"
     source "$PYTHON_ENV"
     export PYTHONPATH="$WS_CONFIG_HOME"
-    python3 -m $PY_MODULE --shell "$WS_SHELL" "$@"
+    if [ $# -eq 0 ]; then
+        python3 -m $PY_MODULE --shell "$WS_SHELL" --help
+        return 1
+    else
+        python3 -m $PY_MODULE --shell "$WS_SHELL" "$@"
+    fi
 
     # catch exit code
     local exit_code=$?

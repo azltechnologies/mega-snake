@@ -7,6 +7,7 @@ import re
 import subprocess
 import time
 from typing import Any, Callable, Optional
+import inspect
 import click
 from colorama import init, Fore, Back, Style
 from jsoncomment import JsonComment
@@ -14,6 +15,7 @@ from py.util.formatting import ws_advice, ws_warning
 
 # Initialize colopiprama
 init(autoreset=True)
+
 
 def load_json_with_comments(file_path: str) -> dict:
     """Load a JSON file with comments.
@@ -30,6 +32,7 @@ def load_json_with_comments(file_path: str) -> dict:
             return {}
         parser = JsonComment(json)
         return parser.loads(json_str)
+
 
 def run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str]:
     """
@@ -86,6 +89,7 @@ def get_input_or_default(prompt: str, default: Any) -> str:
         ws_warning(f"Invalid input. Value must be of type {type(default).__name__}. Using default value: {default}")
         return default
 
+
 def get_validated_input(p_prompt: str, valid_values: list[str]) -> str:
     """
     Get user input and validate against allowed values
@@ -131,6 +135,7 @@ def get_remote() -> Optional[str]:
     remote_index = int(get_validated_input(prompt, options))
     return remotes[remote_index]
 
+
 def get_remote_url() -> Optional[str]:
     """
     Gets the remote URL of the repository.
@@ -139,6 +144,7 @@ def get_remote_url() -> Optional[str]:
     if not remote:
         return None
     return re.sub(r"\.git$", "", run_operation(f"git remote get-url {remote}", "Getting remote URL").stdout.strip())
+
 
 def get_main_branch() -> str:
     """
@@ -208,13 +214,12 @@ def wrapper_decorator(sub_wrapper: Callable) -> Callable:
         update_flags(sub_wrapper)
         update_flags(command.callback)
 
-        return click.Command(
-            name=command.name,
-            callback=wrapper,
-            params=command.params,
-            help=command.help,
-            short_help=command.short_help,
-            epilog=command.epilog,
-        )
+        command_signature = inspect.signature(click.Command.__init__).parameters
+
+        comm = click.Command(**{k: getattr(command, k) for k,_p in command_signature.items() if k != "self"})
+        comm.callback = wrapper  # Override the callback with our wrapper
+        if aliases := getattr(command, "aliases", []):
+            setattr(comm, "aliases", aliases)
+        return comm
 
     return decorator

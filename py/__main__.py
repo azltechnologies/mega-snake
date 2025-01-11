@@ -18,7 +18,7 @@ from .util.cli_group import CliGroup
 @click.group(
     help="Python CLI tool to prepare the environment for a vscode workspace and ",
     epilog="requires ...",
-    context_settings={"help_option_names": ["-h", "--help"]}, cls=CliGroup,
+    context_settings={"help_option_names": ["-h", "--help"]}, cls=CliGroup, no_args_is_help=True
 )
 @click.option("--log-level", "-l", type=click.Choice(list(LOGGING_OPT), False), default="INFO", help="log level")
 @click.option("--shell", type=click.Choice(SHELL_OPT, False), required=True, hidden=True)
