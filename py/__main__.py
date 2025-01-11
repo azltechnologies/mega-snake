@@ -16,9 +16,35 @@ from .util.cli_group import CliGroup
 
 
 @click.group(
-    help="Python CLI tool to prepare the environment for a vscode workspace and ",
-    epilog="requires ...",
-    context_settings={"help_option_names": ["-h", "--help"]}, cls=CliGroup, no_args_is_help=True
+    help="""A CLI tool focused on simplifying Java development with VSCode by automating workspace configuration.
+    
+Main features:
+- Automated workspace setup for Java/Gradle projects
+- Java and Gradle version management
+- VSCode extensions and settings configuration
+- Debug configurations and launch settings
+- Local development environment setup
+- Git integration and workspace organization""",
+    epilog="""Examples:\n
+    # Set up a complete workspace environment\n
+    snake createWorkingEnv\n
+    \n
+    # Configure Java version\n
+    snake setJava\n
+    \n
+    # Configure Gradle version\n
+    snake setGradle\n
+    \n
+    # Initialize local configurations\n
+    snake initLocalConfig\n
+    \n
+    # Run with debug logging\n
+    snake --log-level DEBUG <command>\n
+    \n
+For more details on specific commands, use: snake <command> --help""",
+    context_settings={"help_option_names": ["-h", "--help"]}, 
+    cls=CliGroup, 
+    no_args_is_help=True
 )
 @click.option("--log-level", "-l", type=click.Choice(list(LOGGING_OPT), False), default="INFO", help="log level")
 @click.option("--shell", type=click.Choice(SHELL_OPT, False), required=True, hidden=True)

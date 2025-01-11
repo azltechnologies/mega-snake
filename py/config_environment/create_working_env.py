@@ -26,12 +26,20 @@ from py.util.util import get_command_return_code, get_validated_input, cli_metad
 
 @click.command(
     name="createWorkingEnv",
-    short_help="Sets the default Java version on the workspace",
-    help="Sets the default Java version on the workspace",
-    epilog="""usage: snake setJava [OPTIONS]\n
-    OPTIONS:\n
-        -o | --override: Optional[bool] - Override the current Java version\n
-    """,
+    short_help="Configures the VSCode workspace environment",
+    help="Sets up the VSCode workspace with recommended extensions, default settings, tasks, launch configurations, and git exclusions. "
+         "Also configures Java and Gradle if applicable.",
+    epilog="""This command will:
+    - Create/update VSCode workspace file
+    - Configure git exclusions for workspace files
+    - Set up Java and Gradle configurations
+    - Add recommended extensions
+    - Configure default settings and file associations
+    - Set up tasks and launch configurations
+    - Configure log watchers and GitHub queries
+
+    usage: snake createWorkingEnv
+    """
 )
 @cli_metadata(flags={"skip"})
 def create_working_env() -> None:  # previously untrackGradleProps
