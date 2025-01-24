@@ -9,7 +9,7 @@ from typing import Any
 import click
 import jq
 from py.constants import APP_NAME, WORKSPACE_EXTENSIONS
-from py.util.props import AppProperties
+from py.util.props import get_property
 from py.util.formatting import ws_success
 from py.config_environment.util import update_workspace
 from py.config_environment.models.github_queries import PrQueries, IssuesQueries
@@ -106,7 +106,7 @@ def _get_workspace_file() -> str:
     Returns:
         str - The workspace file path
     """
-    workspace_file: str = AppProperties.get_instance().retrieve_property("workspace_file")
+    workspace_file: str = get_property("workspace_file")
     if workspace_file:
         ws_info(f"Vscode workspace file found: {workspace_file}")
         return workspace_file
@@ -128,7 +128,7 @@ def _get_working_path() -> str:
     Returns:
         str - The working path
     """
-    working_path: str = AppProperties.get_instance().retrieve_property("working_path")
+    working_path: str = get_property("working_path")
     assert working_path, "Working path is required to configure the working environment, but not found in the properties. This is a bug."
     assert Path(working_path).resolve().is_relative_to(Path.cwd().resolve()), "Working path is not in the current directory. This is a bug."
     if os.path.exists(working_path):
@@ -363,7 +363,7 @@ def _launch_substituter(launch: str) -> str:
     """
     # verify if the launch contains the tags
     if SUBSTITUTE_SHELL_TAG in launch:
-        launch = launch.replace(SUBSTITUTE_SHELL_TAG, AppProperties.get_instance().retrieve_property("shell"))
+        launch = launch.replace(SUBSTITUTE_SHELL_TAG, get_property("shell"))
     if SUBSTITUTE_PROJECT_TAG in launch:
         launch = launch.replace(SUBSTITUTE_PROJECT_TAG, FOLDER)
     return launch

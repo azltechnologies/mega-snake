@@ -4,7 +4,7 @@ import os
 from typing import Any
 import json
 from py.util.formatting import ws_advice
-from py.util.props import AppProperties
+from py.util.props import get_property
 
 
 def get_local_file() -> str:
@@ -14,9 +14,8 @@ def get_local_file() -> str:
     Returns:
         str: The local configuration file path.
     """
-    props_inst: AppProperties = AppProperties.get_instance()
-    shell = props_inst.retrieve_property("shell")
-    local_file: str = props_inst.retrieve_property("local_config_file")
+    shell = get_property("shell")
+    local_file: str = get_property("local_config_file")
     match shell:
         case "bash" | "zsh":
             local_file = f"{local_file}.sh"

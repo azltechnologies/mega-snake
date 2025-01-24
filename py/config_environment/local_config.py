@@ -2,7 +2,7 @@
 
 import os
 import click
-from py.util.props import AppProperties
+from py.util.props import get_property
 from py.util.formatting import ws_success
 from py.config_environment.util import get_local_file
 
@@ -32,10 +32,9 @@ def execute(override: bool) -> None:  # previously initialLoad
     Args:
         override (bool): A boolean value to override the current gradle version.
     """
-    props_inst: AppProperties = AppProperties.get_instance()
     local_file = get_local_file()
     if not os.path.exists(local_file) or override:
-        shell = props_inst.retrieve_property("shell")
+        shell = get_property("shell")
         contents: str = "# This file is used to store local configurations for the project.\n"
         contents += "# You can add custom functions and configurations here.\n"
         match shell:

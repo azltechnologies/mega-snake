@@ -17,7 +17,7 @@ from py.config_environment.models.tools_version import (
     find_local_tool_home,
 )
 from py.util.util import run_operation, load_json_with_comments
-from py.util.props import AppProperties
+from py.util.props import get_property
 from py.util.formatting import ws_info, ws_success, ws_advice, ws_warning
 
 
@@ -38,8 +38,7 @@ def set_gradle_version(override: bool) -> None:  # previously gradleSet
     Args:
         override (bool): A boolean value to override the current gradle version.
     """
-    props_inst: AppProperties = AppProperties.get_instance()
-    workspace_file: str = props_inst.retrieve_property("workspace_file")
+    workspace_file: str = get_property("workspace_file")
     execute(override, workspace_file)
 
 
@@ -51,10 +50,9 @@ def execute(override: bool, workspace_file: str) -> None:
         override (bool): A boolean value to override the current gradle version.
         workspace_file (str): Path to the workspace settings file
     """
-    props_inst: AppProperties = AppProperties.get_instance()
-    working_path: str = props_inst.retrieve_property("working_path")
+    working_path: str = get_property("working_path")
     local_file = get_local_file()
-    shell = props_inst.retrieve_property("shell")
+    shell = get_property("shell")
     _gradle_set(workspace_file, working_path, local_file, shell, override)
 
 

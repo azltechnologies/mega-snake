@@ -7,7 +7,7 @@ import click
 from directory_tree import DisplayTree
 from py.util.formatting import ws_info, ws_success
 from py.util.util import run_operation, get_main_branch, get_current_commit
-from py.util.props import AppProperties
+from py.util.props import get_property
 from py.diff_tree.file_type import FileType
 
 
@@ -32,7 +32,7 @@ def main(commit_hash: Optional[str], delete_original_files: bool) -> None:
         commit_hash: str
         delete_original_files: bool
     """
-    tree_output: str = f"{AppProperties.get_instance().retrieve_property("working_path")}/diff_tree"
+    tree_output: str = f"{get_property("working_path")}/diff_tree"
     diff_commit_file: str = f"{tree_output}/diff_commit.txt"
     diff_tree_dummy_repo: str = f"{tree_output}/diff_tree_dummy_repo"
 

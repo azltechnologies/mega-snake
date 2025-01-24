@@ -7,13 +7,13 @@ import click
 from py.util.formatting import ws_info
 from py.remote_branches.remote_branch import RemoteBranch
 from py.util.util import run_operation, get_main_branch
-from py.util.props import AppProperties
+from py.util.props import get_property
 from py.constants import REMOTE_BRANCHES_OPT
 
 
 def get_output_file() -> str:
     """Returns the path to the output file"""
-    return f"{AppProperties.get_instance().retrieve_property("working_path")}/remote_branches.txt"
+    return f"{get_property("working_path")}/remote_branches.txt"
 
 
 @click.command(

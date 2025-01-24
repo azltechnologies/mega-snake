@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 import click
-from py.util.props import AppProperties
+from py.util.props import get_property
 from py.util.formatting import ws_advice, ws_warning, ws_success
 
 
@@ -20,7 +20,7 @@ def parse_json_logs() -> None:
     Parse logs from a JSON file and write them to .log files in the logs/parsed directory
     """
 
-    log_path = Path(f"{AppProperties.get_instance().retrieve_property("working_path")}/logs/parsed")
+    log_path = Path(f"{get_property("working_path")}/logs/parsed")
 
     # Delete all .log files in log_path
     if log_path.exists():

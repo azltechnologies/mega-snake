@@ -22,7 +22,7 @@ def _check_forbidden_execution(method: str, message: str, reload: bool = False, 
             raise PermissionError(f"Operation not permitted: {message} is only allowed during initialization")
         if not props:
             raise ValueError("properties must be set when reloading properties")
-        formatting.config_log(props.retrieve_property("local_config_file"), props.log_level)
+        formatting.config_log(props._retrieve_property("local_config_file"), props.log_level) # pylint: disable=protected-access
         formatting.ws_advice(f"Properties reloaded by: {message}")
 
 
@@ -64,10 +64,10 @@ class AppProperties:
         try:
             _check_forbidden_execution("__init__", "properties map access")
         except PermissionError:
-            _check_forbidden_execution("retrieve_property", "properties map access")
+            _check_forbidden_execution("_retrieve_property", "properties map access")
         return self._props
 
-    def retrieve_property(self, prop: str) -> str:
+    def _retrieve_property(self, prop: str) -> str:
         """Retrieve a property from the properties map"""
         try:
             return self._props[prop]
@@ -225,7 +225,7 @@ def _read_properties(file_path: str) -> dict:
     # Convert to dictionary
     return dict(parser["DEFAULT"])
 
-
+# pylint: disable=protected-access
 # Initialize the configuration object
 def init_app_properties(log_level: str, shell: Optional[str], light_weight: bool) -> None:
     """
@@ -256,14 +256,14 @@ def init_app_properties(log_level: str, shell: Optional[str], light_weight: bool
             return
         raise e
     app_props: AppProperties = AppProperties.get_instance()
-    path: str = app_props.retrieve_property("log_file")
+    path: str = app_props._retrieve_property("log_file")
     level: int = app_props.log_level
     formatting.config_log(path, level)
     formatting.ws_advice(f"set log level: {app_props.log_level}")
-    formatting.ws_advice(f"Set working path: {app_props.retrieve_property("working_path")}")
-    formatting.ws_advice(f"Set log file: {app_props.retrieve_property("log_file")}")
-    formatting.ws_advice(f"Set shell: {app_props.retrieve_property("shell")}")
-    formatting.ws_advice(f"Set local config file: {app_props.retrieve_property("local_config_file")}")
+    formatting.ws_advice(f"Set working path: {app_props._retrieve_property("working_path")}")
+    formatting.ws_advice(f"Set log file: {app_props._retrieve_property("log_file")}")
+    formatting.ws_advice(f"Set shell: {app_props._retrieve_property("shell")}")
+    formatting.ws_advice(f"Set local config file: {app_props._retrieve_property("local_config_file")}")
 
 
 def _find_code_workspace_files(directory: str) -> str:
@@ -286,3 +286,12 @@ def _find_code_workspace_files(directory: str) -> str:
 
     # Return the absolute path of the .code-workspace file
     return os.path.abspath(workspace_files[0])
+
+def get_property(prop: str) -> str:
+    """
+    Get a property from the properties file
+
+    Args:
+        prop (str): The property to get
+    """
+    return AppProperties.get_instance()._retrieve_property(prop) # pylint: disable=protected-access

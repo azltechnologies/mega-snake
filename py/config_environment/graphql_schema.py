@@ -5,7 +5,7 @@ import os
 import click
 from graphql import build_schema, GraphQLSchema, print_schema, introspection_from_schema
 from py.util.formatting import ws_success
-from py.util.props import AppProperties
+from py.util.props import get_property
 from py.util.util import run_operation
 
 
@@ -20,7 +20,6 @@ def create_graphql_schema(schema_path: str) -> None:
     """
     Creates a GraphQL schema file in the working directory.
     """
-    props_inst: AppProperties = AppProperties.get_instance()
     schema_abs: str = os.path.abspath(schema_path)
     # verify that the schema path exists and is a directory
     if not os.path.isdir(schema_abs):
@@ -28,7 +27,7 @@ def create_graphql_schema(schema_path: str) -> None:
     # verify that the schema path is not empty
     if not os.listdir(schema_abs):
         raise FileNotFoundError(f"Schema path is empty: {schema_abs}")
-    output_file: str = props_inst.retrieve_property("graphql_schema_file")
+    output_file: str = get_property("graphql_schema_file")
     # if the schema file already exists, delete it
     if os.path.exists(output_file):
         os.remove(output_file)
