@@ -55,7 +55,7 @@ def execute(override: bool, workspace_file: str) -> None:
     working_path: str = props_inst.retrieve_property("working_path")
     local_file = get_local_file()
     shell = props_inst.retrieve_property("shell")
-    gradle_set(workspace_file, working_path, local_file, shell, override)
+    _gradle_set(workspace_file, working_path, local_file, shell, override)
 
 
 OS = platform.system()
@@ -80,10 +80,9 @@ class GradleVersion(ToolVersion):
         return f"Id: {self.id}\n\tGradle Version: {self.version}\n\tpath: {self.path}\n"
 
 
-def gradle_set(workspace_file: str, working_path: str, local_file: str, shell: str, override: bool) -> None:
+def _gradle_set(workspace_file: str, working_path: str, local_file: str, shell: str, override: bool) -> None:
     """
-    Configures the Gradle version to be used in the workspace. If the Gradle version is not found in the workspace settings,
-    the user is prompted to select a valid version. The selected version is then set as the default version on the workspace.
+    Configures the Gradle version to be used in the workspace.
 
     Args:
         workspace_file (str): Path to the workspace settings file
@@ -91,58 +90,83 @@ def gradle_set(workspace_file: str, working_path: str, local_file: str, shell: s
         local_file (str): Path to the local settings file
         shell (str): The shell to use for setting the Gradle version
     """
-
-    versions: list[GradleVersion] = get_versions()
+    versions: list[GradleVersion] = _get_versions()
     if not versions:
         ws_warning("No Gradle versions found on the system. Please install a valid version")
         return
+
     json_data: Any = load_json_with_comments(workspace_file)
-    version: Optional[GradleVersion] = None
-    version_local: Optional[GradleVersion] = None
-    version_environment: Optional[GradleVersion] = None
-    version_home: Optional[GradleVersion] = None
-    if not override:
-
-        # Check if the Gradle version is already set in the workspace settings
-        result: Optional[str] = jq.compile(GRADLE_JQ_QUERY).input(json_data).first()
-        version_environment = next((v for v in versions if v.path == result), None)
-        result = jq.compile(GRADLE_HOME_QUERY).input(json_data).first()
-        version_home = next((v for v in versions if v.path == result), None)
-        result = find_local_tool_home(local_file, shell, "GRADLE_HOME")
-        if result:
-            version_local = next((v for v in versions if v.path == result), None)
-
-        versions_found: set[GradleVersion] = {v for v in [version_home, version_local, version_environment] if v}
-
-        if not versions_found:
-            ws_info("No Gradle version found in the workspace settings. Please select a valid version")
-        elif len(versions_found) == 1:
-            version = versions_found.pop()
-            version.default = True
-            ws_info(f"Gradle version {version.version} found in the local settings")
-        else:
-            version_local = None
-            version_home = None
-            version_environment = None
-            ws_warning("Multiple Gradle versions found in different settings. Please select a valid version")
+    version: Optional[GradleVersion] = _determine_gradle_version(versions, json_data, local_file, shell, override)
 
     if not version:
         ws_info("Selecting Gradle version to set as default on the workspace")
         version = typing.cast(GradleVersion, select_version(typing.cast(list[ToolVersion], versions)))
         version.default = True
-    if not version_local:
-        set_version_local_config(version, local_file, shell)
-    if not version_home or not version_environment:
-        temp_file = f"{working_path}/gradle_versions.json"
-        if not version_home:
-            json_data = set_version_path_for_query(typing.cast(list[ToolVersion], versions), json_data, GRADLE_HOME_QUERY)
-        if not version_environment:
-            json_data = set_version_environment(typing.cast(list[ToolVersion], versions), json_data, GRADLE_JQ_QUERY)
-        workspace_update(json_data, temp_file, workspace_file)
+
+    _update_configurations(versions, json_data, workspace_file, working_path, local_file, shell)
     ws_success(f"Gradle version {version.version} set as default on the workspace")
 
 
-def workspace_update(json_data: Any, temp_path: str, workspace_file: str) -> None:
+def _determine_gradle_version(versions: list[GradleVersion], json_data: Any, local_file: str, shell: str, override: bool) -> Optional[GradleVersion]:
+    """
+    Determines which Gradle version to use based on existing configurations.
+
+    Returns:
+        Optional[GradleVersion]: The determined version or None if need to select new one
+    """
+    if override:
+        return None
+
+    version_environment = _find_version_by_query(versions, json_data, GRADLE_JQ_QUERY)
+    version_home = _find_version_by_query(versions, json_data, GRADLE_HOME_QUERY)
+    version_local = _find_version_from_local(versions, local_file, shell)
+
+    versions_found: set[GradleVersion] = {v for v in [version_home, version_local, version_environment] if v}
+
+    if not versions_found:
+        ws_info("No Gradle version found in the workspace settings. Please select a valid version")
+        return None
+
+    if len(versions_found) == 1:
+        version = versions_found.pop()
+        version.default = True
+        ws_info(f"Gradle version {version.version} found in the local settings")
+        return version
+
+    ws_warning("Multiple Gradle versions found in different settings. Please select a valid version")
+    return None
+
+
+def _find_version_by_query(versions: list[GradleVersion], json_data: Any, query: str) -> Optional[GradleVersion]:
+    """Find version from JSON data using jq query."""
+    result: Optional[str] = jq.compile(query).input(json_data).first()
+    return next((v for v in versions if v.path == result), None)
+
+
+def _find_version_from_local(versions: list[GradleVersion], local_file: str, shell: str) -> Optional[GradleVersion]:
+    """Find version from local configuration file."""
+    result = find_local_tool_home(local_file, shell, "GRADLE_HOME")
+    if result:
+        return next((v for v in versions if v.path == result), None)
+    return None
+
+
+def _update_configurations(versions: list[GradleVersion], json_data: Any, workspace_file: str, working_path: str, local_file: str, shell: str) -> None:
+    """Update all configuration files with the selected version."""
+    temp_file = f"{working_path}/gradle_versions.json"
+
+    # Update JSON configuration
+    json_data = set_version_path_for_query(typing.cast(list[ToolVersion], versions), json_data, GRADLE_HOME_QUERY)
+    json_data = set_version_environment(typing.cast(list[ToolVersion], versions), json_data, GRADLE_JQ_QUERY)
+    _workspace_update(json_data, temp_file, workspace_file)
+
+    # Update local configuration
+    version: Optional[GradleVersion]= next((v for v in versions if v.default), None)
+    assert version, "Default Gradle version not found in the list of Gradle versions. This is a bug"
+    _set_version_local_config(version, local_file, shell)
+
+
+def _workspace_update(json_data: Any, temp_path: str, workspace_file: str) -> None:
     """
     Updates the workspace settings file with the selected Gradle version.
 
@@ -156,7 +180,7 @@ def workspace_update(json_data: Any, temp_path: str, workspace_file: str) -> Non
     update_workspace(updated_json_data, temp_path, workspace_file)
 
 
-def set_version_local_config(version: GradleVersion, local_parh: str, shell: str) -> None:
+def _set_version_local_config(version: GradleVersion, local_parh: str, shell: str) -> None:
     """
     The provided version is set as the default version in the local settings file.
 
@@ -172,13 +196,13 @@ def set_version_local_config(version: GradleVersion, local_parh: str, shell: str
             local_file_data = file.read()
         match shell:
             case "powershell":
-                local_file_data = re.sub(r"^\s*\$env:GRADLE_HOME\s*=.+$", "", local_file_data, flags=re.MULTILINE)
-                local_file_data = re.sub(r"^\s*\$env:PATH\s*=\s*\"\$env:GRADLE_HOME\\bin:\$env:PATH\"$", "", local_file_data, flags=re.MULTILINE)
+                local_file_data = re.sub(r"^\s*\$env:GRADLE_HOME\s*=.+$", "\n", local_file_data, flags=re.MULTILINE)
+                local_file_data = re.sub(r"^\s*\$env:PATH\s*=\s*\"\$env:GRADLE_HOME\\bin:\$env:PATH\"$", "\n", local_file_data, flags=re.MULTILINE)
                 new_line_gradle = f'$env:GRADLE_HOME = "{version.path}"'
                 new_line_update_path = '$env:PATH = "$env:GRADLE_HOME\\bin:$env:PATH"'
             case "bash" | "zsh":
-                local_file_data = re.sub(r"^\s*export GRADLE_HOME=.+$", "", local_file_data, flags=re.MULTILINE)
-                local_file_data = re.sub(r"^\s*export PATH=\$GRADLE_HOME/bin:\$PATH$", "", local_file_data, flags=re.MULTILINE)
+                local_file_data = re.sub(r"^\s*export GRADLE_HOME=.+$", "\n", local_file_data, flags=re.MULTILINE)
+                local_file_data = re.sub(r"^\s*export PATH=\$GRADLE_HOME/bin:\$PATH$", "\n", local_file_data, flags=re.MULTILINE)
                 new_line_gradle = f"export GRADLE_HOME='{version.path}'"
                 new_line_update_path = "export PATH=$GRADLE_HOME/bin:$PATH"
             case _:
@@ -191,7 +215,7 @@ def set_version_local_config(version: GradleVersion, local_parh: str, shell: str
         ws_advice(f"Local settings file not found at {local_parh}. Gradle version {version.version} not set as default here")
 
 
-def get_versions() -> list[GradleVersion]:
+def _get_versions() -> list[GradleVersion]:
     """Get Gradle versions installed on the system.
 
     Returns:

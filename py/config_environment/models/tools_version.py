@@ -98,14 +98,14 @@ def set_version_path_for_query(versions: list[ToolVersion], json_data: dict, jso
 
 
 def find_local_tool_home(path: str, shell: str, var: str) -> Optional[str]:
-    """Find the JAVA_HOME in the local settings file.
+    """Find the Tool in the local settings file.
 
     Args:
         path (str): Path to the local settings file
         shell (str): The shell to use for setting the Java version
 
     Returns:
-        str: JAVA_HOME path
+        str: Tool path
     """
     # Check if the local settings file exists
     if not os.path.exists(path):

@@ -57,8 +57,8 @@ def execute(override: bool, workspace_file: str) -> None:
     resources_path: str = props_inst.retrieve_property("resources_path")
     local_file = get_local_file()
     shell = props_inst.retrieve_property("shell")
-    java_set(workspace_file, working_path, local_file, shell, override)
-    add_java_formatter(workspace_file, resources_path)
+    _java_set(workspace_file, working_path, local_file, shell, override)
+    _add_java_formatter(workspace_file, resources_path)
 
 
 OS = platform.system()
@@ -91,10 +91,9 @@ class JavaVersion(ToolVersion):
         return f"Id: {self.id}\n\tJava Version: {self.version}\n\tpath: {self.path}\n\tDescription: {self.description}\n"
 
 
-def java_set(workspace_file: str, working_path: str, local_file: str, shell: str, override: bool) -> None:
+def _java_set(workspace_file: str, working_path: str, local_file: str, shell: str, override: bool) -> None:
     """
-    Configures the Java version to be used in the workspace. If the Java version is not found in the workspace settings,
-    the user is prompted to select a valid version. The selected version is then set as the default version on the workspace.
+    Configures the Java version to be used in the workspace.
 
     Args:
         workspace_file (str): Path to the workspace settings file
@@ -102,66 +101,94 @@ def java_set(workspace_file: str, working_path: str, local_file: str, shell: str
         local_file (str): Path to the local settings file
         shell (str): The shell to use for setting the Java version
     """
-
-    versions: list[JavaVersion] = get_versions()
+    versions: list[JavaVersion] = _get_versions()
     if not versions:
         ws_warning("No Java versions found on the system. Please install a valid Java version")
         return
+
     json_data: Any = load_json_with_comments(workspace_file)
-    version: Optional[JavaVersion] = None
-    version_local: Optional[JavaVersion] = None
-    version_environment: Optional[JavaVersion] = None
-    version_runtime: Optional[JavaVersion] = None
-    version_gradlehome: Optional[JavaVersion] = None
-    if not override:
-
-        # Check if the Java version is already set in the workspace settings
-        result: Optional[str] = jq.compile(JAVA_JQ_QUERY).input(json_data).first()
-        version_environment = next((v for v in versions if v.path == result), None)
-        if jq.compile(JAVA_RUNTIME_QUERY).input(json_data).first():
-            result = jq.compile(JAVA_RUNTIME_PATH).input(json_data).first()
-            if result:
-                version_runtime = next((v for v in versions if v.path == result), None)
-        result = find_local_tool_home(local_file, shell, "JAVA_HOME")
-        if result:
-            version_local = next((v for v in versions if v.path == result), None)
-        result = jq.compile(JAVA_GRADLEHOME_QUERY).input(json_data).first()
-        version_gradlehome = next((v for v in versions if v.path == result), None)
-
-        versions_found: set[JavaVersion] = {v for v in [version_environment, version_runtime, version_local, version_gradlehome] if v}
-
-        if not versions_found:
-            ws_info("No Java version found in the workspace settings. Please select a valid version")
-        elif len(versions_found) == 1:
-            version = versions_found.pop()
-            version.default = True
-            ws_info(f"Java version {version.version} found in the local settings")
-        else:
-            version_local = None
-            version_runtime = None
-            version_environment = None
-            version_gradlehome = None
-            ws_warning("Multiple Java versions found in different settings. Please select a valid version")
+    version = _determine_java_version(versions, json_data, local_file, shell, override)
 
     if not version:
         ws_info("Selecting Java version to set as default on the workspace")
         version = typing.cast(JavaVersion, select_version(typing.cast(list[ToolVersion], versions)))
         version.default = True
-    if not version_local:
-        set_version_local_config(version, local_file, shell)
-    if not version_runtime or not version_environment or not version_gradlehome:
-        temp_file = f"{working_path}/java_versions.json"
-        if not version_runtime:
-            json_data = set_version_runtime(versions, json_data)
-        if not version_environment:
-            json_data = set_version_environment(typing.cast(list[ToolVersion], versions), json_data, JAVA_JQ_QUERY)
-        if not version_gradlehome:
-            json_data = set_version_path_for_query(typing.cast(list[ToolVersion], versions), json_data, JAVA_GRADLEHOME_QUERY)
-        update_workspace(json_data, temp_file, workspace_file)
+
+    _update_configurations(versions, json_data, workspace_file, working_path, local_file, shell)
     ws_success(f"Java version {version.version} set as default on the workspace")
 
 
-def set_version_local_config(version: JavaVersion, local_parh: str, shell: str) -> None:
+def _determine_java_version(versions: list[JavaVersion], json_data: Any, local_file: str, shell: str, override: bool) -> Optional[JavaVersion]:
+    """
+    Determines which Java version to use based on existing configurations.
+
+    Returns:
+        Optional[JavaVersion]: The determined version or None if need to select new one
+    """
+    if override:
+        return None
+
+    version_environment = _find_version_by_query(versions, json_data, JAVA_JQ_QUERY)
+    version_runtime = _find_version_from_runtime(versions, json_data)
+    version_local = _find_version_from_local(versions, local_file, shell)
+    version_gradlehome = _find_version_by_query(versions, json_data, JAVA_GRADLEHOME_QUERY)
+
+    versions_found: set[JavaVersion] = {v for v in [version_environment, version_runtime, version_local, version_gradlehome] if v}
+
+    if not versions_found:
+        ws_info("No Java version found in the workspace settings. Please select a valid version")
+        return None
+
+    if len(versions_found) == 1:
+        version = versions_found.pop()
+        version.default = True
+        ws_info(f"Java version {version.version} found in the local settings")
+        return version
+
+    ws_warning("Multiple Java versions found in different settings. Please select a valid version")
+    return None
+
+
+def _find_version_by_query(versions: list[JavaVersion], json_data: Any, query: str) -> Optional[JavaVersion]:
+    """Find version from JSON data using jq query."""
+    result: Optional[str] = jq.compile(query).input(json_data).first()
+    return next((v for v in versions if v.path == result), None)
+
+
+def _find_version_from_runtime(versions: list[JavaVersion], json_data: Any) -> Optional[JavaVersion]:
+    """Find version from runtime configuration."""
+    if jq.compile(JAVA_RUNTIME_QUERY).input(json_data).first():
+        result = jq.compile(JAVA_RUNTIME_PATH).input(json_data).first()
+        if result:
+            return next((v for v in versions if v.path == result), None)
+    return None
+
+
+def _find_version_from_local(versions: list[JavaVersion], local_file: str, shell: str) -> Optional[JavaVersion]:
+    """Find version from local configuration file."""
+    result = find_local_tool_home(local_file, shell, "JAVA_HOME")
+    if result:
+        return next((v for v in versions if v.path == result), None)
+    return None
+
+
+def _update_configurations(versions: list[JavaVersion], json_data: Any, workspace_file: str, working_path: str, local_file: str, shell: str) -> None:
+    """Update all configuration files with the selected version."""
+    temp_file = f"{working_path}/java_versions.json"
+
+    # Update JSON configuration
+    json_data = _set_version_runtime(versions, json_data)
+    json_data = set_version_environment(typing.cast(list[ToolVersion], versions), json_data, JAVA_JQ_QUERY)
+    json_data = set_version_path_for_query(typing.cast(list[ToolVersion], versions), json_data, JAVA_GRADLEHOME_QUERY)
+    update_workspace(json_data, temp_file, workspace_file)
+
+    # Update local configuration
+    version: Optional[JavaVersion] = next((v for v in versions if v.default), None)
+    assert version, "Default Java version not found in the list of Java versions. This is a bug."
+    _set_version_local_config(version, local_file, shell)
+
+
+def _set_version_local_config(version: JavaVersion, local_parh: str, shell: str) -> None:
     """
     The provided version is set as the default version in the local settings file.
 
@@ -177,13 +204,13 @@ def set_version_local_config(version: JavaVersion, local_parh: str, shell: str) 
             local_file_data = file.read()
         match shell:
             case "powershell":
-                local_file_data = re.sub(r"^\s*\$env:JAVA_HOME\s*=.+$", "", local_file_data, flags=re.MULTILINE)
-                local_file_data = re.sub(r"^\s*\$env:PATH\s*=\s*\"\$env:JAVA_HOME\\bin:\$env:PATH\"$", "", local_file_data, flags=re.MULTILINE)
+                local_file_data = re.sub(r"^\s*\$env:JAVA_HOME\s*=.+$", "\n", local_file_data, flags=re.MULTILINE)
+                local_file_data = re.sub(r"^\s*\$env:PATH\s*=\s*\"\$env:JAVA_HOME\\bin:\$env:PATH\"$", "\n", local_file_data, flags=re.MULTILINE)
                 new_line_java = f'$env:JAVA_HOME = "{version.path}"'
                 new_line_update_path = '$env:PATH = "$env:JAVA_HOME\\bin:$env:PATH"'
             case "bash" | "zsh":
-                local_file_data = re.sub(r"^\s*export JAVA_HOME=.+$", "", local_file_data, flags=re.MULTILINE)
-                local_file_data = re.sub(r"^\s*export PATH=\$JAVA_HOME/bin:\$PATH$", "", local_file_data, flags=re.MULTILINE)
+                local_file_data = re.sub(r"^\s*export JAVA_HOME=.+$", "\n", local_file_data, flags=re.MULTILINE)
+                local_file_data = re.sub(r"^\s*export PATH=\$JAVA_HOME/bin:\$PATH$", "\n", local_file_data, flags=re.MULTILINE)
                 new_line_java = f"export JAVA_HOME='{version.path}'"
                 new_line_update_path = "export PATH=$JAVA_HOME/bin:$PATH"
             case _:
@@ -196,7 +223,7 @@ def set_version_local_config(version: JavaVersion, local_parh: str, shell: str) 
         ws_advice(f"Local settings file not found at {local_parh}. Java version {version.version} not set as default here")
 
 
-def set_version_runtime(versions: list[JavaVersion], json_data: Any) -> str:
+def _set_version_runtime(versions: list[JavaVersion], json_data: Any) -> str:
     """
     The provided version is set as the default version on the workspace.
 
@@ -227,7 +254,7 @@ def set_version_runtime(versions: list[JavaVersion], json_data: Any) -> str:
     return updated_json_data
 
 
-def get_versions() -> list[JavaVersion]:
+def _get_versions() -> list[JavaVersion]:
     """Get Java versions installed on the system.
 
     Returns:
@@ -249,7 +276,7 @@ def get_versions() -> list[JavaVersion]:
     return version_list
 
 
-def add_java_formatter(workspace_file: str, resources_path: str) -> None:
+def _add_java_formatter(workspace_file: str, resources_path: str) -> None:
     """Add Java formatter xml to the vscode folder"""
     formatter_path: str = f"{resources_path}/java-formatter.xml"
     assert os.path.exists(
