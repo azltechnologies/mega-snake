@@ -35,7 +35,6 @@ disable_error_code = ["import-untyped"]
 mypy_path = "./out"
 
 [tool.pylint.master]
-init-hook = 'import sys; sys.path.append("/Users/carlosmorales/IdeaProjects/stuff/.venv/lib/python3.13/site-packages")'
 load-plugins = ["py.pylint.custom_checkers"]
 ignore-patterns = [".+\\.pyi", "/opt/.*"]
 
