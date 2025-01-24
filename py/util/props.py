@@ -26,7 +26,7 @@ def _check_forbidden_execution(method: str, message: str, reload: bool = False, 
         formatting.ws_advice(f"Properties reloaded by: {message}")
 
 
-def check_property(prop: str, dic: dict[str, str]) -> str:
+def _check_property(prop: str, dic: dict[str, str]) -> str:
     """
     Check if a property is set in the dictionary
 
@@ -159,20 +159,20 @@ class AppProperties:
         """
         self._props = {}
         # Check if the required properties are set
-        resources_path: str = check_property("resources_path", properties)
-        working_path: str = check_property("working_path", properties)
-        log_file: str = check_property("log_file_name", properties)
-        local_config_file: str = check_property("local_config_file_name", properties)
-        graphql_schema_file: str = check_property("graphql_schema_file_name", properties)
+        resources_path: str = _check_property("resources_path", properties)
+        working_path: str = _check_property("working_path", properties)
+        log_file: str = _check_property("log_file_name", properties)
+        local_config_file: str = _check_property("local_config_file_name", properties)
+        graphql_schema_file: str = _check_property("graphql_schema_file_name", properties)
         self.__resources_path_validator(resources_path)
         try:
             self.__working_path_validator(working_path)
-            self.__adding_prop_validator("workspace_file", find_code_workspace_files(f"{self.props["working_path"]}/.."))
+            self.__adding_prop_validator("workspace_file", _find_code_workspace_files(f"{self.props["working_path"]}/.."))
         except FileNotFoundError as e:
             self.__adding_prop_validator("local_config_file", f"{self.props["working_path"]}/{local_config_file}")
             self.__shell_validator(shell)
             try:
-                self.__adding_prop_validator("workspace_file", find_code_workspace_files(f"{self.props["working_path"]}/.."))
+                self.__adding_prop_validator("workspace_file", _find_code_workspace_files(f"{self.props["working_path"]}/.."))
             except FileNotFoundError:
                 self.props["workspace_file"] = ""
             raise e
@@ -208,7 +208,7 @@ class AppProperties:
         raise RuntimeError("Properties Singleton already initialized")
 
 
-def read_properties(file_path: str) -> dict:
+def _read_properties(file_path: str) -> dict:
     """
     Read a properties file and return a dictionary
 
@@ -241,7 +241,7 @@ def init_app_properties(log_level: str, shell: Optional[str], light_weight: bool
     if not os.path.exists(prop_file):
         raise FileNotFoundError(f"Properties file not found: {prop_file}")
 
-    properties = read_properties(prop_file)
+    properties = _read_properties(prop_file)
 
     # check if dictionary is empty
     if not properties:
@@ -266,7 +266,7 @@ def init_app_properties(log_level: str, shell: Optional[str], light_weight: bool
     formatting.ws_advice(f"Set local config file: {app_props.retrieve_property("local_config_file")}")
 
 
-def find_code_workspace_files(directory: str) -> str:
+def _find_code_workspace_files(directory: str) -> str:
     """
     Find the .code-workspace file in the specified directory
     """

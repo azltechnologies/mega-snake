@@ -62,10 +62,10 @@ def create_working_env() -> None:  # previously untrackGradleProps
                 ws_warning("Not inside a git repository. Exiting...")
                 return
 
-    workspace_file: str = get_workspace_file()
-    working_path: str = get_working_path()
+    workspace_file: str = _get_workspace_file()
+    working_path: str = _get_working_path()
     if git_repo:
-        git_exclude(working_path)
+        _git_exclude(working_path)
     initial_load(False)
     set_java(False, workspace_file)
     # verifying if build.gradle or build.gradle.kts exists
@@ -79,7 +79,7 @@ def create_working_env() -> None:  # previously untrackGradleProps
     else:
         set_gradle(False, workspace_file)
     _add_recommended_extensions(workspace_file)
-    add_default_settings(workspace_file, working_path)
+    _add_default_settings(workspace_file, working_path)
 
 
 FOLDER = os.path.basename(os.getcwd())
@@ -99,7 +99,7 @@ DEFAULT_PROPS: dict[str, Any] = {
 FILE_ASSOCIATIONS: dict[str, str] = {"**/.github/workflows/*.yml": "github-actions-workflow", "*.yml": "yaml", "*.gradle": "gradle"}
 
 
-def get_workspace_file() -> str:
+def _get_workspace_file() -> str:
     """
     Gets the workspace file for the project. If not found, creates a new one.
 
@@ -121,7 +121,7 @@ def get_workspace_file() -> str:
     return workspace_file
 
 
-def get_working_path() -> str:
+def _get_working_path() -> str:
     """
     Gets the working path for the project. If not found, creates a new one.
 
@@ -142,7 +142,7 @@ def get_working_path() -> str:
     return working_path
 
 
-def git_exclude(working_path: str) -> None:
+def _git_exclude(working_path: str) -> None:
     """
     Excludes the .vscode folder and the working path from git.
     """
@@ -201,7 +201,7 @@ def _add_recommended_extensions(workspace_file: str) -> None:
         ws_success("Recommended extensions added to the workspace file")
 
 
-def add_default_settings(workspace_file: str, working_path: str) -> None:
+def _add_default_settings(workspace_file: str, working_path: str) -> None:
     """
     Adds default settings to the workspace file.
 
@@ -320,7 +320,7 @@ def _update_vscode_launch(json_data: dict[str, Any], working_path: str) -> tuple
             json_data = res
 
     for launch in VscodeLaunch:
-        res = launch.add_launch_config(json_data, launch_substituter, working_path)
+        res = launch.add_launch_config(json_data, _launch_substituter, working_path)
         if res:
             updated = True
             json_data = res
@@ -357,7 +357,7 @@ def _update_file_associations(json_data: dict[str, Any]) -> tuple[dict[str, Any]
     return json_data, updated
 
 
-def launch_substituter(launch: str) -> str:
+def _launch_substituter(launch: str) -> str:
     """
     Substitutes launch tags with values
     """

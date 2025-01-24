@@ -36,7 +36,7 @@ def gcloud_login_env(project: Optional[str], type_login: str) -> None:
     valid_filters: set[str] = set(GCLOUD_LOGGIN_OPT.keys())
     if type_login not in valid_filters:
         raise ValueError(f"Invalid loggin type: {type_login}; logging type value must be one of:\n {' | '.join(valid_filters)}")
-    gcloud_login(type_login, project)
+    _gcloud_login(type_login, project)
 
 
 @click.command(
@@ -58,7 +58,7 @@ def gcloud_logout() -> None:
         ws_success("gcloud application-default credentials are now revoked.")
 
 
-def gcloud_login(type_login: str, project: Optional[str]) -> None:
+def _gcloud_login(type_login: str, project: Optional[str]) -> None:
     """
     Logs into the gcloud account and sets the project.
 
@@ -70,14 +70,14 @@ def gcloud_login(type_login: str, project: Optional[str]) -> None:
         None
     """
     if type_login.lower() != "u":
-        user_login()
+        _user_login()
     if type_login.lower() != "a":
-        app_login()
+        _app_login()
     if project:
-        project_set(project)
+        _project_set(project)
 
 
-def user_login() -> None:
+def _user_login() -> None:
     """
     gcloud user login
 
@@ -94,7 +94,7 @@ def user_login() -> None:
         ws_success("gcloud application-default credentials are now set.")
 
 
-def app_login() -> None:
+def _app_login() -> None:
     """
     gcloud app login
 
@@ -111,7 +111,7 @@ def app_login() -> None:
         ws_success("gcloud account is now set.")
 
 
-def project_set(project: str) -> None:
+def _project_set(project: str) -> None:
     """
     Sets the project in the gcloud configuration.
 

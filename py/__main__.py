@@ -42,9 +42,9 @@ Main features:
     snake --log-level DEBUG <command>\n
     \n
 For more details on specific commands, use: snake <command> --help""",
-    context_settings={"help_option_names": ["-h", "--help"]}, 
-    cls=CliGroup, 
-    no_args_is_help=True
+    context_settings={"help_option_names": ["-h", "--help"]},
+    cls=CliGroup,
+    no_args_is_help=True,
 )
 @click.option("--log-level", "-l", type=click.Choice(list(LOGGING_OPT), False), default="INFO", help="log level")
 @click.option("--shell", type=click.Choice(SHELL_OPT, False), required=True, hidden=True)
@@ -53,7 +53,7 @@ def cli(ctx: click.Context, log_level: str, shell: str) -> None:
     """cli entry point"""
     ctx.ensure_object(dict)  # Ensures ctx.obj is a dictionary
     try:
-        light_weight:bool = False
+        light_weight: bool = False
         cmd_name = ctx.invoked_subcommand
         if cmd_name:
             ws_advice(f"Invoking subcommand: {cmd_name}")
@@ -67,7 +67,7 @@ def cli(ctx: click.Context, log_level: str, shell: str) -> None:
             if flags and "skip" in flags:
                 ws_advice("'skip' flag detected. Running in light-weight mode if local working directory is not found.")
                 light_weight = True
-        init_app_properties(log_level, shell,light_weight)
+        init_app_properties(log_level, shell, light_weight)
     except Exception as e:
         print(f"Error during initialization: {e}")
         print(get_traceback(e))
@@ -85,7 +85,7 @@ def post_command(ctx, result, **kwargs) -> None:
         sys.exit(exit_code)
 
 
-cli.add_command_with_alias(diff_tree, ["dt","tree"])
+cli.add_command_with_alias(diff_tree, ["dt", "tree"])
 for command in create_release.commands.values():
     cli.add_command(create_release_result_callback(command))
 for command in config_environment.commands.values():

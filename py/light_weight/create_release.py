@@ -66,7 +66,7 @@ def create_release(tag_suffix: str, release_type: str, notes: Optional[str], bra
         raise ValueError(f"Invalid release type: {release_type}; Please enter one of:\n {' | '.join(RELEASE_TYPE_OPT.keys())}")
 
     # getting the release notes
-    notes_release: str = get_notes(notes)
+    notes_release: str = _get_notes(notes)
 
     # getting the latest release
     latest_release: Release = get_latest_release()
@@ -92,7 +92,7 @@ def create_release(tag_suffix: str, release_type: str, notes: Optional[str], bra
             ws_success("The latest release was successfully restored.")
 
 
-def get_notes(notes: Optional[str]) -> str:
+def _get_notes(notes: Optional[str]) -> str:
     """
     Returns the notes for the release
     """

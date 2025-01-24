@@ -33,9 +33,9 @@ def create_graphql_schema(schema_path: str) -> None:
     if os.path.exists(output_file):
         os.remove(output_file)
 
-    create_schema(schema_abs, output_file)
+    _create_schema(schema_abs, output_file)
 
-def create_schema(schema_path: str, output_file: str) -> None:
+def _create_schema(schema_path: str, output_file: str) -> None:
     """
     Creates a GraphQL schema file from a given schema path.
 

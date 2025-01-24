@@ -11,7 +11,7 @@ class FileType(Enum):
 
     Properties:
         symbol: str
-        added: int
+        files_added: int
         description: str
 
     Methods:
@@ -32,24 +32,24 @@ class FileType(Enum):
     symbol: str
     id_type: str
     description: str
-    added: int
+    files_added: int
     files: list[str]
 
     def __init__(self, symbol: str, id_type: str, description: str) -> None:
         self.symbol = symbol
         self.id_type = id_type
         self.description = description
-        self.added = 0
+        self.files_added = 0
         self.files = []
 
     def add(self, file: str) -> None:
         """
-        Increments the added count and appends the file to the files list.
+        Increments the files_added count and appends the file to the files list.
 
         Args:
             file: str
         """
-        self.added += 1
+        self.files_added += 1
         self.files.append(file)
 
     @classmethod
@@ -73,8 +73,8 @@ class FileType(Enum):
         changes: list[str] = []
         count: int = 0
         for file_type in cls:
-            if file_type.added > 0:
-                count += file_type.added
-                changes.append(f"{file_type.symbol}  {file_type.description}: {file_type.added}\n")
+            if file_type.files_added > 0:
+                count += file_type.files_added
+                changes.append(f"{file_type.symbol}  {file_type.description}: {file_type.files_added}\n")
         changes.insert(0, f"{count} files changed\n")
         return "".join(changes)

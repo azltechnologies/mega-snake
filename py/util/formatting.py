@@ -82,7 +82,7 @@ def config_log(path: str, level: int) -> None:
     logger.setLevel(level)
 
 
-def on_crash(exctype: type[BaseException], value: BaseException, trace: TracebackType | None) -> None:
+def _on_crash(exctype: type[BaseException], value: BaseException, trace: TracebackType | None) -> None:
     """
     Custom exception hook to handle exceptions and exit with the appropriate error code.
     """
@@ -197,7 +197,7 @@ class WorkspaceError(Exception):
     """Custom exception for workspace operations"""
 
     def __init__(self, message: str, parent_exception: BaseException, error_code: int = 100) -> None:
-        sys.excepthook = on_crash
+        sys.excepthook = _on_crash
         self.message = message
         self.parent_exception = parent_exception
         self.error_code = error_code
