@@ -6,7 +6,7 @@ import click
 from py.util.formatting import ws_info, ws_success
 from py.util.util import get_validated_input
 from py.remote_branches.parse_remote_branches import define_branches, RemoteBranch, parsing_branches, delete_branches
-from py.remote_branches.details_remote_branches import remote_branches_details, get_output_file
+from py.remote_branches.details_remote_branches import execute as remote_branches_details, get_output_file
 
 
 @click.command(

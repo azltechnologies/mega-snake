@@ -15,6 +15,7 @@ def get_output_file() -> str:
     """Returns the path to the output file"""
     return f"{AppProperties.get_instance().retrieve_property("working_path")}/remote_branches.txt"
 
+
 @click.command(
     name="remoteBranchesDetails",
     short_help="Gets details of remote branches",
@@ -36,6 +37,16 @@ def get_output_file() -> str:
     default="A",
 )
 def remote_branches_details(filter_by: str) -> None:
+    """
+    Calls the execute function to create a detailed list of remote branches filtered by type
+
+    Args:
+        filter_by: str | "A"
+    """
+    execute(filter_by)
+
+
+def execute(filter_by: str) -> None:
     """
     Creates a detailed list of remote branches filtered by type
 

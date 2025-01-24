@@ -10,7 +10,13 @@ import typing
 import jq
 import click
 from py.config_environment.util import get_local_file, update_workspace, get_version_number
-from py.config_environment.models.tools_version import ToolVersion, select_version, set_version_environment
+from py.config_environment.models.tools_version import (
+    ToolVersion,
+    select_version,
+    set_version_environment,
+    set_version_path_for_query,
+    find_local_tool_home,
+)
 from py.util.util import run_operation, load_json_with_comments
 from py.util.props import AppProperties
 from py.util.formatting import ws_info, ws_success, ws_advice, ws_warning
@@ -62,6 +68,7 @@ JAVA_JQ_QUERY = f'.settings["{ENV_VARIABLE}"].JAVA_HOME'
 JAVA_RUNTIME_QUERY = '.settings.["java.configuration.runtimes"]'
 JAVA_RUNTIME_PATH = f"{JAVA_RUNTIME_QUERY} | map(select(.default == true)) | if length == 1 then .[0].path else null end"
 JAVA_FORMAT_QUERY = '.settings["java.format.settings.url"]'
+JAVA_GRADLEHOME_QUERY = '.settings["java.import.gradle.java.home"]'
 
 
 class JavaVersion(ToolVersion):
@@ -105,6 +112,7 @@ def java_set(workspace_file: str, working_path: str, local_file: str, shell: str
     version_local: Optional[JavaVersion] = None
     version_environment: Optional[JavaVersion] = None
     version_runtime: Optional[JavaVersion] = None
+    version_gradlehome: Optional[JavaVersion] = None
     if not override:
 
         # Check if the Java version is already set in the workspace settings
@@ -114,11 +122,13 @@ def java_set(workspace_file: str, working_path: str, local_file: str, shell: str
             result = jq.compile(JAVA_RUNTIME_PATH).input(json_data).first()
             if result:
                 version_runtime = next((v for v in versions if v.path == result), None)
-        result = find_local_java_home(local_file, shell)
+        result = find_local_tool_home(local_file, shell, "JAVA_HOME")
         if result:
             version_local = next((v for v in versions if v.path == result), None)
+        result = jq.compile(JAVA_GRADLEHOME_QUERY).input(json_data).first()
+        version_gradlehome = next((v for v in versions if v.path == result), None)
 
-        versions_found: set[JavaVersion] = {v for v in [version_environment, version_runtime, version_local] if v}
+        versions_found: set[JavaVersion] = {v for v in [version_environment, version_runtime, version_local, version_gradlehome] if v}
 
         if not versions_found:
             ws_info("No Java version found in the workspace settings. Please select a valid version")
@@ -130,6 +140,7 @@ def java_set(workspace_file: str, working_path: str, local_file: str, shell: str
             version_local = None
             version_runtime = None
             version_environment = None
+            version_gradlehome = None
             ws_warning("Multiple Java versions found in different settings. Please select a valid version")
 
     if not version:
@@ -138,12 +149,14 @@ def java_set(workspace_file: str, working_path: str, local_file: str, shell: str
         version.default = True
     if not version_local:
         set_version_local_config(version, local_file, shell)
-    if not version_runtime or not version_environment:
+    if not version_runtime or not version_environment or not version_gradlehome:
         temp_file = f"{working_path}/java_versions.json"
         if not version_runtime:
             json_data = set_version_runtime(versions, json_data)
         if not version_environment:
             json_data = set_version_environment(typing.cast(list[ToolVersion], versions), json_data, JAVA_JQ_QUERY)
+        if not version_gradlehome:
+            json_data = set_version_path_for_query(typing.cast(list[ToolVersion], versions), json_data, JAVA_GRADLEHOME_QUERY)
         update_workspace(json_data, temp_file, workspace_file)
     ws_success(f"Java version {version.version} set as default on the workspace")
 
@@ -234,35 +247,6 @@ def get_versions() -> list[JavaVersion]:
         matches = sorted(matches, key=lambda x: get_version_number(x[0].strip()), reverse=True)
         version_list = [JavaVersion(version=version[0].strip(), path=version[2].strip(), description=version[1].strip()) for version in matches]
     return version_list
-
-
-def find_local_java_home(path: str, shell: str) -> Optional[str]:
-    """Find the JAVA_HOME in the local settings file.
-
-    Args:
-        path (str): Path to the local settings file
-        shell (str): The shell to use for setting the Java version
-
-    Returns:
-        str: JAVA_HOME path
-    """
-    # Check if the local settings file exists
-    if not os.path.exists(path):
-        ws_advice(f"Local settings file not found at {path}")
-        return None
-    with open(path, "r", encoding="utf-8") as file:
-        local_file_data = file.read()
-    if local_file_data:
-        match shell:
-            case "powershell":
-                matches = re.findall(r"^\s*\$env:JAVA_HOME\s*=\s*(.+)\s*$", local_file_data)
-                if matches:
-                    return matches[0].strip
-            case "bash" | "zsh":
-                matches = re.findall(r"^\s*export JAVA_HOME=(.+)\s*$", local_file_data)
-                if matches:
-                    return matches[0].strip()
-    return None
 
 
 def add_java_formatter(workspace_file: str, resources_path: str) -> None:

@@ -193,7 +193,7 @@ def ws_error(message: str, exception: Optional[BaseException] = None) -> None:
     _ws_error(exception, message)
 
 
-class WorkspaceError(BaseException):
+class WorkspaceError(Exception):
     """Custom exception for workspace operations"""
 
     def __init__(self, message: str, parent_exception: BaseException, error_code: int = 100) -> None:

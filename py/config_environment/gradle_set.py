@@ -9,7 +9,13 @@ import typing
 import jq
 import click
 from py.config_environment.util import get_local_file, update_workspace, get_version_number
-from py.config_environment.models.tools_version import ToolVersion, select_version, set_version_environment
+from py.config_environment.models.tools_version import (
+    ToolVersion,
+    select_version,
+    set_version_environment,
+    set_version_path_for_query,
+    find_local_tool_home,
+)
 from py.util.util import run_operation, load_json_with_comments
 from py.util.props import AppProperties
 from py.util.formatting import ws_info, ws_success, ws_advice, ws_warning
@@ -102,7 +108,7 @@ def gradle_set(workspace_file: str, working_path: str, local_file: str, shell: s
         version_environment = next((v for v in versions if v.path == result), None)
         result = jq.compile(GRADLE_HOME_QUERY).input(json_data).first()
         version_home = next((v for v in versions if v.path == result), None)
-        result = find_local_gradle_home(local_file, shell)
+        result = find_local_tool_home(local_file, shell, "GRADLE_HOME")
         if result:
             version_local = next((v for v in versions if v.path == result), None)
 
@@ -129,7 +135,7 @@ def gradle_set(workspace_file: str, working_path: str, local_file: str, shell: s
     if not version_home or not version_environment:
         temp_file = f"{working_path}/gradle_versions.json"
         if not version_home:
-            json_data = set_version_home(versions, json_data)
+            json_data = set_version_path_for_query(typing.cast(list[ToolVersion], versions), json_data, GRADLE_HOME_QUERY)
         if not version_environment:
             json_data = set_version_environment(typing.cast(list[ToolVersion], versions), json_data, GRADLE_JQ_QUERY)
         workspace_update(json_data, temp_file, workspace_file)
@@ -185,25 +191,6 @@ def set_version_local_config(version: GradleVersion, local_parh: str, shell: str
         ws_advice(f"Local settings file not found at {local_parh}. Gradle version {version.version} not set as default here")
 
 
-def set_version_home(versions: list[GradleVersion], json_data: Any) -> str:
-    """
-    The provided version is set as the default version on the workspace.
-
-    Args:
-        versions (GradleVersion): List of Gradle versions
-        json_data (dict): Workspace settings data
-    """
-    vers: Optional[GradleVersion] = next((v for v in versions if v.default), None)
-    if not vers:
-        raise RuntimeError("Default Gradle version not found in the list of Gradle versions")
-    # deleting the whole runtime list
-    jq_query = f"{GRADLE_HOME_QUERY} = {json.dumps(str(vers.path))}"
-    updated_json_data = jq.compile(jq_query).input(json_data).first()
-    if not updated_json_data:
-        raise RuntimeError("Failed to set Gradle version in workspace settings")
-    return updated_json_data
-
-
 def get_versions() -> list[GradleVersion]:
     """Get Gradle versions installed on the system.
 
@@ -224,32 +211,3 @@ def get_versions() -> list[GradleVersion]:
         matches = sorted(matches, key=lambda x: get_version_number(x[1].strip()), reverse=True)
         version_list = [GradleVersion(version=version[1].strip(), path=version[0].strip() + "/libexec") for version in matches]
     return version_list
-
-
-def find_local_gradle_home(path: str, shell: str) -> Optional[str]:
-    """Find the GRADLE_HOME in the local settings file.
-
-    Args:
-        path (str): Path to the local settings file
-        shell (str): The shell to use for setting the Gradle version
-
-    Returns:
-        str: GRADLE_HOME path
-    """
-    # Check if the local settings file exists
-    if not os.path.exists(path):
-        ws_advice(f"Local settings file not found at {path}")
-        return None
-    with open(path, "r", encoding="utf-8") as file:
-        local_file_data = file.read()
-    if local_file_data:
-        match shell:
-            case "powershell":
-                matches = re.findall(r"^\s*\$env:GRADLE_HOME\s*=\s*(.+)\s*$", local_file_data)
-                if matches:
-                    return matches[0].strip
-            case "bash" | "zsh":
-                matches = re.findall(r"^\s*export GRADLE_HOME=(.+)\s*$", local_file_data)
-                if matches:
-                    return matches[0].strip()
-    return None

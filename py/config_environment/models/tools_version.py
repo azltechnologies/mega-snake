@@ -2,9 +2,12 @@
 
 from dataclasses import dataclass, field
 from typing import Optional
+import os
+import re
 import json
 import jq
 from py.util.util import get_validated_input
+from py.util.formatting import ws_advice
 
 
 @dataclass(unsafe_hash=True)
@@ -73,3 +76,51 @@ def set_version_environment(versions: list[ToolVersion], json_data: dict, tool_j
     if not updated_json_data:
         raise RuntimeError("Failed to set Tool version in workspace settings")
     return updated_json_data
+
+
+def set_version_path_for_query(versions: list[ToolVersion], json_data: dict, json_query: str) -> str:
+    """
+    The provided version is set as the default version on the workspace.
+
+    Args:
+        versions (GradleVersion): List of Gradle versions
+        json_data (dict): Workspace settings data
+    """
+    vers: Optional[ToolVersion] = next((v for v in versions if v.default), None)
+    if not vers:
+        raise RuntimeError("Default Gradle version not found in the list of Gradle versions")
+    # deleting the whole runtime list
+    jq_query = f"{json_query} = {json.dumps(str(vers.path))}"
+    updated_json_data = jq.compile(jq_query).input(json_data).first()
+    if not updated_json_data:
+        raise RuntimeError("Failed to set Gradle version in workspace settings")
+    return updated_json_data
+
+
+def find_local_tool_home(path: str, shell: str, var: str) -> Optional[str]:
+    """Find the JAVA_HOME in the local settings file.
+
+    Args:
+        path (str): Path to the local settings file
+        shell (str): The shell to use for setting the Java version
+
+    Returns:
+        str: JAVA_HOME path
+    """
+    # Check if the local settings file exists
+    if not os.path.exists(path):
+        ws_advice(f"Local settings file not found at {path}")
+        return None
+    with open(path, "r", encoding="utf-8") as file:
+        local_file_data = file.read()
+    if local_file_data:
+        match shell:
+            case "powershell":
+                matches = re.findall(rf"^\s*\$env:{var}\s*=\s*(.+)\s*$", local_file_data)
+                if matches:
+                    return matches[0].strip
+            case "bash" | "zsh":
+                matches = re.findall(rf"^\s*export {var}=(.+)\s*$", local_file_data)
+                if matches:
+                    return matches[0].strip()
+    return None
