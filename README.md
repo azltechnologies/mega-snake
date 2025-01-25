@@ -32,13 +32,16 @@ A CLI tool focused on simplifying Java development with VSCode by automating wor
             poetry install
       ```
 
-### Create (or update) .`vscode/settings.json` file by adding the property _`python.binPath`_
+   > **Note**: Repeat this command once inside the virtual env if some dependencies failed to generate.
+
+### Create (or update) .`vscode/settings.json` file by adding the properties _`python.binPath`_ and _`python.defaultInterpreterPath`_
 
 for windows:
 
       ```json
             {
                "python.binPath": ".venv/Scripts",
+               "python.defaultInterpreterPath": ".venv/Scripts/python3.13"
             }
       ```
 
@@ -46,7 +49,8 @@ for mac & linux:
 
       ```json
             {
-               "python.binPath": ".venv/bin"
+               "python.binPath": ".venv/bin",
+               "python.defaultInterpreterPath": ".venv/bin/python3.13"
             }
       ```
 
