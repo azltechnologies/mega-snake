@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "py"
+name = "codename_snake"
 version = "0.1.0"
 description = "cli for setting environment for vscode coding"
 authors = ["Morales Ortega, Carlos Alberto <carlos.mor.ort@gmail.com>"]
@@ -35,7 +35,7 @@ disable_error_code = ["import-untyped"]
 mypy_path = "./out"
 
 [tool.pylint.master]
-load-plugins = ["py.pylint.custom_checkers"]
+load-plugins = ["codename_snake.pylint.custom_checkers"]
 ignore-patterns = [".+\\.pyi", "/opt/.*"]
 
 [tool.pylint.messages_control]

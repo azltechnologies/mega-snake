@@ -1,8 +1,8 @@
 .DS_Store
-py/**/__pycache__
-py/lib
-py/bin
-py/include
+codename_snake/**/__pycache__
+codename_snake/lib
+codename_snake/bin
+codename_snake/include
 pyvenv.cfg
 .gradle
 build/
