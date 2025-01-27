@@ -10,7 +10,7 @@ from codename_snake.util.util import wrapper_decorator
 
 @click.group()
 def main() -> None:
-    """light weight commands"""
+    """light weight related commands"""
 
 
 @cli_metadata(flags={"skip"})
