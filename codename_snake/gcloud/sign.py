@@ -13,7 +13,7 @@ from codename_snake.util.util import run_operation, cli_metadata, get_command_re
     short_help="Logs into gcloud — [supports skip mode]",
     help="Logs into gcloud and sets the project — [supports skip mode]",
     epilog="""
-             usage: snake Login [OPTIONS] [project]\n
+             usage: snake gcloudLogin [OPTIONS] [project]\n
                 args:\n
                     project: Optional[str] - project name\n
                     type-login: str - login type\n
@@ -33,9 +33,6 @@ def gcloud_login_env(project: Optional[str], type_login: str) -> None:
     Returns:
         None
     """
-    valid_filters: set[str] = set(GCLOUD_LOGGIN_OPT.keys())
-    if type_login not in valid_filters:
-        raise ValueError(f"Invalid loggin type: {type_login}; logging type value must be one of:\n {' | '.join(valid_filters)}")
     _gcloud_login(type_login, project)
 
 
@@ -43,7 +40,7 @@ def gcloud_login_env(project: Optional[str], type_login: str) -> None:
     name="gcloudLogout",
     short_help="Logs out of gcloud — [supports skip mode]",
     help="Logs out of gcloud — [supports skip mode]",
-    epilog="usage: snake Logout",
+    epilog="usage: snake gcloudLogout",
 )
 @cli_metadata(flags={"skip"})
 def gcloud_logout() -> None:
@@ -69,9 +66,9 @@ def _gcloud_login(type_login: str, project: Optional[str]) -> None:
     Returns:
         None
     """
-    if type_login.lower() != "u":
-        _user_login()
     if type_login.lower() != "a":
+        _user_login()
+    if type_login.lower() != "u":
         _app_login()
     if project:
         _project_set(project)

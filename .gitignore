@@ -9,3 +9,5 @@ poetry.lock
 .gradle
 build/
 .vscode
+coverage_html
+.coverage
