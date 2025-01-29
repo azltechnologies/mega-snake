@@ -30,4 +30,7 @@ jobs:
     
     - name: Run pytest
       run: |
+        source .venv/bin/python3.13
         pytest
+        deactivate
+
