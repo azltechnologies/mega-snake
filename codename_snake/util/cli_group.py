@@ -13,11 +13,9 @@ ATTR_ALIAS = "aliases"
 class CliGroup(RichGroup):
     """Custom Click Group that supports command aliases."""
 
-    def add_command_with_alias(self, cmd: click.Command, aliases: list[str] | None = None) -> None:
+    def __add_alias_commands(self, cmd: click.Command, aliases: list[str] | None = None) -> None:
         """Adds the ability to add `aliases` to commands."""
         if aliases and isinstance(aliases, list):
-            setattr(cmd, ATTR_ALIAS, aliases)
-            super().add_command(cmd)
             for alias in aliases:
                 alias_cmd = click.Command(
                     name=alias,
@@ -29,6 +27,13 @@ class CliGroup(RichGroup):
                     epilog=cmd.epilog,
                 )
                 super().add_command(alias_cmd, alias)
+
+    def add_command_with_alias(self, cmd: click.Command, aliases: list[str] | None = None) -> None:
+        """Adds the ability to add `aliases` to commands."""
+        if aliases and isinstance(aliases, list):
+            setattr(cmd, ATTR_ALIAS, aliases)
+            super().add_command(cmd)
+            self.__add_alias_commands(cmd, aliases)
         else:
             super().add_command(cmd, cmd.name)
 
@@ -41,18 +46,10 @@ class CliGroup(RichGroup):
                 name = kwargs.pop("name", None)
                 if not name:
                     raise click.UsageError("`name` command argument is required when using aliases.")
-
-                base_command = super().command(name, *args, **kwargs)(f)
-
-                for alias in aliases:
-                    cmd = super().command(alias, hidden=True, *args, **kwargs)(f)
-                    cmd.help = f"Alias for '{name}'.\n\n{cmd.help}"
-                    cmd.params = base_command.params
-
+                base_command = super(CliGroup, self).command(name, *args, **kwargs)(f)
+                self.__add_alias_commands(base_command, aliases)
             else:
-                cmd = super().command(*args, **kwargs)(f)
-
-            return cmd
+                super(CliGroup, self).command(*args, **kwargs)(f)
 
         return decorator
 

@@ -41,7 +41,7 @@ mypy_path = "./out"
 
 [tool.pylint.master]
 load-plugins = ["codename_snake.pylint.custom_checkers"]
-ignore-patterns = [".+\\.pyi", "/opt/.*"]
+ignore-patterns = ["\\.venv/.*", ".+\\.pyi", "/opt/.*",".*/site-packages/.*"]
 
 [tool.pylint.messages_control]
 enable = ["MissingReturnTypeChecker"]
@@ -60,3 +60,12 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --cov=codename_snake --cov-report=term-missing --cov-report=html:coverage_html"
+
+[tool.coverage.run]
+omit = [
+    "*/tests/*",
+    "*/__init__.py",
+    "*/site-packages/*",
+    # Add specific files to exclude
+    "codename_snake/pylint/custom_checkers.py"
+]
