@@ -62,7 +62,7 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --cov=codename_snake --cov-report=term-missing --cov-report=html:coverage_html --cov-fail-under=25"
+addopts = "-v --cov=codename_snake --cov-report=term-missing --cov-report=html:coverage_html --cov-fail-under=95"
 
 [tool.coverage.run]
 omit = [
