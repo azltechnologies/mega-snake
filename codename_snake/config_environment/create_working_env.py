@@ -16,19 +16,32 @@ from codename_snake.config_environment.models.github_queries import PrQueries, I
 from codename_snake.config_environment.models.log_viewer_watcher import LogWatcher
 from codename_snake.config_environment.models.vscode_task import VscodeTask, TASKS_INPUT_QUERY
 from codename_snake.config_environment.models.vscode_input import VscodeInput, InputType
-from codename_snake.config_environment.models.vscode_launch import VscodeLaunch, LAUNCH_INPUT_QUERY, SUBSTITUTE_SHELL_TAG, SUBSTITUTE_PROJECT_TAG, REMOTE_DEBUG_PORT_QUERY
+from codename_snake.config_environment.models.vscode_launch import (
+    VscodeLaunch,
+    LAUNCH_INPUT_QUERY,
+    SUBSTITUTE_SHELL_TAG,
+    SUBSTITUTE_PROJECT_TAG,
+    REMOTE_DEBUG_PORT_QUERY,
+)
 from codename_snake.config_environment.java_set import execute as set_java
 from codename_snake.config_environment.gradle_set import execute as set_gradle, set_gradle_version as gradle_command
 from codename_snake.config_environment.local_config import execute as initial_load
 from codename_snake.util.formatting import ws_advice, ws_info, ws_warning
-from codename_snake.util.util import get_command_return_code, get_validated_input, cli_metadata, get_remote_url, load_json_with_comments, get_input_or_default
+from codename_snake.util.util import (
+    get_command_return_code,
+    get_validated_input,
+    cli_metadata,
+    get_remote_url,
+    load_json_with_comments,
+    get_input_or_default,
+)
 
 
 @click.command(
     name="createWorkingEnv",
     short_help="Configures the VSCode workspace environment",
-    help="Sets up the VSCode workspace with recommended extensions, default settings, tasks, launch configurations, and git exclusions. "
-         "Also configures Java and Gradle if applicable.",
+    help="Sets up the VSCode workspace with recommended extensions, default settings, tasks, launch configurations"
+    ", and git exclusions. Also configures Java and Gradle if applicable.",
     epilog="""This command will:
     - Create/update VSCode workspace file
     - Configure git exclusions for workspace files
@@ -39,7 +52,7 @@ from codename_snake.util.util import get_command_return_code, get_validated_inpu
     - Configure log watchers and GitHub queries
 
     usage: snake createWorkingEnv
-    """
+    """,
 )
 @cli_metadata(flags={"skip"})
 def create_working_env() -> None:  # previously untrackGradleProps
@@ -52,13 +65,21 @@ def create_working_env() -> None:  # previously untrackGradleProps
     git_repo: bool = True
     if not shutil.which("git"):
         git_repo = False
-        if get_validated_input("Git is not installed. Would you like to configure the workspace without git?", ["y", "n"]).lower() == "n":
+        if (
+            get_validated_input(
+                "Git is not installed. Would you like to configure the workspace without git?", ["y", "n"]
+            ).lower() == "n"
+        ):
             ws_warning("Git is required to configure the workspace. Exiting...")
             return
     else:
         if get_command_return_code("git rev-parse --is-inside-work-tree") != 0:
             git_repo = False
-            if get_validated_input("Not inside a git repository. Would you like to configure the workspace anyway?", ["y", "n"]).lower() == "n":
+            if (
+                get_validated_input(
+                    "Not inside a git repository. Would you like to configure the workspace anyway?", ["y", "n"]
+                ).lower() == "n"
+            ):
                 ws_warning("Not inside a git repository. Exiting...")
                 return
 
@@ -94,9 +115,14 @@ DEFAULT_PROPS: dict[str, Any] = {
     "editor.maxTokenizationLineLength": 2000000,
     "logViewer.followTailMode": "auto",
     "logViewer.chunkSizeKb": 81920,
-    "java.jdt.ls.vmargs": "-XX:+UseParallelGC -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90 -Dsun.zip.disableMemoryMapping=true -Xmx4G -Xms100m -Xlog:disable",
+    "java.jdt.ls.vmargs": "-XX:+UseParallelGC -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90"
+    " -Dsun.zip.disableMemoryMapping=true -Xmx4G -Xms100m -Xlog:disable",
 }
-FILE_ASSOCIATIONS: dict[str, str] = {"**/.github/workflows/*.yml": "github-actions-workflow", "*.yml": "yaml", "*.gradle": "gradle"}
+FILE_ASSOCIATIONS: dict[str, str] = {
+    "**/.github/workflows/*.yml": "github-actions-workflow",
+    "*.yml": "yaml",
+    "*.gradle": "gradle",
+}
 
 
 def _get_workspace_file() -> str:
@@ -129,8 +155,12 @@ def _get_working_path() -> str:
         str - The working path
     """
     working_path: str = get_property("working_path")
-    assert working_path, "Working path is required to configure the working environment, but not found in the properties. This is a bug."
-    assert Path(working_path).resolve().is_relative_to(Path.cwd().resolve()), "Working path is not in the current directory. This is a bug."
+    assert (
+        working_path
+    ), "Working path is required to configure the working environment, but not found in the properties. This is a bug."
+    assert (
+        Path(working_path).resolve().is_relative_to(Path.cwd().resolve())
+    ), "Working path is not in the current directory. This is a bug."
     if os.path.exists(working_path):
         ws_info(f"Working path found: {working_path}")
         return working_path

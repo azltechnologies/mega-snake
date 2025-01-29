@@ -5,7 +5,12 @@ from typing import Optional
 import click
 from codename_snake.util.formatting import ws_info, ws_success
 from codename_snake.util.util import get_validated_input
-from codename_snake.remote_branches.parse_remote_branches import define_branches, RemoteBranch, parsing_branches, delete_branches
+from codename_snake.remote_branches.parse_remote_branches import (
+    define_branches,
+    RemoteBranch,
+    parsing_branches,
+    delete_branches,
+)
 from codename_snake.remote_branches.details_remote_branches import execute as remote_branches_details, get_output_file
 
 
@@ -37,7 +42,10 @@ def remote_branches_cleanup() -> None:
         branches: str = file.read().strip()
     # check if branches is empty
     if not branches:
-        raise IOError(f"No branches found in the file {input_file}. No records in {input_file}, verify that the file is being written correctly")
+        raise IOError(
+            f"No branches found in the file {input_file}. No records in {input_file}, "
+            "verify that the file is being written correctly"
+        )
     lines: list[str] = branches.split("\n")
     # creating branches list
     opt_branches_list: list[Optional[RemoteBranch]] = list(map(define_branches, lines))

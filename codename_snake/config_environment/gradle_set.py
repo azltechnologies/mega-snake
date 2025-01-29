@@ -105,7 +105,9 @@ def _gradle_set(workspace_file: str, working_path: str, local_file: str, shell: 
     ws_success(f"Gradle version {version.version} set as default on the workspace")
 
 
-def _determine_gradle_version(versions: list[GradleVersion], json_data: Any, local_file: str, shell: str, override: bool) -> Optional[GradleVersion]:
+def _determine_gradle_version(
+    versions: list[GradleVersion], json_data: Any, local_file: str, shell: str, override: bool
+) -> Optional[GradleVersion]:
     """
     Determines which Gradle version to use based on existing configurations.
 
@@ -197,12 +199,19 @@ def _set_version_local_config(version: GradleVersion, local_parh: str, shell: st
         match shell:
             case "powershell":
                 local_file_data = re.sub(r"^\s*\$env:GRADLE_HOME\s*=.+$", "\n", local_file_data, flags=re.MULTILINE)
-                local_file_data = re.sub(r"^\s*\$env:PATH\s*=\s*\"\$env:GRADLE_HOME\\bin:\$env:PATH\"$", "\n", local_file_data, flags=re.MULTILINE)
+                local_file_data = re.sub(
+                    r"^\s*\$env:PATH\s*=\s*\"\$env:GRADLE_HOME\\bin:\$env:PATH\"$",
+                    "\n",
+                    local_file_data,
+                    flags=re.MULTILINE,
+                )
                 new_line_gradle = f'$env:GRADLE_HOME = "{version.path}"'
                 new_line_update_path = '$env:PATH = "$env:GRADLE_HOME\\bin:$env:PATH"'
             case "bash" | "zsh":
                 local_file_data = re.sub(r"^\s*export GRADLE_HOME=.+$", "\n", local_file_data, flags=re.MULTILINE)
-                local_file_data = re.sub(r"^\s*export PATH=\$GRADLE_HOME/bin:\$PATH$", "\n", local_file_data, flags=re.MULTILINE)
+                local_file_data = re.sub(
+                    r"^\s*export PATH=\$GRADLE_HOME/bin:\$PATH$", "\n", local_file_data, flags=re.MULTILINE
+                )
                 new_line_gradle = f"export GRADLE_HOME='{version.path}'"
                 new_line_update_path = "export PATH=$GRADLE_HOME/bin:$PATH"
             case _:
@@ -212,7 +221,9 @@ def _set_version_local_config(version: GradleVersion, local_parh: str, shell: st
             file.write(f"{new_line_gradle}\n{new_line_update_path}\n{local_file_data}")
         ws_success(f"Gradle version {version.version} stored in local settings as default")
     else:
-        ws_advice(f"Local settings file not found at {local_parh}. Gradle version {version.version} not set as default here")
+        ws_advice(
+            f"Local settings file not found at {local_parh}. Gradle version {version.version} not set as default here"
+        )
 
 
 def _get_versions() -> list[GradleVersion]:
@@ -229,9 +240,13 @@ def _get_versions() -> list[GradleVersion]:
         # ToDO: Implement Linux version
         raise NotImplementedError("Linux version pending implementation")
     if OS == "Darwin":
-        versions: str = run_operation("find $(brew --cellar) -type d -depth 2 2>/dev/null | grep gradle", "Getting Gradle versions").stdout.strip()
+        versions: str = run_operation(
+            "find $(brew --cellar) -type d -depth 2 2>/dev/null | grep gradle", "Getting Gradle versions"
+        ).stdout.strip()
         matches = re.findall(r"(^.*/([0-9\._]+))$", versions, re.MULTILINE)
         # order matches by version number
         matches = sorted(matches, key=lambda x: get_version_number(x[1].strip()), reverse=True)
-        version_list = [GradleVersion(version=version[1].strip(), path=version[0].strip() + "/libexec") for version in matches]
+        version_list = [
+            GradleVersion(version=version[1].strip(), path=version[0].strip() + "/libexec") for version in matches
+        ]
     return version_list

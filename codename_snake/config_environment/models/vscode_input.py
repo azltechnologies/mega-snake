@@ -26,11 +26,21 @@ class VscodeInput(Enum):
         "todayTimestamp",
         "command",
         "shellCommand.execute",
-        {"command": "python3 -c 'from datetime import datetime; print(datetime.now().strftime(\"%Y-%m-%d\"));'", "useSingleResult": True},
+        {
+            "command": "python3 -c 'from datetime import datetime; print(datetime.now().strftime(\"%Y-%m-%d\"));'",
+            "useSingleResult": True,
+        },
         None,
         InputType.BOTH,
     )
-    SELECT_BUILD = ("selectBuildTask", "command", "workbench.action.tasks.runTask", {"task": JAVA_DEBUG_PREFIX}, None, InputType.TASK)
+    SELECT_BUILD = (
+        "selectBuildTask",
+        "command",
+        "workbench.action.tasks.runTask",
+        {"task": JAVA_DEBUG_PREFIX},
+        None,
+        InputType.TASK,
+    )
 
     input_id: str
     input_type: str

@@ -26,12 +26,18 @@ class Commit:
     @classmethod
     def from_branch(cls, branch: str) -> "Commit":
         """Get the commit info from a branch"""
-        commit_hash: str = run_operation(f"git log -1 --pretty='format:%H'  {branch}", "Getting commit hash").stdout.strip()
-        message: str = run_operation(f"git log -1 --pretty='format:%B'  {branch}", "Getting commit message").stdout.strip()
+        commit_hash: str = run_operation(
+            f"git log -1 --pretty='format:%H'  {branch}", "Getting commit hash"
+        ).stdout.strip()
+        message: str = run_operation(
+            f"git log -1 --pretty='format:%B'  {branch}", "Getting commit message"
+        ).stdout.strip()
         # replaing /n with /t
         message = message.replace("\n", "\t")
         message = message.replace("\r", "\t")
-        date_int: float = float(run_operation(f"git log -1 --pretty='format:%at'  {branch}", "Getting commit date").stdout.strip())
+        date_int: float = float(
+            run_operation(f"git log -1 --pretty='format:%at'  {branch}", "Getting commit date").stdout.strip()
+        )
         dt: datetime = datetime.fromtimestamp(date_int, tz=timezone.utc)
         formatted_date: str = dt.strftime("%Y-%m-%dT%H:%M:%SZ")
         return cls(commit_hash, dt, formatted_date, message)
@@ -53,7 +59,9 @@ class RemoteBranch:
     mail: str
     main_common_ancestor: str
 
-    def __init__(self: "RemoteBranch", branch: str, merged_on_main: bool, commit: Commit, mail: str, main_common_ancestor: str):
+    def __init__(
+        self: "RemoteBranch", branch: str, merged_on_main: bool, commit: Commit, mail: str, main_common_ancestor: str
+    ):
         self.merged_on_main = merged_on_main
         self.branch = branch
         self.commit = commit
@@ -104,7 +112,9 @@ class RemoteBranch:
             raise LookupError(f"Unable to parse local branch name for remote branch: {branch}")
         local_branch: str = match.group(0)
         commit: Commit = Commit.from_branch(branch)
-        within_branches: str = run_operation(f"git branch -a --contains {commit.commit_hash}", "Getting branches containing commit").stdout.strip()
+        within_branches: str = run_operation(
+            f"git branch -a --contains {commit.commit_hash}", "Getting branches containing commit"
+        ).stdout.strip()
         if not within_branches:
             raise LookupError(f"Commit {commit.commit_hash} not found in any branch")
         pattern: str = rf"\s*remotes/origin/{main_branch}\s*$"
@@ -113,8 +123,12 @@ class RemoteBranch:
             return None
         if filter_by == "U" and merged_on_main and local_branch != main_branch:
             return None
-        mail: str = run_operation(f"git log -1 --pretty='format:%ae'  {branch}", "Getting commit author").stdout.strip()
-        main_common_ancestor: str = run_operation(f"git merge-base {branch} {main_branch}", "Getting main common ancestor").stdout.strip()
+        mail: str = run_operation(
+            f"git log -1 --pretty='format:%ae'  {branch}", "Getting commit author"
+        ).stdout.strip()
+        main_common_ancestor: str = run_operation(
+            f"git merge-base {branch} {main_branch}", "Getting main common ancestor"
+        ).stdout.strip()
         return cls(local_branch, merged_on_main, commit, mail, main_common_ancestor)
 
     def __lt__(self: "RemoteBranch", other: "RemoteBranch") -> bool:

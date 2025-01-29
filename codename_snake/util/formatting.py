@@ -67,7 +67,9 @@ def config_log(path: str, level: int) -> None:
     """
     # Define formatters
     error_format = "%(asctime)25s –– [%(levelname)-8s] %(namefile)25s" + ":[%(func)-42s]:%(line)-6d  –– %(message)s"
-    default_format = "%(asctime)25s –– [%(levelname)-8s] %(filename)25s" + ":[%(funcName)-42s]:%(lineno)-6d  –– %(message)s"
+    default_format = (
+        "%(asctime)25s –– [%(levelname)-8s] %(filename)25s" + ":[%(funcName)-42s]:%(lineno)-6d  –– %(message)s"
+    )
     default_formatter = logging.Formatter(default_format)
     error_formatter = logging.Formatter(error_format)
 
@@ -222,4 +224,7 @@ class WorkspaceError(Exception):
         _ws_error(parent_exception, str(self))
 
     def __str__(self) -> str:
-        return f"[ WorkspaceError: {self.message} ] —— [ code: {self.error_code} ] —— [ type: {self.parent_exception.__class__.__name__} ] —— [ Message: {str(self.parent_exception)} ]"
+        return (
+            f"[ WorkspaceError: {self.message} ] —— [ code: {self.error_code} ] —— "
+            f"[ type: {self.parent_exception.__class__.__name__} ] —— [ Message: {str(self.parent_exception)} ]"
+        )

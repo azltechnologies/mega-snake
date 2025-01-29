@@ -14,7 +14,8 @@ from codename_snake.diff_tree.file_type import FileType
 @click.command(
     name="createDiffTree",
     short_help="Creates diff tree and commit list of current changes",
-    help="Creates a diff tree of changes and a commit list of the current branch against master or a specified commit hash",
+    help="Creates a diff tree of changes and a commit list of the current branch"
+    " against master or a specified commit hash",
     epilog="""The directory tree and commit list are created within $WS_TEMP path.\n
     usage: snake createDiffTree [OPTIONS]\n
     OPTIONS:\n
@@ -22,8 +23,15 @@ from codename_snake.diff_tree.file_type import FileType
         -d | --delete-original-files: bool - Delete the generated copy of the original files in the diff tree\n
     """,
 )
-@click.option("--commit-hash", "-c", type=click.STRING, default=None, help="Commit hash to compare against instead of master")
-@click.option("--delete-original-files", "-d", is_flag=True, help="Delete the generated copy of the original files in the diff tree")
+@click.option(
+    "--commit-hash", "-c", type=click.STRING, default=None, help="Commit hash to compare against instead of master"
+)
+@click.option(
+    "--delete-original-files",
+    "-d",
+    is_flag=True,
+    help="Delete the generated copy of the original files in the diff tree",
+)
 def main(commit_hash: Optional[str], delete_original_files: bool) -> None:
     """
     Creates a diff tree of the current branch against master or a specified commit hash.
@@ -55,7 +63,8 @@ def main(commit_hash: Optional[str], delete_original_files: bool) -> None:
             raise ValueError(f"Invalid commit hash: {commit_hash}")
         main_branch = commit_hash
     diff_str: str = run_operation(
-        f"git diff-tree -r {main_branch} {current_branch}", f"getting differences between '{main_branch}' and '{current_branch}' branches"
+        f"git diff-tree -r {main_branch} {current_branch}",
+        f"getting differences between '{main_branch}' and '{current_branch}' branches",
     ).stdout.strip()
     # check if there are no differences
     if not diff_str:
@@ -73,7 +82,8 @@ def main(commit_hash: Optional[str], delete_original_files: bool) -> None:
     ws_success(f"Diff tree created at {tree_output}/diff_tree.txt")
     # write the commit list to the file
     commits: str = run_operation(
-        f" git log --pretty=format:'%ad %H%n%B' --date=short {current_branch}...{main_branch}", "Writing commit list to file"
+        f" git log --pretty=format:'%ad %H%n%B' --date=short {current_branch}...{main_branch}",
+        "Writing commit list to file",
     ).stdout.strip()
     with open(diff_commit_file, "w", encoding="utf-8") as diff_commit:
         diff_commit.write(commits)

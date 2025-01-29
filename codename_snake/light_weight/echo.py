@@ -1,4 +1,7 @@
-""" This module contains the echo function that prints messages to the console and logs them into the workspace configuration log file. """
+"""
+This module contains the echo function that prints messages to the console and
+logs them into the workspace configuration log file.
+"""
 
 from typing import Optional, Callable
 import click
@@ -9,7 +12,8 @@ from codename_snake.util.formatting import Color
 @click.command(
     name="msg",
     short_help="Prints message to the console and logs it.",
-    help="Prints a message to the console in a custom format and logs it into the workspace configuration log file.",
+    help="Prints a message to the console in a custom format and logs it into "
+    "the workspace configuration log file.",
     epilog="""
     usage: snake msg <message> [OPTIONS]   <type>\n
     OPTIONS:\n
@@ -27,7 +31,9 @@ from codename_snake.util.formatting import Color
     """,
 )
 @click.argument("message", type=click.STRING)
-@click.option("--prologue", "-p", type=click.STRING, required=False, default=None, help="An optional starting message.")
+@click.option(
+    "--prologue", "-p", type=click.STRING, required=False, default=None, help="An optional starting message."
+)
 @click.option("--epilog", "-e", type=click.STRING, required=False, default=None, help="An optional ending message.")
 @click.option(
     "--type-msg",
@@ -58,7 +64,9 @@ def echo(message: str, prologue: Optional[str], epilog: Optional[str], type_msg:
     fun_dict: dict[str, Callable] = MSG_OPT
     valid_filters: set[str] = set(fun_dict.keys())
     if type_msg not in valid_filters:
-        raise ValueError(f"Invalid message type: {type_msg}; message type value must be one of:\n {' | '.join(valid_filters)}")
+        raise ValueError(
+            f"Invalid message type: {type_msg}; message type value must be one of:\n {' | '.join(valid_filters)}"
+        )
     msg: str = f"{message}\n{epilog}" if epilog else message
     if prologue:
         msg = f"{prologue}\n{msg}"

@@ -27,7 +27,8 @@ def bq_instances_by_deployment_id(project: str, deployment_ids: list[str]) -> No
     arrays = []
     for d_id in deployment_ids:
         instance_list = run_operation(
-            f'gcloud compute instances list --project {project} --filter="labels.deployment-id={d_id} AND (status=RUNNING OR status=TERMINATED)" --format="value(id)"',
+            f'gcloud compute instances list --project {project} --filter="labels.deployment-id={d_id}'
+            ' AND (status=RUNNING OR status=TERMINATED)" --format="value(id)"',
             "retrieve instances by deployment id",
         ).stdout.strip()
         ws_advice(f"ProjectId: {d_id}")

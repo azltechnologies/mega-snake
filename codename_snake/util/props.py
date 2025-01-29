@@ -12,7 +12,9 @@ from codename_snake.util.util import get_validated_input
 from codename_snake.constants import SHELL_OPT, LOGGING_NAME_TO_LEVEL, LOGGING_LEVEL_TO_NANE
 
 
-def _check_forbidden_execution(method: str, message: str, reload: bool = False, props: Optional["AppProperties"] = None) -> None:
+def _check_forbidden_execution(
+    method: str, message: str, reload: bool = False, props: Optional["AppProperties"] = None
+) -> None:
     # Get call stack
     frames = inspect.stack()
     # Check if called from __init__
@@ -22,7 +24,9 @@ def _check_forbidden_execution(method: str, message: str, reload: bool = False, 
             raise PermissionError(f"Operation not permitted: {message} is only allowed during initialization")
         if not props:
             raise ValueError("properties must be set when reloading properties")
-        formatting.config_log(props._retrieve_property("local_config_file"), props.log_level)  # pylint: disable=protected-access
+        formatting.config_log(
+            props._retrieve_property("local_config_file"), props.log_level  # pylint: disable=protected-access
+        )
         formatting.ws_advice(f"Properties reloaded by: {message}")
 
 
@@ -103,9 +107,10 @@ class AppProperties:
     def __resources_path_validator(self, value: str) -> None:
         resources_path = f'{os.getenv("PYTHONPATH")}/{value}'
         # Check if the path exists
-        assert os.path.exists(
-            resources_path
-        ), f"Path {resources_path} does not exist in PYTHONPATH, please check the properties file as it should be a relative path. This is a bug."
+        assert os.path.exists(resources_path), (
+            f"Path {resources_path} does not exist in PYTHONPATH, please check the "
+            "properties file as it should be a relative path. This is a bug."
+        )
         # Check if the path is a directory
         if not os.path.isdir(resources_path):
             raise NotADirectoryError(f"Path {resources_path} is not a directory")
@@ -169,12 +174,16 @@ class AppProperties:
         self.__resources_path_validator(resources_path)
         try:
             self.__working_path_validator(working_path)
-            self.__adding_prop_validator("workspace_file", _find_code_workspace_files(f"{self.props["working_path"]}/.."))
+            self.__adding_prop_validator(
+                "workspace_file", _find_code_workspace_files(f"{self.props["working_path"]}/..")
+            )
         except FileNotFoundError as e:
             self.__adding_prop_validator("local_config_file", f"{self.props["working_path"]}/{local_config_file}")
             self.__shell_validator(shell)
             try:
-                self.__adding_prop_validator("workspace_file", _find_code_workspace_files(f"{self.props["working_path"]}/.."))
+                self.__adding_prop_validator(
+                    "workspace_file", _find_code_workspace_files(f"{self.props["working_path"]}/..")
+                )
             except FileNotFoundError:
                 self.props["workspace_file"] = ""
             raise e

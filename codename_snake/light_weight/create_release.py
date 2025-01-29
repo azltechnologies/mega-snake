@@ -63,7 +63,9 @@ def create_release(tag_suffix: str, release_type: str, notes: Optional[str], bra
             ws_info("Exiting.")
             return
     if release_type not in RELEASE_TYPE_OPT:
-        raise ValueError(f"Invalid release type: {release_type}; Please enter one of:\n {' | '.join(RELEASE_TYPE_OPT.keys())}")
+        raise ValueError(
+            f"Invalid release type: {release_type}; Please enter one of:\n {' | '.join(RELEASE_TYPE_OPT.keys())}"
+        )
 
     # getting the release notes
     notes_release: str = _get_notes(notes)

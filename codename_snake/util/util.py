@@ -58,7 +58,9 @@ def run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str
             ws_warning(f"{description} failed on attempt {attempt}. Error: {error.stdout}")
             ws_warning(f"Error details: {error.stderr}")
             if attempt == num_retries:
-                raise subprocess.SubprocessError(f"{description} failed after {num_retries} attempts. Error: {error.stderr}") from error
+                raise subprocess.SubprocessError(
+                    f"{description} failed after {num_retries} attempts. Error: {error.stderr}"
+                ) from error
             ws_warning(f"Retrying {description} in 2 seconds...")
             time.sleep(2)  # Wait 2 seconds before retrying
     return result
@@ -108,7 +110,10 @@ def get_validated_input(p_prompt: str, valid_values: list[str]) -> str:
         valid_values = [value.lower() for value in valid_values]
         if user_input in valid_values:
             return user_input
-        prompt = f"{Back.BLACK}{Fore.YELLOW}{p_prompt}\ttry again\t—\t{Fore.RED}{3 - tries} attempts left\n{instructions}\n{Style.RESET_ALL}"
+        prompt = (
+            f"{Back.BLACK}{Fore.YELLOW}{p_prompt}\ttry again\t—\t{Fore.RED}{3 - tries} "
+            f"attempts left\n{instructions}\n{Style.RESET_ALL}"
+        )
         ws_warning(warn)
         tries += 1
         if tries > 3:

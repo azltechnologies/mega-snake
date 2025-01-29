@@ -54,7 +54,9 @@ def execute(filter_by: str) -> None:
         filter_by: str | "A"
     """
     if filter_by not in REMOTE_BRANCHES_OPT:
-        raise ValueError(f"Invalid filter: {filter_by}; filter value must be one of:\n {' | '.join(REMOTE_BRANCHES_OPT)}")
+        raise ValueError(
+            f"Invalid filter: {filter_by}; filter value must be one of:\n {' | '.join(REMOTE_BRANCHES_OPT)}"
+        )
     main_branch: str = get_main_branch()
     list_output: str = get_output_file()
     # check if list_output directory exists. if so, delete it

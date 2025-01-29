@@ -76,8 +76,8 @@ omit = [
 flake8.args=["codename_snake"]
 max-line-length = 120
 ignore = [
-    "E203",  # Whitespace before ':'
-    "W503",  # Line break before binary operator
+    "E501",  # line too long
+    "E303", # too many blank lines
 ]
 exclude = [
     ".venv",
@@ -86,4 +86,5 @@ exclude = [
     "__pycache__",
     "*.pyc",
     "*.egg-info",
+    "codename_snake/pylint/custom_checkers.py",
 ]

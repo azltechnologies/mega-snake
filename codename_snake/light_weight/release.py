@@ -76,7 +76,9 @@ class Release:
                 return new_tag_name  # Return the first non-existing tag
             i += 1
         # if no tag was found, throw error
-        raise subprocess.SubprocessError(f"Could not find a non-existing tag for {tag_name}-{suffix} after {attemps} attempts. Exiting.")
+        raise subprocess.SubprocessError(
+            f"Could not find a non-existing tag for {tag_name}-{suffix} after {attemps} attempts. Exiting."
+        )
 
 
 def _create_release_list(list_string: str) -> list[Release]:

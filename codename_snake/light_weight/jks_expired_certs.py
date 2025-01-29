@@ -57,7 +57,8 @@ def expired_certs(jks_path: str, password: str, verbose: bool) -> None:
 
             # Get certificate details
             cert_details = run_operation(
-                f"keytool -list -v -keystore '{jks_path}' -storepass '{password}' -alias '{alias}'", f"Checking certificate details for alias {alias}"
+                f"keytool -list -v -keystore '{jks_path}' -storepass '{password}' -alias '{alias}'",
+                f"Checking certificate details for alias {alias}",
             ).stdout.strip()
 
             # Parse dates
@@ -66,7 +67,9 @@ def expired_certs(jks_path: str, password: str, verbose: bool) -> None:
             for line in cert_details.split("\n"):
                 if "Valid from:" in line:
                     date_str = line.split("until:")
-                    valid_from = datetime.strptime(date_str[0].replace("Valid from:", "").strip(), "%a %b %d %H:%M:%S %Z %Y")
+                    valid_from = datetime.strptime(
+                        date_str[0].replace("Valid from:", "").strip(), "%a %b %d %H:%M:%S %Z %Y"
+                    )
                     valid_until = datetime.strptime(date_str[1].strip(), "%a %b %d %H:%M:%S %Z %Y")
 
             color_dict: dict[Color, str]
@@ -80,14 +83,22 @@ def expired_certs(jks_path: str, password: str, verbose: bool) -> None:
                 }
                 ws_tip(color_dict)
             else:
-                ws_warning(f"Certificate with alias {Color.BLUE.value}{alias}{Color.YELLOW.value} is expired since {Color.RED.value}{valid_until}")
-                certificate_info = run_operation(f"{list_cmd} -alias {alias}", "Getting certificate info").stdout.strip()
+                ws_warning(
+                    f"Certificate with alias {Color.BLUE.value}{alias}{Color.YELLOW.value} is expired"
+                    f" since {Color.RED.value}{valid_until}"
+                )
+                certificate_info = run_operation(
+                    f"{list_cmd} -alias {alias}", "Getting certificate info"
+                ).stdout.strip()
                 if verbose:
                     color_dict = {Color.RED: certificate_info}
                     ws_tip(color_dict)
                 ws_advice("delete current certificate and add a new one. Please run the following commands:")
                 ws_advice(f"   keytool -delete -alias {alias} -keystore {jks_path} -storepass {password}")
-                ws_advice(f"   keytool -import -alias {alias} -file <CERTIFICATE_FILE> -keystore {jks_path} -storepass {password}")
+                ws_advice(
+                    f"   keytool -import -alias {alias} -file <CERTIFICATE_FILE> "
+                    f"-keystore {jks_path} -storepass {password}"
+                )
 
     except Exception as e:
         ws_warning(f"Error processing certificates: {str(e)}")

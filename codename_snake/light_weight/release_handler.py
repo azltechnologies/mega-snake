@@ -41,7 +41,10 @@ def publish_release(tag_name: str, release_type: str, release_notes: str, releas
     Returns:
         None
     """
-    cwd: str = f'gh release create {tag_name} {release_type} --target "{release_branch}" ' f'--title "{tag_name}" {release_notes} --generate-notes'
+    cwd: str = (
+        f'gh release create {tag_name} {release_type} --target "{release_branch}" '
+        f'--title "{tag_name}" {release_notes} --generate-notes'
+    )
     run_operation(cwd, "Publish release")
 
 

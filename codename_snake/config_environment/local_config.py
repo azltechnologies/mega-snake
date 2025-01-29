@@ -39,9 +39,11 @@ def execute(override: bool) -> None:  # previously initialLoad
         contents += "# You can add custom functions and configurations here.\n"
         match shell:
             case "bash" | "zsh":
-                contents += "example() {\n    snake msg 'Hello, World!'\n}\nexport ORG_GRADLE_PROJECT_example_password='some value'\n"
+                contents += ("example() {\n    snake msg 'Hello, World!'\n}\nexport "
+                             "ORG_GRADLE_PROJECT_example_password='some value'\n")
             case "powershell":
-                contents = "function example {\n    snake msg 'Hello, World!'\n}\n$env:ORG_GRADLE_PROJECT_example_password = 'some value'\n"
+                contents = ("function example {\n    snake msg 'Hello, World!'\n}\n"
+                            "$env:ORG_GRADLE_PROJECT_example_password = 'some value'\n")
             case _:
                 return
         with open(local_file, "w", encoding="utf-8") as file:

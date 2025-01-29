@@ -28,9 +28,22 @@ class VscodeLaunch(Enum):
         None,
         None,
         [VscodeTask.JAVA_REMOTE_DEBUG],
-        {"port": f"${{config:{REMOTE_DEBUG_PORT_QUERY}}}", "hostName": "localhost", "projectName": SUBSTITUTE_PROJECT_TAG},
+        {
+            "port": f"${{config:{REMOTE_DEBUG_PORT_QUERY}}}",
+            "hostName": "localhost",
+            "projectName": SUBSTITUTE_PROJECT_TAG,
+        },
     )
-    DEBUG_PYTHON_FILE = ("PYTHON DEBUG (File)", "debugpy", "launch", None, None, LogWatcher.GENERIC, None, {"program": "${file}"})
+    DEBUG_PYTHON_FILE = (
+        "PYTHON DEBUG (File)",
+        "debugpy",
+        "launch",
+        None,
+        None,
+        LogWatcher.GENERIC,
+        None,
+        {"program": "${file}"},
+    )
     DEBUG_PYTHON_MODULE = (
         "PYTHON DEBUG (Module)",
         "debugpy",
@@ -105,7 +118,9 @@ class VscodeLaunch(Enum):
             return None
         return jq.compile(f"{LAUNCH_VERSION_QUERY} = {json.dumps("0.2.0")}").input(json_data).first()
 
-    def add_launch_config(self, json_data: dict[str, Any], string_substituter: Callable[[str], str], working_path: str) -> Optional[dict[str, Any]]:
+    def add_launch_config(
+        self, json_data: dict[str, Any], string_substituter: Callable[[str], str], working_path: str
+    ) -> Optional[dict[str, Any]]:
         """Adds the query to the workspace settings."""
         json_input = json_data
         result = jq.compile(LAUNCH_CONFIG_QUERY).input(json_data).first()

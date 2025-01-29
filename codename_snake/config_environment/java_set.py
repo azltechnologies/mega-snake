@@ -64,7 +64,9 @@ OS_MAP = {"Windows": "windows", "Linux": "linux", "Darwin": "osx"}
 ENV_VARIABLE = f"terminal.integrated.env.{OS_MAP[OS]}"
 JAVA_JQ_QUERY = f'.settings["{ENV_VARIABLE}"].JAVA_HOME'
 JAVA_RUNTIME_QUERY = '.settings.["java.configuration.runtimes"]'
-JAVA_RUNTIME_PATH = f"{JAVA_RUNTIME_QUERY} | map(select(.default == true)) | if length == 1 then .[0].path else null end"
+JAVA_RUNTIME_PATH = (
+    f"{JAVA_RUNTIME_QUERY} | map(select(.default == true)) | if length == 1 then .[0].path else null end"
+)
 JAVA_FORMAT_QUERY = '.settings["java.format.settings.url"]'
 JAVA_GRADLEHOME_QUERY = '.settings["java.import.gradle.java.home"]'
 
@@ -86,7 +88,9 @@ class JavaVersion(ToolVersion):
         self.description = description
 
     def __str__(self) -> str:
-        return f"Id: {self.id}\n\tJava Version: {self.version}\n\tpath: {self.path}\n\tDescription: {self.description}\n"
+        return (
+            f"Id: {self.id}\n\tJava Version: {self.version}\n\tpath: {self.path}\n\tDescription: {self.description}\n"
+        )
 
 
 def _java_set(workspace_file: str, working_path: str, local_file: str, shell: str, override: bool) -> None:
@@ -116,7 +120,9 @@ def _java_set(workspace_file: str, working_path: str, local_file: str, shell: st
     ws_success(f"Java version {version.version} set as default on the workspace")
 
 
-def _determine_java_version(versions: list[JavaVersion], json_data: Any, local_file: str, shell: str, override: bool) -> Optional[JavaVersion]:
+def _determine_java_version(
+    versions: list[JavaVersion], json_data: Any, local_file: str, shell: str, override: bool
+) -> Optional[JavaVersion]:
     """
     Determines which Java version to use based on existing configurations.
 
@@ -131,7 +137,9 @@ def _determine_java_version(versions: list[JavaVersion], json_data: Any, local_f
     version_local = _find_version_from_local(versions, local_file, shell)
     version_gradlehome = _find_version_by_query(versions, json_data, JAVA_GRADLEHOME_QUERY)
 
-    versions_found: set[JavaVersion] = {v for v in [version_environment, version_runtime, version_local, version_gradlehome] if v}
+    versions_found: set[JavaVersion] = {
+        v for v in [version_environment, version_runtime, version_local, version_gradlehome] if v
+    }
 
     if not versions_found:
         ws_info("No Java version found in the workspace settings. Please select a valid version")
@@ -170,7 +178,9 @@ def _find_version_from_local(versions: list[JavaVersion], local_file: str, shell
     return None
 
 
-def _update_configurations(versions: list[JavaVersion], json_data: Any, workspace_file: str, working_path: str, local_file: str, shell: str) -> None:
+def _update_configurations(
+    versions: list[JavaVersion], json_data: Any, workspace_file: str, working_path: str, local_file: str, shell: str
+) -> None:
     """Update all configuration files with the selected version."""
     temp_file = f"{working_path}/java_versions.json"
 
@@ -203,12 +213,19 @@ def _set_version_local_config(version: JavaVersion, local_parh: str, shell: str)
         match shell:
             case "powershell":
                 local_file_data = re.sub(r"^\s*\$env:JAVA_HOME\s*=.+$", "\n", local_file_data, flags=re.MULTILINE)
-                local_file_data = re.sub(r"^\s*\$env:PATH\s*=\s*\"\$env:JAVA_HOME\\bin:\$env:PATH\"$", "\n", local_file_data, flags=re.MULTILINE)
+                local_file_data = re.sub(
+                    r"^\s*\$env:PATH\s*=\s*\"\$env:JAVA_HOME\\bin:\$env:PATH\"$",
+                    "\n",
+                    local_file_data,
+                    flags=re.MULTILINE,
+                )
                 new_line_java = f'$env:JAVA_HOME = "{version.path}"'
                 new_line_update_path = '$env:PATH = "$env:JAVA_HOME\\bin:$env:PATH"'
             case "bash" | "zsh":
                 local_file_data = re.sub(r"^\s*export JAVA_HOME=.+$", "\n", local_file_data, flags=re.MULTILINE)
-                local_file_data = re.sub(r"^\s*export PATH=\$JAVA_HOME/bin:\$PATH$", "\n", local_file_data, flags=re.MULTILINE)
+                local_file_data = re.sub(
+                    r"^\s*export PATH=\$JAVA_HOME/bin:\$PATH$", "\n", local_file_data, flags=re.MULTILINE
+                )
                 new_line_java = f"export JAVA_HOME='{version.path}'"
                 new_line_update_path = "export PATH=$JAVA_HOME/bin:$PATH"
             case _:
@@ -218,7 +235,9 @@ def _set_version_local_config(version: JavaVersion, local_parh: str, shell: str)
             file.write(f"{new_line_java}\n{new_line_update_path}\n{local_file_data}")
         ws_success(f"Java version {version.version} stored in local settings as default")
     else:
-        ws_advice(f"Local settings file not found at {local_parh}. Java version {version.version} not set as default here")
+        ws_advice(
+            f"Local settings file not found at {local_parh}. Java version {version.version} not set as default here"
+        )
 
 
 def _set_version_runtime(versions: list[JavaVersion], json_data: Any) -> str:
@@ -245,7 +264,10 @@ def _set_version_runtime(versions: list[JavaVersion], json_data: Any) -> str:
             if not java_version:
                 raise RuntimeError(f"Failed to extract the Java version from {v.version}")
         java_name = f"JavaSE-{java_version.group(1)}"
-        jq_query = f'{JAVA_RUNTIME_QUERY} |= . + [{{"name": "{java_name}", "path": "{v.path}", "default": {str(v.default).lower()}}}]'
+        jq_query = (
+            f"{JAVA_RUNTIME_QUERY} |= . + "
+            f'[{{"name": "{java_name}", "path": "{v.path}", "default": {str(v.default).lower()}}}]'
+        )
         updated_json_data = jq.compile(jq_query).input(updated_json_data).first()
     if not updated_json_data:
         raise RuntimeError("Failed to set Java version in workspace settings")
@@ -270,7 +292,10 @@ def _get_versions() -> list[JavaVersion]:
         matches = re.findall(r"^\s*([0-9\._]+)\s+(.+\")\s*(/.+$)", versions, re.MULTILINE)
         # order matches by version number
         matches = sorted(matches, key=lambda x: get_version_number(x[0].strip()), reverse=True)
-        version_list = [JavaVersion(version=version[0].strip(), path=version[2].strip(), description=version[1].strip()) for version in matches]
+        version_list = [
+            JavaVersion(version=version[0].strip(), path=version[2].strip(), description=version[1].strip())
+            for version in matches
+        ]
     return version_list
 
 

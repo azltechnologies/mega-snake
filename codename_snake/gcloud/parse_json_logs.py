@@ -1,4 +1,6 @@
-""" This module contains the parse_json_logs function that parses logs from a JSON file and writes them to .log files """
+"""
+This module contains the parse_json_logs function that parses logs from a JSON file and writes them to .log files
+"""
 
 import json
 from pathlib import Path
