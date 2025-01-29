@@ -1,0 +1,33 @@
+name: PR Validation
+
+on:
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.13'
+    
+    - name: Install Poetry
+      run: |
+        curl -sSL https://install.python-poetry.org | python3 -
+    
+    - name: Configure Poetry
+      run: |
+        poetry config virtualenvs.in-project true
+    
+    - name: Install dependencies
+      run: |
+        poetry install
+    
+    - name: Run pytest
+      run: |
+        pytest
