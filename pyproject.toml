@@ -29,6 +29,8 @@ pylint = "3.3.3"
 mypy = "1.13.0"
 mypy-extensions = "1.0.0"
 pytest-pylint = "^0.21.0"
+flake8 = "^7.1.1"
+flake8-pyproject = "^1.2.3"
 
 [build-system]
 requires = ["poetry-core"]
@@ -68,4 +70,20 @@ omit = [
     "*/site-packages/*",
     # Add specific files to exclude
     "codename_snake/pylint/custom_checkers.py"
+]
+
+[tool.flake8]
+flake8.args=["codename_snake"]
+max-line-length = 120
+ignore = [
+    "E203",  # Whitespace before ':'
+    "W503",  # Line break before binary operator
+]
+exclude = [
+    ".venv",
+    "build",
+    "dist",
+    "__pycache__",
+    "*.pyc",
+    "*.egg-info",
 ]
