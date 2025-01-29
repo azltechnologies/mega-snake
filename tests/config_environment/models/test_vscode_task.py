@@ -6,16 +6,6 @@ import pytest
 from codename_snake.config_environment.models.vscode_task import VscodeTask, TASKS_VERSION_QUERY
 
 
-@pytest.fixture(name="log_watcher")
-def fixture_log_watcher() -> Generator[MagicMock]:
-    """Mock LogWatcher"""
-    with patch("codename_snake.config_environment.models.vscode_task.LogWatcher") as mock:
-        mock.compile = lambda x: mock
-        mock.input = lambda x: mock
-        mock.compile().input().first = MagicMock(return_value="mocked result")
-        yield mock
-
-
 @pytest.fixture(name="jq")
 def fixture_jq() -> Generator[MagicMock]:
     """Mock jq"""
