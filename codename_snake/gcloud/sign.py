@@ -47,7 +47,7 @@ def gcloud_logout() -> None:
     """
     Logs out of gcloud
     """
-    exit_code:int =os.system("gcloud auth revoke")
+    exit_code: int = os.system("gcloud auth revoke")
     if exit_code == 0:
         ws_success("gcloud account is now logged out.")
     exit_code = os.system("gcloud auth application-default revoke")

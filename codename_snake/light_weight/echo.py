@@ -65,7 +65,7 @@ def echo(message: str, prologue: Optional[str], epilog: Optional[str], type_msg:
     if type_msg == "A":
         fun_dict[type_msg](msg, True)
     if type_msg == "T":
-        dict_color: dict[Color,str] = {}
+        dict_color: dict[Color, str] = {}
         if prologue:
             dict_color[Color.YELLOW] = prologue
         dict_color[Color.GREEN] = message

@@ -17,7 +17,7 @@ from .util.cli_group import CliGroup
 
 @click.group(
     help="""A CLI tool focused on simplifying Java development with VSCode by automating workspace configuration.
-    
+
 Main features:
 - Automated workspace setup for Java/Gradle projects
 - Java and Gradle version management
@@ -79,7 +79,10 @@ def cli(ctx: click.Context, log_level: str, shell: str) -> None:
 def post_command(ctx, result, **kwargs) -> None:
     """Post-command execution logic"""
     if ctx.invoked_subcommand:
-        ws_advice(f"Command '{ctx.invoked_subcommand}' completed successfully with result: {result} and kwargs: { kwargs}")
+        ws_advice(
+            f"Command '{ctx.invoked_subcommand}' completed successfully "
+            f"with result: {result} and kwargs: {kwargs}"
+        )
     exit_code: int = ctx.obj.get("exit_code", 0)
     if exit_code:
         sys.exit(exit_code)

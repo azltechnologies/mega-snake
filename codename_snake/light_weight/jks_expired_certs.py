@@ -14,7 +14,7 @@ from codename_snake.util.util import run_operation, get_command_return_code
     help="Analyze certificates in a Java KeyStore (JKS) file and report their validity status",
     epilog="""
     Usage: snake expiredCertsJks JKS_PATH [--password PASSWORD]
-    
+
     Examples:
       snake expiredCertsJks /path/to/keystore.jks
       snake expiredCertsJks /path/to/keystore.jks --password mypassword

@@ -16,6 +16,7 @@ SUBSTITUTE_SHELL_TAG = "[SUBS_SHELL]"
 SUBSTITUTE_PROJECT_TAG = "[SUBS_PROJECT]"
 REMOTE_DEBUG_PORT_QUERY = "snake.java.remoteDebug.port"
 
+
 class VscodeLaunch(Enum):
     """Enum for the different PR queries."""
 
@@ -29,7 +30,7 @@ class VscodeLaunch(Enum):
         [VscodeTask.JAVA_REMOTE_DEBUG],
         {"port": f"${{config:{REMOTE_DEBUG_PORT_QUERY}}}", "hostName": "localhost", "projectName": SUBSTITUTE_PROJECT_TAG},
     )
-    DEBUG_PYTHON_FILE = ("PYTHON DEBUG (File)", "debugpy", "launch", None, None, LogWatcher.GENERIC, None,{"program": "${file}"})
+    DEBUG_PYTHON_FILE = ("PYTHON DEBUG (File)", "debugpy", "launch", None, None, LogWatcher.GENERIC, None, {"program": "${file}"})
     DEBUG_PYTHON_MODULE = (
         "PYTHON DEBUG (Module)",
         "debugpy",
@@ -93,7 +94,7 @@ class VscodeLaunch(Enum):
     def add_logger_args(self, working_path: str) -> None:
         """Adds the redirect arg to the task."""
         if self.watcher:
-            output:str = self.watcher.get_pattern_date(working_path)
+            output: str = self.watcher.get_pattern_date(working_path)
             self.args.extend(output.split(" "))
 
     @staticmethod

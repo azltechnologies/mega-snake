@@ -68,8 +68,8 @@ def main(commit_hash: Optional[str], delete_original_files: bool) -> None:
         symbol = columns[0].split(" ")[4]
         path: str = columns[1]
         FileType.from_symbol(symbol).add(path)
-    _create_files(diff_tree_dummy_repo,main_branch,not delete_original_files)
-    _display_inner_tree(diff_tree_dummy_repo, f"{tree_output}/diff_tree.txt",not delete_original_files)
+    _create_files(diff_tree_dummy_repo, main_branch, not delete_original_files)
+    _display_inner_tree(diff_tree_dummy_repo, f"{tree_output}/diff_tree.txt", not delete_original_files)
     ws_success(f"Diff tree created at {tree_output}/diff_tree.txt")
     # write the commit list to the file
     commits: str = run_operation(
@@ -84,24 +84,28 @@ def main(commit_hash: Optional[str], delete_original_files: bool) -> None:
         ws_success("Deleted the generated copy of the original files in the diff tree")
 
 
-def _create_files(location: str, main_branch:str, show_contents:bool)-> None:
+def _create_files(location: str, main_branch: str, show_contents: bool) -> None:
     """
     Creates new files for each file type in the specified location.
 
     Args:
         location: str
     """
-    contents:str
+    contents: str
     for file_type in FileType:
         for file in file_type.files:
             new_file_path: str = f"{location}/{file} - {file_type.symbol}"
             os.makedirs(os.path.dirname(new_file_path), exist_ok=True)
-            contents = "" if not show_contents or file_type.id_type == 'A' else run_operation(f"git show {main_branch}:{file}", "Getting file contents").stdout
+            contents = (
+                ""
+                if not show_contents or file_type.id_type == "A"
+                else run_operation(f"git show {main_branch}:{file}", "Getting file contents").stdout
+            )
             with open(new_file_path, "w", encoding="utf-8") as new_file:
                 new_file.write(contents)
 
 
-def _display_inner_tree(root_dir: str, output_file: str,show_contents:bool)-> None:
+def _display_inner_tree(root_dir: str, output_file: str, show_contents: bool) -> None:
     """
     Display the tree of a directory's contents, hiding the root directory.
 

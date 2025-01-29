@@ -108,7 +108,7 @@ def get_validated_input(p_prompt: str, valid_values: list[str]) -> str:
         valid_values = [value.lower() for value in valid_values]
         if user_input in valid_values:
             return user_input
-        prompt = f"{Back.BLACK}{Fore.YELLOW}{p_prompt}\ttry again\t—\t{Fore.RED}{3-tries} attempts left\n{instructions}\n{Style.RESET_ALL}"
+        prompt = f"{Back.BLACK}{Fore.YELLOW}{p_prompt}\ttry again\t—\t{Fore.RED}{3 - tries} attempts left\n{instructions}\n{Style.RESET_ALL}"
         ws_warning(warn)
         tries += 1
         if tries > 3:
@@ -216,7 +216,7 @@ def wrapper_decorator(sub_wrapper: Callable) -> Callable:
 
         command_signature = inspect.signature(click.Command.__init__).parameters
 
-        comm = click.Command(**{k: getattr(command, k) for k,_p in command_signature.items() if k != "self"})
+        comm = click.Command(**{k: getattr(command, k) for k, _p in command_signature.items() if k != "self"})
         comm.callback = wrapper  # Override the callback with our wrapper
         if aliases := getattr(command, "aliases", []):
             setattr(comm, "aliases", aliases)

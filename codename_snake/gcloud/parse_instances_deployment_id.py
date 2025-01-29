@@ -5,6 +5,7 @@ import click
 from codename_snake.util.util import run_operation
 from codename_snake.util.formatting import ws_advice, ws_success
 
+
 @click.command(
     name="bqInstancesQuery",
     short_help="Parse instances by deployment id and copy the command to clipboard.",

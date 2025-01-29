@@ -22,7 +22,7 @@ def _check_forbidden_execution(method: str, message: str, reload: bool = False, 
             raise PermissionError(f"Operation not permitted: {message} is only allowed during initialization")
         if not props:
             raise ValueError("properties must be set when reloading properties")
-        formatting.config_log(props._retrieve_property("local_config_file"), props.log_level) # pylint: disable=protected-access
+        formatting.config_log(props._retrieve_property("local_config_file"), props.log_level)  # pylint: disable=protected-access
         formatting.ws_advice(f"Properties reloaded by: {message}")
 
 
@@ -103,7 +103,9 @@ class AppProperties:
     def __resources_path_validator(self, value: str) -> None:
         resources_path = f'{os.getenv("PYTHONPATH")}/{value}'
         # Check if the path exists
-        assert os.path.exists(resources_path),f"Path {resources_path} does not exist in PYTHONPATH, please check the properties file as it should be a relative path. This is a bug."
+        assert os.path.exists(
+            resources_path
+        ), f"Path {resources_path} does not exist in PYTHONPATH, please check the properties file as it should be a relative path. This is a bug."
         # Check if the path is a directory
         if not os.path.isdir(resources_path):
             raise NotADirectoryError(f"Path {resources_path} is not a directory")
@@ -225,6 +227,7 @@ def _read_properties(file_path: str) -> dict:
     # Convert to dictionary
     return dict(parser["DEFAULT"])
 
+
 # pylint: disable=protected-access
 # Initialize the configuration object
 def init_app_properties(log_level: str, shell: Optional[str], light_weight: bool) -> None:
@@ -277,7 +280,7 @@ def _find_code_workspace_files(directory: str) -> str:
     # Check if there is more than one .code-workspace file
     if len(workspace_files) > 1:
         options: list[str] = [str(i) for i in range(0, len(workspace_files))]
-        prompt:str = "Multiple .code-workspace files found. Please select one:\n"
+        prompt: str = "Multiple .code-workspace files found. Please select one:\n"
         for index, workspace_file in enumerate(workspace_files):
             prompt += f"\t{index}: {workspace_file}\n"
         return os.path.abspath(workspace_files[int(get_validated_input(prompt, options))])
@@ -287,6 +290,7 @@ def _find_code_workspace_files(directory: str) -> str:
     # Return the absolute path of the .code-workspace file
     return os.path.abspath(workspace_files[0])
 
+
 def get_property(prop: str) -> str:
     """
     Get a property from the properties file
@@ -294,4 +298,4 @@ def get_property(prop: str) -> str:
     Args:
         prop (str): The property to get
     """
-    return AppProperties.get_instance()._retrieve_property(prop) # pylint: disable=protected-access
+    return AppProperties.get_instance()._retrieve_property(prop)  # pylint: disable=protected-access

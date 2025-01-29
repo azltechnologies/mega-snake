@@ -24,6 +24,7 @@ GRADLE_WINDOWS_LOC = f"{GRADLE_LOC}.bat"
 GRADLE_BUILD_NO_TEST_ARGS = ["clean", "build", "-x", "test"]
 GRADLE_BUILD_ARGS = ["clean", "build"]
 
+
 class VscodeTask(Enum):
     """Enum for the different vscode tasks."""
 

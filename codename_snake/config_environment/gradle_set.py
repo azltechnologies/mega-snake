@@ -149,7 +149,9 @@ def _find_version_from_local(versions: list[GradleVersion], local_file: str, she
     return None
 
 
-def _update_configurations(versions: list[GradleVersion], json_data: Any, workspace_file: str, working_path: str, local_file: str, shell: str) -> None:
+def _update_configurations(
+    versions: list[GradleVersion], json_data: Any, workspace_file: str, working_path: str, local_file: str, shell: str
+) -> None:
     """Update all configuration files with the selected version."""
     temp_file = f"{working_path}/gradle_versions.json"
 
@@ -159,7 +161,7 @@ def _update_configurations(versions: list[GradleVersion], json_data: Any, worksp
     _workspace_update(json_data, temp_file, workspace_file)
 
     # Update local configuration
-    version: Optional[GradleVersion]= next((v for v in versions if v.default), None)
+    version: Optional[GradleVersion] = next((v for v in versions if v.default), None)
     assert version, "Default Gradle version not found in the list of Gradle versions. This is a bug"
     _set_version_local_config(version, local_file, shell)
 

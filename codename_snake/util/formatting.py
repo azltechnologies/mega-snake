@@ -14,12 +14,15 @@ from colorama import init, Fore, Style, Back
 # Initialize colopiprama
 init(autoreset=True)
 
+
 class Color(Enum):
     """Color enumeration for console output"""
+
     RED = Fore.RED
     GREEN = Fore.GREEN
     YELLOW = Fore.YELLOW
     BLUE = Fore.BLUE
+
 
 ERROR_CODES: dict[type, int] = {
     RuntimeError: 101,
@@ -121,13 +124,13 @@ def ws_success(message: str) -> None:
 
 def ws_info(message: str) -> None:
     """Print an informational message"""
-    print(Fore.WHITE + Back.BLUE  + message)
+    print(Fore.WHITE + Back.BLUE + message)
     logger.info(message, stacklevel=2)
 
 
 def ws_warning(message: str) -> None:
     """Print a warning message"""
-    print(Fore.YELLOW + Back.BLACK+ message)
+    print(Fore.YELLOW + Back.BLACK + message)
     if logger.hasHandlers():
         logger.warning(message, stacklevel=2)
 
@@ -174,7 +177,7 @@ def ws_advice(message: str, force: bool = False) -> None:
         logger.debug(message, stacklevel=2)
 
 
-def ws_tip(messages: dict[Color,str]) -> None:
+def ws_tip(messages: dict[Color, str]) -> None:
     """Print a tip message"""
     msg: str = ""
     for color, message in messages.items():
@@ -211,7 +214,7 @@ class WorkspaceError(Exception):
                 filename = handler.baseFilename
                 break
         if not filename:
-            ws_error(str(parent_exception),parent_exception)
+            ws_error(str(parent_exception), parent_exception)
             super().__init__(self.message)
             return
         self.__traceback__ = parent_exception.__traceback__

@@ -16,18 +16,19 @@ def git_fetch() -> None:
     cwd: str = "git fetch --all 2>&1"
     run_operation(cwd, "Fetch latest changes")
 
+
 def get_release_list() -> subprocess.CompletedProcess[str]:
     """
     Retrieves the latest release from GitHub and retries on failure up to 3 times.
-    
+
     Returns:
         Release
     """
     cwd: str = "gh release list 2>&1"
     return run_operation(cwd, "Retrieve release list")
 
-def publish_release(tag_name: str, release_type: str,
-                     release_notes: str, release_branch: str) -> None:
+
+def publish_release(tag_name: str, release_type: str, release_notes: str, release_branch: str) -> None:
     """
     Publishes a release on GitHub with the given parameters and retries on failure up to 3 times.
 
@@ -40,11 +41,9 @@ def publish_release(tag_name: str, release_type: str,
     Returns:
         None
     """
-    cwd: str = (
-        f'gh release create {tag_name} {release_type} --target "{release_branch}" '
-        f'--title "{tag_name}" {release_notes} --generate-notes'
-    )
+    cwd: str = f'gh release create {tag_name} {release_type} --target "{release_branch}" ' f'--title "{tag_name}" {release_notes} --generate-notes'
     run_operation(cwd, "Publish release")
+
 
 def set_release_to_latest(tag: str) -> None:
     """
@@ -52,12 +51,13 @@ def set_release_to_latest(tag: str) -> None:
 
     Args:
         release: Release
-    
+
     Returns:
         None
     """
-    cwd = f'gh release edit {tag} --latest'
+    cwd = f"gh release edit {tag} --latest"
     run_operation(cwd, "Set release to latest")
+
 
 def get_commit_from_release(tag: str) -> str:
     """
@@ -69,5 +69,5 @@ def get_commit_from_release(tag: str) -> str:
     Returns:
         str
     """
-    cwd =  f"git rev-list -n 1  \"{tag}\" 2>&1"
-    return run_operation(cwd, f'Retrieve commit for {tag}').stdout.strip()
+    cwd = f'git rev-list -n 1  "{tag}" 2>&1'
+    return run_operation(cwd, f"Retrieve commit for {tag}").stdout.strip()

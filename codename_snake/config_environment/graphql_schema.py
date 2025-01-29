@@ -34,6 +34,7 @@ def create_graphql_schema(schema_path: str) -> None:
 
     _create_schema(schema_abs, output_file)
 
+
 def _create_schema(schema_path: str, output_file: str) -> None:
     """
     Creates a GraphQL schema file from a given schema path.
