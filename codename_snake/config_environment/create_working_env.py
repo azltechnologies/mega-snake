@@ -16,7 +16,7 @@ from codename_snake.config_environment.models.github_queries import PrQueries, I
 from codename_snake.config_environment.models.log_viewer_watcher import LogWatcher
 from codename_snake.config_environment.models.vscode_task import VscodeTask, TASKS_INPUT_QUERY
 from codename_snake.config_environment.models.vscode_input import VscodeInput, InputType
-from codename_snake.config_environment.models.vscode_launch import VscodeLaunch, LAUNCH_INPUT_QUERY, SUBSTITUTE_SHELL_TAG, SUBSTITUTE_PROJECT_TAG
+from codename_snake.config_environment.models.vscode_launch import VscodeLaunch, LAUNCH_INPUT_QUERY, SUBSTITUTE_SHELL_TAG, SUBSTITUTE_PROJECT_TAG, REMOTE_DEBUG_PORT_QUERY
 from codename_snake.config_environment.java_set import execute as set_java
 from codename_snake.config_environment.gradle_set import execute as set_gradle, set_gradle_version as gradle_command
 from codename_snake.config_environment.local_config import execute as initial_load
@@ -86,7 +86,7 @@ FOLDER = os.path.basename(os.getcwd())
 GIT_BLAME_QUERY = '.settings.["git-blame.gitWebUrl"]'
 EXTENSIONS_QUERY = ".extensions.recommendations"
 DEFAULT_PROPS: dict[str, Any] = {
-    "snake.java.remoteDebug.port": 5005,
+    REMOTE_DEBUG_PORT_QUERY: 5005,
     "snake.java.remoteDebug.profile": "dev",
     "snake.java.remoteDebug.jar": "build/libs/*.jar",
     "terminal.integrated.scrollback": 9000,

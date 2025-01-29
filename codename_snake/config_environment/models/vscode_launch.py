@@ -14,7 +14,7 @@ LAUNCH_VERSION_QUERY = ".launch.version"
 LAUNCH_INPUT_QUERY = ".launch.inputs"
 SUBSTITUTE_SHELL_TAG = "[SUBS_SHELL]"
 SUBSTITUTE_PROJECT_TAG = "[SUBS_PROJECT]"
-
+REMOTE_DEBUG_PORT_QUERY = "snake.java.remoteDebug.port"
 
 class VscodeLaunch(Enum):
     """Enum for the different PR queries."""
@@ -27,7 +27,7 @@ class VscodeLaunch(Enum):
         None,
         None,
         [VscodeTask.JAVA_REMOTE_DEBUG],
-        {"port": 5005, "hostName": "localhost", "projectName": SUBSTITUTE_PROJECT_TAG},
+        {"port": f"${{config:{REMOTE_DEBUG_PORT_QUERY}}}", "hostName": "localhost", "projectName": SUBSTITUTE_PROJECT_TAG},
     )
     DEBUG_PYTHON_FILE = ("PYTHON DEBUG (File)", "debugpy", "launch", None, None, LogWatcher.GENERIC, None,{"program": "${file}"})
     DEBUG_PYTHON_MODULE = (

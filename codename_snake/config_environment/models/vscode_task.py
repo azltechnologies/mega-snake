@@ -18,7 +18,11 @@ JAVA_LABEL_REMOTE_DEBUG = "Java Remote Debug Start"
 DEBUG_LABEL_BUILD_NO_TEST = f"1 - {JAVA_DEBUG_PREFIX}{GRADLE_LABEL_BUILD_NO_TEST}"
 DEBUG_LABEL_NO_BUILD = f"2 - {JAVA_DEBUG_PREFIX}{GRADLE_LABEL_NO_BUILD}"
 DEBUG_LABEL_BUILD = f"3 - {JAVA_DEBUG_PREFIX}{GRADLE_LABEL_BUILD}"
-
+GRADLE_CONFIG = "config:java.import.gradle.home"
+GRADLE_LOC = f"${{{GRADLE_CONFIG}}}/bin/gradle"
+GRADLE_WINDOWS_LOC = f"{GRADLE_LOC}.bat"
+GRADLE_BUILD_NO_TEST_ARGS = ["clean", "build", "-x", "test"]
+GRADLE_BUILD_ARGS = ["clean", "build"]
 
 class VscodeTask(Enum):
     """Enum for the different vscode tasks."""
@@ -38,23 +42,23 @@ class VscodeTask(Enum):
         GRADLE_LABEL_BUILD_NO_TEST,
         True,
         "shell",
-        "gradle",
-        ["clean", "build", "-x", "test"],
+        GRADLE_LOC,
+        GRADLE_BUILD_NO_TEST_ARGS,
         "Run a gradle clean build without tests",
         LogWatcher.GRADLE_BUILD_NO_TEST,
         None,
-        {"group": "build"},
+        {"group": "build", "windows": {"command": GRADLE_WINDOWS_LOC, "args": GRADLE_BUILD_NO_TEST_ARGS}},
     )
     GRADLE_BUILD = (
         GRADLE_LABEL_BUILD,
         True,
         "shell",
-        "gradle",
-        ["clean", "build"],
+        GRADLE_LOC,
+        GRADLE_BUILD_ARGS,
         "Run a gradle clean build",
         LogWatcher.GRADLE_BUILD,
         None,
-        {"group": "test"},
+        {"group": "build", "windows": {"command": GRADLE_WINDOWS_LOC, "args": GRADLE_BUILD_ARGS}},
     )
     JAVA_REMOTE_DEBUG = (
         JAVA_LABEL_REMOTE_DEBUG,
