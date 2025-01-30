@@ -31,6 +31,7 @@ mypy-extensions = "1.0.0"
 pytest-pylint = "^0.21.0"
 flake8 = "^7.1.1"
 flake8-pyproject = "^1.2.3"
+pytest-html = "^4.1.1"
 
 [build-system]
 requires = ["poetry-core"]
@@ -62,7 +63,7 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --cov=codename_snake --cov-report=term-missing --cov-report=html:coverage_html --cov-fail-under=95"
+addopts = "-v --cov=codename_snake --cov-report=term-missing --cov-report=html:coverage_html --cov-fail-under=95 --html=report.html"
 
 [tool.coverage.run]
 omit = [

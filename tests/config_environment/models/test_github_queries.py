@@ -3,24 +3,17 @@
 from typing import Generator
 from unittest.mock import patch, MagicMock
 import pytest
-from codename_snake.config_environment.models.github_queries import BaseQueries, PrQueries, IssuesQueries, GH_PR_QUERY, GH_ISSUES_QUERY
+from codename_snake.config_environment.models.github_queries import (
+    BaseQueries,
+    PrQueries,
+    IssuesQueries,
+    GH_PR_QUERY,
+    GH_ISSUES_QUERY,
+)
 
 GH_TEST_SETTING = "githubTests.queries"
 GH_TEST_QUERY = f'.settings.["{GH_TEST_SETTING}"]'
 
-
-@pytest.fixture(name="jq")
-def fixture_jq() -> Generator[MagicMock]:
-    """Mock jq"""
-    with patch("codename_snake.config_environment.models.github_queries.jq") as mock:
-        yield mock
-
-
-@pytest.fixture(name="json")
-def fixture_json() -> Generator[MagicMock]:
-    """Mock json"""
-    with patch("codename_snake.config_environment.models.github_queries.json") as mock:
-        yield mock
 
 @pytest.fixture(name="base_query_add_query_record")
 def fixture_base_query_add_query_record() -> Generator[MagicMock]:
@@ -84,7 +77,8 @@ def test_add_query_record() -> None:
     assert tasks_found[0]["label"] == label
     assert tasks_found[0]["query"] == query
 
-def test_add_query_pr_query(base_query_add_query_record: MagicMock)-> None:
+
+def test_add_query_pr_query(base_query_add_query_record: MagicMock) -> None:
     """Test add_query_record for PrQueries"""
     data = {"settings": {GH_TEST_SETTING: [{"label": "task1"}, {"label": "task2"}]}}
     for member in PrQueries:
@@ -92,13 +86,15 @@ def test_add_query_pr_query(base_query_add_query_record: MagicMock)-> None:
         base_query_add_query_record.assert_called_once_with(data, GH_PR_QUERY)
         base_query_add_query_record.reset_mock()
 
-def test_add_query_record_issues_query(base_query_add_query_record: MagicMock)-> None:
+
+def test_add_query_record_issues_query(base_query_add_query_record: MagicMock) -> None:
     """Test add_query_record for IssuesQueries"""
     data = {"settings": {GH_TEST_SETTING: [{"label": "task1"}, {"label": "task2"}]}}
     for member in IssuesQueries:
         member.add_query(data)
         base_query_add_query_record.assert_called_once_with(data, GH_ISSUES_QUERY)
         base_query_add_query_record.reset_mock()
+
 
 def test_to_dict_issues_query() -> None:
     """Test to_dict for IssuesQueries"""

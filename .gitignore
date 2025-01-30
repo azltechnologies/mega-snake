@@ -11,3 +11,5 @@ build/
 .vscode
 coverage_html
 .coverage
+report.html
+assets/

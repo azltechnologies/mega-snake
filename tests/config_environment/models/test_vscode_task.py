@@ -5,6 +5,8 @@ from unittest.mock import patch, MagicMock
 import pytest
 from codename_snake.config_environment.models.vscode_task import VscodeTask, TASKS_VERSION_QUERY
 
+VERSION_TEST = "1.2.3"
+
 
 @pytest.fixture(name="jq")
 def fixture_jq() -> Generator[MagicMock]:
@@ -69,25 +71,24 @@ def test_to_dict() -> None:
             assert result[key] == value
 
 
-def test_add_tasks_version(jq: MagicMock, json: MagicMock) -> None:
+def test_add_tasks_version() -> None:
     """Test add_tasks_version"""
-    json_data = {"settings": {"logViewer.watch": "watch", "amount": 1, "isUnique": True}}
+
+    def get_data() -> dict[str, str]:
+        """Return a copy of the data"""
+        return {"tasks": {"tasks": [{"label": "task1"}, {"label": "task2"}]}}
+
     # Test when the query is found
-    result = VscodeTask.add_tasks_version(json_data)
-    jq.compile.assert_called_once_with(TASKS_VERSION_QUERY)
-    jq.compile().input.assert_called_once_with(json_data)
-    jq.compile().input().first.assert_called_once_with()
-    assert result is None
-    # Test when the query is not found
-    expect: dict[str, str] = {"new": "data"}
-    jq.compile().input().first = MagicMock(side_effect=[None, expect])
-    jq.reset_mock()
-    result = VscodeTask.add_tasks_version(json_data)
-    json.dumps.assert_called_once()
-    assert jq.compile.call_count == 2
-    assert jq.compile().input.call_count == 2
-    assert jq.compile().input().first.call_count == 2
-    assert result == expect
+    prop_tag = TASKS_VERSION_QUERY.rsplit(".", maxsplit=1)[-1]
+    for member in VscodeTask:
+        data = get_data()
+        result = member.add_tasks_version(data)
+        assert result
+        assert prop_tag in result["tasks"]
+        data = get_data()
+        data["tasks"][prop_tag] = VERSION_TEST
+        result = member.add_tasks_version(data)
+        assert result is None
 
 
 def test_add_tasks_task() -> None:
