@@ -13,12 +13,15 @@ from codename_snake.util.formatting import ws_advice, ws_success, ws_warning, ws
 OS = platform.system()
 OS_MAP = {"Windows": "windows", "Linux": "linux", "Darwin": "osx"}
 
+
 def verify_os() -> None:
     """Verify if the OS is supported."""
     if OS not in OS_MAP:
         raise NotImplementedError(f"Unsupported OS: {OS}")
 
+
 verify_os()
+
 
 class VersionSetException(Exception):
     """Custom exception to terminate execution."""
