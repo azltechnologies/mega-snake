@@ -2,12 +2,11 @@
 
 import re
 from typing import Generator, Tuple
-from types import SimpleNamespace, MethodType
-import inspect
 from unittest.mock import patch, MagicMock, mock_open
 import pytest
 from codename_snake.config_environment.models.tools_version import (
     ToolVersion,
+    verify_os,
     select_version,
     set_version_path_for_query,
     find_local_tool_home,
@@ -31,7 +30,6 @@ POWERSHELL_LOCAL_CONFIG_FILE = f"""$env:JAVA_HOME = "/Library/Java/JavaVirtualMa
 $env:PATH = "$env:JAVA_HOME/bin:$env:PATH
 $env:{TOOL_TEST_VARIABLE} = "/opt/homebrew/Cellar/gradle@6/6.9.4/libexec"
 $env:PATH = "$env:{TOOL_TEST_VARIABLE}/bin:$env:PATH\""""
-
 
 def windows_formater(os: str, output: str) -> str:
     """Format the output for windows"""
@@ -84,10 +82,10 @@ def fixture_ws_warning() -> Generator[MagicMock]:
         yield mock
 
 
-@pytest.fixture(name="platform")
+@pytest.fixture(name="_platform")
 def fixture_platform() -> Generator[MagicMock]:
     """Mock platform"""
-    with patch("codename_snake.config_environment.models.tools_version.OS") as mock:
+    with patch("codename_snake.config_environment.models.tools_version.OS", "dummy") as mock:
         yield mock
 
 
@@ -116,6 +114,10 @@ def fixture_mk_os() -> Generator[MagicMock]:
         mock.path.exists.return_value = True
         yield mock
 
+def test_verify_os(_platform: MagicMock) -> None:
+    """Test verify_os"""
+    with pytest.raises(NotImplementedError):
+        verify_os()
 
 def test_id() -> None:
     """Test id"""
