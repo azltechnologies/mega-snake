@@ -97,14 +97,6 @@ class VscodeInput(Enum):
             self.input_args = {}
         self.input_args["task"] = task.label
 
-    def add_options(self, default: "VscodeTask", other_options: Optional[list["VscodeTask"]] = None) -> None:
-        """Adds the options to the input."""
-        options: list["VscodeTask"] = [default]
-        self.input_default = default.label
-        if other_options:
-            options.extend(other_options)
-        self.input_options = [o.label for o in options]
-
     def add_tasks_input(self, json_data: dict[str, Any], input_query: str) -> Optional[dict[str, Any]]:
         """Adds the query to the workspace settings."""
         json_input = json_data

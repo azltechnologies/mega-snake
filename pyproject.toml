@@ -74,6 +74,9 @@ omit = [
     "codename_snake/pylint/custom_checkers.py"
 ]
 
+[tool.coverage.report]
+exclude_also=["\\s*TYPE_CHECKING:\\s*\\n\\s*from.*"]
+
 [tool.flake8]
 flake8.args=["codename_snake"]
 max-line-length = 120
