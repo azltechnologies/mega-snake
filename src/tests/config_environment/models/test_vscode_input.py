@@ -10,19 +10,22 @@ from codename_snake.config_environment.models.vscode_input import VscodeInput
 INPUT_TEST_SETTING = "inputTests"
 INPUT_TEST_QUERY = f'.launch.["{INPUT_TEST_SETTING}"]'
 
+
 def dict_side_effect(instance: VscodeInput) -> dict[str, str]:
     """Side effect for jq.compile"""
     command_signature = inspect.signature(VscodeInput.__init__).parameters
     result = {}
     for k in (k for k, _p in command_signature.items() if k != "self" and _p.annotation.__name__ == "str"):
-        result[k.replace("input_","")] = vars(instance)[k]
+        result[k.replace("input_", "")] = vars(instance)[k]
     return result
+
 
 @pytest.fixture(name="vscode_task")
 def fixture_vscode_task() -> Generator[MagicMock]:
     """Mock VscodeTask"""
     with patch("codename_snake.config_environment.models.vscode_input.VscodeTask") as mock:
         yield mock
+
 
 def test_to_dict() -> None:
     """Test to_dict"""
@@ -60,6 +63,7 @@ def test_get_input_call() -> None:
         result = member.get_input_call()
         assert result == f"${{input:{member.input_id}}}"
 
+
 def test_add_task_arg() -> None:
     """Test add_task_arg"""
     list_input: list[VscodeInput] = list(m for m in VscodeInput)
@@ -82,7 +86,6 @@ def test_add_task_arg() -> None:
 
 def test_add_tasks_input() -> None:
     """Test add_tasks_input"""
-    working_path = "path/to/working"
 
     def _get_data_copy() -> dict[str, str]:
         return {"launch": {INPUT_TEST_SETTING: [{"id": "task1"}, {"id": "task2"}]}}
@@ -91,9 +94,7 @@ def test_add_tasks_input() -> None:
     for inst in VscodeInput:
         jd = _get_data_copy()
         jd["launch"][INPUT_TEST_SETTING].append({"id": inst.input_id})
-        tasks_found: list[dict[str, str]] = [
-            d for d in jd["launch"][INPUT_TEST_SETTING] if d["id"] == inst.input_id
-        ]
+        tasks_found: list[dict[str, str]] = [d for d in jd["launch"][INPUT_TEST_SETTING] if d["id"] == inst.input_id]
         assert len(tasks_found) == 1
         result = inst.add_tasks_input(jd, INPUT_TEST_QUERY)
         assert result is None
@@ -103,9 +104,7 @@ def test_add_tasks_input() -> None:
         to_dict: MagicMock = MagicMock(side_effect=lambda inst=inst: dict_side_effect(inst))
         inst.to_dict = to_dict
         jd = _get_data_copy()
-        tasks_found: list[dict[str, str]] = [
-            d for d in jd["launch"][INPUT_TEST_SETTING] if d["id"] == inst.input_id
-        ]
+        tasks_found: list[dict[str, str]] = [d for d in jd["launch"][INPUT_TEST_SETTING] if d["id"] == inst.input_id]
         assert not tasks_found
         result = inst.add_tasks_input(jd, INPUT_TEST_QUERY)
         tasks_found = [d for d in result["launch"][INPUT_TEST_SETTING] if d["id"] == inst.input_id]
@@ -121,14 +120,10 @@ def test_add_tasks_input() -> None:
         jd = _get_data_copy()
         jd["launch"][INPUT_TEST_SETTING].append({"id": inst.input_id})
         jd["launch"][INPUT_TEST_SETTING].append({"id": inst.input_id})
-        tasks_found: list[dict[str, str]] = [
-            d for d in jd["launch"][INPUT_TEST_SETTING] if d["id"] == inst.input_id
-        ]
+        tasks_found: list[dict[str, str]] = [d for d in jd["launch"][INPUT_TEST_SETTING] if d["id"] == inst.input_id]
         assert len(tasks_found) == 2
         result = inst.add_tasks_input(jd, INPUT_TEST_QUERY)
         tasks_found = [d for d in result["launch"][INPUT_TEST_SETTING] if d["id"] == inst.input_id]
         assert tasks_found
         assert len(tasks_found) == 1
         assert tasks_found[0]["id"] == inst.input_id
-
-    
