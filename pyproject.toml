@@ -1,9 +1,14 @@
 [tool.poetry]
 name = "codename_snake"
 version = "0.1.0"
-description = "cli for setting environment for vscode coding"
+description = "CLI for setting environment for VSCode coding"
 authors = ["Morales Ortega, Carlos Alberto <carlos.mor.ort@gmail.com>"]
 readme = "README.md"
+packages = [
+    { include = "codename_snake", from = "src" },
+    { include = "tests", from = "src" }
+]
+
 
 [tool.poetry.dependencies]
 astroid = "3.3.8"
@@ -43,7 +48,7 @@ disable_error_code = ["import-untyped"]
 mypy_path = "./out"
 
 [tool.pylint.master]
-load-plugins = ["codename_snake.pylint.custom_checkers"]
+load-plugins = ["src.codename_snake.pylint.custom_checkers"]
 ignore-patterns = ["\\.venv/.*", ".+\\.pyi", "/opt/.*",".*/site-packages/.*"]
 
 [tool.pylint.messages_control]
