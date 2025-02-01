@@ -116,7 +116,9 @@ def _java_set(workspace_file: str, working_path: str, local_file: str, shell: st
     version_gradlehome = _find_version_by_query(versions, json_data, JAVA_GRADLEHOME_QUERY)
     list_found: list[Optional[JavaVersion]] = [version_environment, version_runtime, version_local, version_gradlehome]
     try:
-        version: Optional[ToolVersion] = None if override else determine_tool_version(typing.cast(list[Optional[ToolVersion]], list_found))
+        version: Optional[ToolVersion] = (
+            None if override else determine_tool_version(typing.cast(list[Optional[ToolVersion]], list_found))
+        )
     except VersionSetException as e:
         ws_success(str(e))
         return

@@ -102,5 +102,5 @@ exclude = [
     "__pycache__",
     "*.pyc",
     "*.egg-info",
-    "codename_snake/pylint/custom_checkers.py",
+    "pylint"
 ]
