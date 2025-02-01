@@ -97,55 +97,21 @@ def _gradle_set(workspace_file: str, working_path: str, local_file: str, shell: 
     version_environment = _find_version_by_query(versions, json_data, GRADLE_JQ_QUERY)
     version_home = _find_version_by_query(versions, json_data, GRADLE_HOME_QUERY)
     version_local = _find_version_from_local(versions, local_file, shell)
-    list_found: list[GradleVersion] = [version_home, version_local, version_environment]
+    list_found: list[Optional[GradleVersion]] = [version_home, version_local, version_environment]
     try:
-        version: Optional[GradleVersion] = (
-            None if override else determine_tool_version(typing.cast(list[ToolVersion], list_found))
+        version: Optional[ToolVersion] = (
+            None if override else determine_tool_version(typing.cast(list[Optional[ToolVersion]], list_found))
         )
     except VersionSetException as e:
         ws_success(str(e))
         return
     if not version:
         ws_info("Selecting Gradle version to set as default on the workspace")
-        version = typing.cast(GradleVersion, select_version(typing.cast(list[ToolVersion], versions)))
+        version = select_version(typing.cast(list[ToolVersion], versions))
         version.default = True
 
     _update_configurations(versions, json_data, workspace_file, working_path, local_file, shell)
     ws_success(f"Gradle version {version.version} set as default on the workspace")
-
-
-def _determine_gradle_version(
-    versions: list[GradleVersion], json_data: Any, local_file: str, shell: str, override: bool
-) -> Optional[GradleVersion]:
-    """
-    Determines which Gradle version to use based on existing configurations.
-
-    Returns:
-        Optional[GradleVersion]: The determined version or None if need to select new one
-    """
-    if override:
-        return None
-
-    version_environment = _find_version_by_query(versions, json_data, GRADLE_JQ_QUERY)
-    version_home = _find_version_by_query(versions, json_data, GRADLE_HOME_QUERY)
-    version_local = _find_version_from_local(versions, local_file, shell)
-    list_found = [version_home, version_local, version_environment]
-    versions_found: set[GradleVersion] = {v for v in list_found if v}
-
-    if not versions_found:
-        ws_info("No Gradle version found in the workspace settings. Please select a valid version")
-        return None
-
-    if len(versions_found) == 1:
-        if list_found.count(None) == 0:
-            raise VersionSetException("All gradle version are set to the same version")
-        version = versions_found.pop()
-        version.default = True
-        ws_info(f"Gradle version {version.version} already set")
-        return version
-
-    ws_warning("Multiple Gradle versions found in different settings. Please select a valid version")
-    return None
 
 
 def _find_version_by_query(versions: list[GradleVersion], json_data: Any, query: str) -> Optional[GradleVersion]:

@@ -13,3 +13,4 @@ coverage_html
 .coverage
 report.html
 assets/
+**/__pycache__

@@ -2,7 +2,7 @@ function l_reload {
 
     # read prop working_path from properties file
     $ws_config_home = $PSScriptRoot
-    $properties_file = "$ws_config_home/src/resources/config.properties"
+    $properties_file = "$ws_config_home/src/config.properties"
     $local_config = $(Get-Content $properties_file | Select-String -Pattern "local_config_file_name" | ForEach-Object { $_ -replace "local_config_file_name=", "" })
     $working_path = $(Get-Content $properties_file | Select-String -Pattern "working_path" | ForEach-Object { $_ -replace "working_path=", "" })
     $local_config_file = "$PWD/$working_path/$local_config.ps1"
@@ -17,7 +17,7 @@ function l_reload {
 function snake {
     $ws_config_home = $PSScriptRoot
     $ws_shell = "powershell"
-    $properties_file = "$ws_config_home/src/resources/config.properties"
+    $properties_file = "$ws_config_home/src/config.properties"
 
     # read prop working_path from properties file
     $re_py_env = $(Get-Content $properties_file | Select-String -Pattern "python_virtual_ps1" | ForEach-Object { $_ -replace "python_virtual_ps1=", "" })

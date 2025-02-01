@@ -73,7 +73,7 @@ def select_version(versions: list[ToolVersion]) -> ToolVersion:
     return version
 
 
-def set_version_path_for_query(versions: list[ToolVersion], json_data: dict, tool_jq_query: str) -> str:
+def set_version_path_for_query(versions: list[ToolVersion], json_data: dict, tool_jq_query: str) -> Optional[str]:
     """
     The provided version is set as the default version on the workspace.
 
@@ -168,7 +168,7 @@ def set_version_local_config(version: ToolVersion, local_parh: str, shell: str, 
         )
 
 
-def determine_tool_version(version_list_found: list[ToolVersion]) -> Optional[ToolVersion]:
+def determine_tool_version(version_list_found: list[Optional[ToolVersion]]) -> Optional[ToolVersion]:
     """
     Determines which Tool version to use based on existing configurations.
 
