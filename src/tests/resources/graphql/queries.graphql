@@ -1,0 +1,37 @@
+type Query {
+  user(id: ID!): User
+  users: [User!]!
+  post(id: ID!): Post
+  posts: [Post!]!
+  postsByUser(userId: ID!): [Post!]!
+  comments(postId: ID!): [Comment!]!
+  
+  # Product related queries
+  product(id: ID!): Product
+  productsByCategory(categoryId: ID!): [Product!]!
+  categories: [Category!]!
+  
+  # Event related queries
+  event(id: ID!): Event
+  eventsByLocation(city: String!): [Event!]!
+  upcomingEvents: [Event!]!
+  
+  # Message related queries
+  messages(userId: ID!): [Message!]!
+  groupMessages(groupId: ID!): [GroupMessage!]!
+  
+  # Notification related queries
+  notifications(userId: ID!): [Notification!]!
+  unreadNotifications(userId: ID!): [Notification!]!
+  
+  # Order related queries
+  order(id: ID!): Order
+  userOrders(userId: ID!): [Order!]!
+  
+  # Subscription related queries
+  userSubscription(userId: ID!): Subscription
+  availablePlans: [Plan!]!
+  
+  # Wishlist query
+  userWishlist(userId: ID!): Wishlist
+}

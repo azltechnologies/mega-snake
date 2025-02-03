@@ -102,5 +102,6 @@ exclude = [
     "__pycache__",
     "*.pyc",
     "*.egg-info",
-    "pylint"
+    "**/pylint/**",
+    "src/tests/**"
 ]

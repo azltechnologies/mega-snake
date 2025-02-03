@@ -1,0 +1,75 @@
+type Category {
+  id: ID!
+  name: String!
+  description: String
+  posts: [Post!]
+  products: [Product!]
+}
+
+type Product {
+  id: ID!
+  name: String!
+  description: String!
+  price: Float!
+  category: Category!
+  reviews: [Review!]
+  seller: User!
+}
+
+type Review {
+  id: ID!
+  rating: Int!
+  content: String!
+  author: User!
+  product: Product!
+  createdAt: String!
+}
+
+type Event {
+  id: ID!
+  title: String!
+  description: String!
+  location: Location!
+  date: String!
+  organizer: User!
+  attendees: [User!]
+}
+
+type Location {
+  id: ID!
+  address: String!
+  city: String!
+  country: String!
+  coordinates: Coordinates!
+}
+
+type Coordinates {
+  latitude: Float!
+  longitude: Float!
+}
+
+type Message {
+  id: ID!
+  content: String!
+  sender: User!
+  receiver: User!
+  createdAt: String!
+  readAt: String
+}
+
+type Group {
+  id: ID!
+  name: String!
+  description: String
+  members: [User!]!
+  admin: User!
+  messages: [GroupMessage!]
+}
+
+type GroupMessage {
+  id: ID!
+  content: String!
+  sender: User!
+  group: Group!
+  createdAt: String!
+}

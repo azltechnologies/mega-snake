@@ -1,0 +1,57 @@
+type Notification {
+  id: ID!
+  type: String!
+  content: String!
+  user: User!
+  read: Boolean!
+  createdAt: String!
+  relatedEntity: NotificationEntity
+}
+
+union NotificationEntity = Post | Comment | Product | Event | Message
+
+type Tag {
+  id: ID!
+  name: String!
+  posts: [Post!]
+  products: [Product!]
+}
+
+type Subscription {
+  id: ID!
+  user: User!
+  plan: Plan!
+  startDate: String!
+  endDate: String
+  status: String!
+}
+
+type Plan {
+  id: ID!
+  name: String!
+  price: Float!
+  features: [String!]!
+  duration: Int!
+}
+
+type Order {
+  id: ID!
+  user: User!
+  products: [OrderItem!]!
+  totalAmount: Float!
+  status: String!
+  createdAt: String!
+}
+
+type OrderItem {
+  id: ID!
+  product: Product!
+  quantity: Int!
+  price: Float!
+}
+
+type Wishlist {
+  id: ID!
+  user: User!
+  products: [Product!]!
+}

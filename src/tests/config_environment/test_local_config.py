@@ -140,4 +140,3 @@ def test_execute(
         os_path_exists.return_value = False
         execute(True)
         valid_execution(shell)
-

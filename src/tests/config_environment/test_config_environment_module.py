@@ -12,6 +12,7 @@ def test_main_group() -> None:
     assert result.exit_code == 0
     assert "Configuration related commands" in result.output
 
+
 def test_wrapper() -> None:
     """Test the wrapper function"""
     ctx = SimpleNamespace(obj={})
