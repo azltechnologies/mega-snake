@@ -13,7 +13,7 @@ from codename_snake.config_environment.models.tools_version import (
     set_version_local_config,
     determine_tool_version,
     OS_MAP,
-    VersionSetException
+    VersionSetException,
 )
 from codename_snake.constants import SHELL_OPT
 
@@ -30,6 +30,7 @@ POWERSHELL_LOCAL_CONFIG_FILE = f"""$env:JAVA_HOME = "/Library/Java/JavaVirtualMa
 $env:PATH = "$env:JAVA_HOME/bin:$env:PATH
 $env:{TOOL_TEST_VARIABLE} = "/opt/homebrew/Cellar/gradle@6/6.9.4/libexec"
 $env:PATH = "$env:{TOOL_TEST_VARIABLE}/bin:$env:PATH\""""
+
 
 def windows_formater(os: str, output: str) -> str:
     """Format the output for windows"""
@@ -75,6 +76,7 @@ def fixture_ws_info() -> Generator[MagicMock]:
     with patch("codename_snake.config_environment.models.tools_version.ws_info") as mock:
         yield mock
 
+
 @pytest.fixture(name="ws_warning")
 def fixture_ws_warning() -> Generator[MagicMock]:
     """Mock ws_warning"""
@@ -114,10 +116,12 @@ def fixture_mk_os() -> Generator[MagicMock]:
         mock.path.exists.return_value = True
         yield mock
 
+
 def test_verify_os(_platform: MagicMock) -> None:
     """Test verify_os"""
     with pytest.raises(NotImplementedError):
         verify_os()
+
 
 def test_id() -> None:
     """Test id"""
@@ -290,9 +294,8 @@ def test_set_version_local_config(mk_os: MagicMock, mk_open: MagicMock, ws_advic
                 ws_advice.reset_mock()
 
 
-def test_determine_tool_version(mk_os: MagicMock, mk_open: MagicMock, ws_info: MagicMock,ws_warning : MagicMock) -> None:
+def test_determine_tool_version(mk_open: MagicMock, ws_info: MagicMock, ws_warning: MagicMock) -> None:
     """Test determine_tool_version"""
-    path = "/path/to/tool"
     file_mock = mk_open.return_value
     read_mock = MagicMock(return_value=None)
     write_mock = MagicMock(return_value=None)
@@ -328,21 +331,21 @@ def test_determine_tool_version(mk_os: MagicMock, mk_open: MagicMock, ws_info: M
     ws_warning.assert_not_called()
 
     # Test when different versions are found
-    result:ToolVersion = determine_tool_version(get_tool_list())
+    result: ToolVersion = determine_tool_version(get_tool_list())
     assert not result
     ws_warning.assert_called_once()
     ws_warning.reset_mock()
     ws_info.assert_not_called()
 
     # Test when different versions are found and one is None
-    result:ToolVersion = determine_tool_version([dummy_version, None, another_version])
+    result: ToolVersion = determine_tool_version([dummy_version, None, another_version])
     assert not result
     ws_warning.assert_called_once()
     ws_warning.reset_mock()
     ws_info.assert_not_called()
 
     # Test when same versions are found but also None
-    result:ToolVersion = determine_tool_version([dummy_version, None, dummy_version])
+    result: ToolVersion = determine_tool_version([dummy_version, None, dummy_version])
     assert result
     assert result.default
     ws_info.assert_called_once()

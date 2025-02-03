@@ -46,10 +46,10 @@ class CliGroup(RichGroup):
                 name = kwargs.pop("name", None)
                 if not name:
                     raise click.UsageError("`name` command argument is required when using aliases.")
-                base_command = super(CliGroup, self).command(name, *args, **kwargs)(f)
+                base_command = super(CliGroup, self).command(name, *args, **kwargs)(f)  # pylint: disable=R1725
                 self.__add_alias_commands(base_command, aliases)
             else:
-                super(CliGroup, self).command(*args, **kwargs)(f)
+                super(CliGroup, self).command(*args, **kwargs)(f)  # pylint: disable=R1725
 
         return decorator
 
