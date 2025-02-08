@@ -135,10 +135,18 @@ def _get_workspace_file() -> str:
     workspace_file: str = get_property("workspace_file")
     if workspace_file:
         ws_info(f"Vscode workspace file found: {workspace_file}")
-        return workspace_file
-    ws_warning("Vscode workspace file not found in current directory")
-    if get_validated_input("Would you like to create a new default workspace file?", ["y", "n"]).lower() == "n":
-        raise RuntimeError("Vscode workspace file is required to configure the working environment. Exiting...")
+        # Check if the workspace file is in the current directory
+        if not os.path.exists(workspace_file):
+            raise FileNotFoundError(f"No workspace file found at {workspace_file}")
+        # Check if the workspace file is not empty
+        with open(workspace_file, "r", encoding="utf-8") as file:
+            if file.read().strip():
+                return workspace_file
+            ws_warning("Vscode workspace file is empty")
+    else:
+        ws_warning("Vscode workspace file not found in current directory")
+        if get_validated_input("Would you like to create a new default workspace file?", ["y", "n"]).lower() == "n":
+            raise RuntimeError("Vscode workspace file is required to configure the working environment. Exiting...")
     workspace_content: dict[str, Any] = {"folders": [{"name": "main", "path": "."}], "settings": {}}
     workspace_file = f"{os.getcwd()}/{FOLDER}.code-workspace"
     with open(workspace_file, "w", encoding="utf-8") as file:
@@ -195,6 +203,12 @@ def _git_exclude(working_path: str) -> None:
     else:
         exclude += f"{working_path}/\n"
         ws_success(f"Excluded {working_path} folder in {ex_file}")
+    regex = re.compile(r"^\s*/\*\.code-workspace\s*$", re.MULTILINE)
+    if regex.search(exclude):
+        ws_advice(f"root code-workspace file already excluded in {ex_file}")
+    else:
+        exclude += "/*.code-workspace\n"
+        ws_success(f"Excluded root code-workspace file in {ex_file}")
     if not exclude.endswith("\n"):
         exclude += "\n"
     # Writing git exclude file

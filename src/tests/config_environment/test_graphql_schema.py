@@ -221,7 +221,7 @@ def test_create_graphql_schema(
     assert ws_success.call_count == 2
     j = []
     for call in write_mocks[f"{output_file}.json"].mock_calls:
-        args = [args for arg in call.args if arg]
+        args = [arg for arg in call.args if arg]
         if args:
             j.append("".join(set(call.args)))
 

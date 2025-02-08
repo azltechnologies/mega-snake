@@ -1,0 +1,16 @@
+{
+    "folders": [
+        {
+            "path": ".",
+            "name": "main"
+        }
+        //this has comments
+    ],
+    "settings": {
+        "java.import.gradle.home": "/opt/homebrew/Cellar/gradle@8.4/8.4/libexec",
+        "terminal.integrated.env.osx": {
+            "GRADLE_HOME": "/opt/homebrew/Cellar/gradle@8.4/8.4/libexec"
+        },
+        "java.import.gradle.wrapper.enabled": false
+    }
+}

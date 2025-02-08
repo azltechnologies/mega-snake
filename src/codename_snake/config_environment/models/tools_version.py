@@ -158,7 +158,8 @@ def set_version_local_config(version: ToolVersion, local_parh: str, shell: str, 
                 new_line_update_path = f'export PATH="${var}{path_divider}bin{separator}$PATH"'
             case _:
                 raise NotImplementedError(f"{shell} not supported for setting Tool version")
-        local_file_data = local_file_data.replace("\n\n", "")
+        while "\n\n" in local_file_data:
+            local_file_data = local_file_data.replace("\n\n", "\n")
         with open(local_parh, "w", encoding="utf-8") as file:
             file.write(f"{new_line_tool}\n{new_line_update_path}\n{local_file_data}")
         ws_success(f"Tool version {version.version} stored in local settings as default")
