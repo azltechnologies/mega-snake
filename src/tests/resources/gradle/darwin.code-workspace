@@ -7,10 +7,55 @@
         //this has comments
     ],
     "settings": {
+        "java.configuration.runtimes": [
+            {
+                "name": "JavaSE-21",
+                "path": "/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home",
+                "default": false
+            },
+            {
+                "name": "JavaSE-21",
+                "path": "/Users/carlosmorales/Library/Java/JavaVirtualMachines/openjdk-21.0.2/Contents/Home",
+                "default": false
+            },
+            {
+                "name": "JavaSE-19",
+                "path": "/Users/carlosmorales/Library/Java/JavaVirtualMachines/temurin-19.0.2/Contents/Home",
+                "default": true
+            },
+            {
+                "name": "JavaSE-17",
+                "path": "/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home",
+                "default": false
+            },
+            {
+                "name": "JavaSE-17",
+                "path": "/Library/Java/JavaVirtualMachines/jdk-17.jdk/Contents/Home",
+                "default": false
+            },
+            {
+                "name": "JavaSE-11",
+                "path": "/Users/carlosmorales/Library/Java/JavaVirtualMachines/temurin-11.0.22/Contents/Home",
+                "default": false
+            },
+            {
+                "name": "JavaSE-11",
+                "path": "/Library/Java/JavaVirtualMachines/jdk-11.0.2.jdk/Contents/Home",
+                "default": false
+            },
+            {
+                "name": "JavaSE-1.8",
+                "path": "/Users/carlosmorales/Library/Java/JavaVirtualMachines/corretto-1.8.0_402/Contents/Home",
+                "default": false
+            }
+        ],
         "java.import.gradle.home": "/opt/homebrew/Cellar/gradle@8.4/8.4/libexec",
         "terminal.integrated.env.osx": {
+            "JAVA_HOME": "/Users/carlosmorales/Library/Java/JavaVirtualMachines/temurin-19.0.2/Contents/Home",
             "GRADLE_HOME": "/opt/homebrew/Cellar/gradle@8.4/8.4/libexec"
         },
-        "java.import.gradle.wrapper.enabled": false
+        "java.import.gradle.java.home": "/Users/carlosmorales/Library/Java/JavaVirtualMachines/temurin-19.0.2/Contents/Home",
+        "java.import.gradle.wrapper.enabled": false,
+        "java.format.settings.url": "cwd_path/.vscode/java-formatter.xml"
     }
 }

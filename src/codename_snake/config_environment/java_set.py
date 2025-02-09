@@ -201,8 +201,6 @@ def _set_version_runtime(versions: list[JavaVersion], json_data: Any) -> str:
             f'[{{"name": "{java_name}", "path": "{v.path}", "default": {str(v.default).lower()}}}]'
         )
         updated_json_data = jq.compile(jq_query).input(updated_json_data).first()
-    if not updated_json_data:
-        raise RuntimeError("Failed to set Java version in workspace settings")
     return updated_json_data
 
 
@@ -249,8 +247,6 @@ def _add_java_formatter(workspace_file: str, resources_path: str) -> None:
     else:
         jq_query = f"{JAVA_FORMAT_QUERY} = {json.dumps(local_formatter_path)}"
         updated_json_data: Optional[str] = jq.compile(jq_query).input(json_data).first()
-        if not updated_json_data:
-            raise RuntimeError("Failed to set Java formatter in workspace settings")
         temp_file = f"{vscode_path}/java_formatter.json"
         update_workspace(updated_json_data, temp_file, workspace_file)
     if os.path.exists(local_formatter_path):

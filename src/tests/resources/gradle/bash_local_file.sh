@@ -9,3 +9,6 @@ my_function() {
 }
 
 # more stuff
+
+export JAVA_HOME='/Users/carlosmorales/Library/Java/JavaVirtualMachines/temurin-19.0.2/Contents/Home'
+export PATH="$JAVA_HOME/bin:$PATH"
