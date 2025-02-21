@@ -82,7 +82,16 @@ def create_working_env() -> None:  # previously untrackGradleProps
             ):
                 ws_warning("Not inside a git repository. Exiting...")
                 return
+    _execute(git_repo)
 
+
+def _execute(git_repo: bool) -> None:  # previously untrackGradleProps
+    """
+    Sets the workspace for the project.
+
+    Returns:
+        None
+    """
     workspace_file: str = _get_workspace_file()
     working_path: str = _get_working_path()
     if git_repo:
@@ -288,8 +297,14 @@ def _add_default_settings(workspace_file: str, working_path: str) -> None:
 def _update_git_blame(json_data: dict[str, Any]) -> tuple[dict[str, Any], bool]:
     """Update git blame settings in workspace"""
     result = jq.compile(GIT_BLAME_QUERY).input(json_data).first()
-    if not result:
-        jq_query = f'{GIT_BLAME_QUERY} = "{get_remote_url()}/tree/$ID"'
+    remote_url = get_remote_url()
+    if not result and remote_url:
+        remote_url = re.sub(r"^git@", "https://", remote_url)
+        match = re.match(r"https\://\w+\.\w+\:", remote_url)
+        if match:
+            repl = re.sub(r"\:$", "/", match.group())
+            remote_url = remote_url.replace(match.group(), repl)
+        jq_query = f'{GIT_BLAME_QUERY} = "{remote_url}/tree/$ID"'
         json_data = jq.compile(jq_query).input(json_data).first()
         return json_data, True
     return json_data, False
