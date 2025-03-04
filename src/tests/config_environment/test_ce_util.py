@@ -81,9 +81,9 @@ def test_update_workspace(mk_open: MagicMock, os_replace: MagicMock, json_dump: 
 
 def test_get_version_number() -> None:
     """Test get_version_number"""
-    assert get_version_number("1.2") == 1.2
-    assert get_version_number("1") == 1.0
-    assert get_version_number("1.2.3") == 1.2
+    assert get_version_number("1.2") == 120
+    assert get_version_number("1") == 100
+    assert get_version_number("1.2.3") == 123
     # Test when version is not a number
     with pytest.raises(ValueError):
         assert get_version_number("test") == 0.0

@@ -90,7 +90,9 @@ def fixture_run_operation() -> Generator[MagicMock]:
     """Mock run_operation"""
     return_value = """
 /opt/homebrew/Cellar/gradle@8.5/8.5\n
+/opt/homebrew/Cellar/gradle@8.11.1/8.11.1\n
 /opt/homebrew/Cellar/gradle@8.4/8.4\n
+/opt/homebrew/Cellar/gradle@8.12.1/8.12.1\n
 /opt/homebrew/Cellar/gradle@7.6.2/7.6.2\n
 /opt/homebrew/Cellar/gradle@7/7.6.4\n
 /opt/homebrew/Cellar/gradle@6/6.9.4\n
@@ -121,7 +123,7 @@ def fixture_ws_success() -> Generator[MagicMock]:
 def fixture_get_validated_input() -> Generator[MagicMock]:
     """Mock get_validated_input"""
     with patch("codename_snake.config_environment.models.tools_version.get_validated_input") as mock:
-        mock.return_value = "3"  # Return the third version 8.4
+        mock.return_value = "6"  # Return the third version 8.4
         yield mock
 
 
@@ -307,7 +309,7 @@ def test_set_gradle_version_darwin_defined_versions(
             mocks_reset()
 
             # Test when override and workspace file and local file have versions
-            get_validated_input.return_value = "5"  # Return the first version 8.5
+            get_validated_input.return_value = "8"  # Return the first version 8.5
             GradleVersion._id_counter = 0  # pylint: disable=protected-access
             result = runner.invoke(set_gradle_version, ["-o"])
             assert result.exit_code == 0

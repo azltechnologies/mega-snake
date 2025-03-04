@@ -47,13 +47,15 @@ def update_workspace(json_data: Any, temp_path: str, workspace_file: str) -> Non
     ws_advice(f"{temp_path} deleted after successful replacement")
 
 
-def get_version_number(version: str) -> float:
+def get_version_number(s_str: str) -> int:
     """Convert version string to numeric value for sorting.
 
     Returns:
-        float: Numeric version value
+        int: Numeric value of the version string
     """
-    parts = version.split(".")
-    if len(parts) >= 2:
-        return float(f"{parts[0]}.{parts[1]}")
-    return float(parts[0])
+    arr_s = s_str.split(".")
+    # Remove any non-numeric characters
+    arr_s = ["".join(filter(str.isdigit, s)) for s in arr_s]
+    arr_s = arr_s + ["0"] * (3 - len(arr_s)) if len(arr_s) < 3 else arr_s
+    i_s = int(arr_s[0]) * 100 + int(arr_s[1]) * 10 + int(arr_s[2])
+    return i_s
