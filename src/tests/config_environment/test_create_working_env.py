@@ -11,6 +11,7 @@ from codename_snake.config_environment.create_working_env import (
     _get_workspace_file as get_workspace_file,
     _get_working_path as get_working_path,
     _git_exclude as git_exclude,
+    _add_default_settings as add_default_settings,
 )
 from codename_snake.util.util import load_json_with_comments
 from codename_snake.constants import APP_NAME, WORKSPACE_EXTENSIONS
@@ -24,6 +25,8 @@ WK_PATH = f"{WK_PARENTH_PATH}/{WK_BASENAME_PATH}"
 CURRENT_PATH = "my_path"
 FOLDER = "folder_name"
 NEW_WORKSPACE_CONTENTS = {"prop": "value", "another_prop": 2}
+EMPTY_WK_FILE: str = "src/tests/resources/gradle/empty.code-workspace"
+DARWIN_WK_FILE: str = "src/tests/resources/gradle/darwin.code-workspace"
 
 real_open = builtins.open
 
@@ -127,7 +130,7 @@ def fixture_gradle_command() -> Generator[MagicMock]:
         yield mock
 
 
-@pytest.fixture(name="add_recommended_extensions")
+@pytest.fixture(name="mk_add_recommended_extensions")
 def fixture_add_recommended_extensions() -> Generator[MagicMock]:
     """Mock _add_recommended_extensions"""
     with patch("codename_snake.config_environment.create_working_env._add_recommended_extensions") as mock:
@@ -193,6 +196,20 @@ def fixture_mk_path() -> Generator[MagicMock]:
     """Mock path"""
     with patch("codename_snake.config_environment.create_working_env.Path") as mock:
         yield mock
+
+
+@pytest.fixture(name="mk_input")
+def fixture_mk_input() -> Generator[MagicMock]:
+    """Mock input"""
+    with patch("builtins.input") as mock:
+        yield mock
+
+
+@pytest.fixture(name="os_replace")
+def fixture_os_replace() -> Generator[MagicMock]:
+    """Mock os_replace"""
+    with patch("codename_snake.config_environment.util.os") as mock:
+        yield mock.replace
 
 
 def reset_mocks(*mocks: MagicMock) -> None:
@@ -294,7 +311,6 @@ def test_execute(
     mk_os: MagicMock,
     set_gradle: MagicMock,
     _gradle_command: MagicMock,
-    add_recommended_extensions: MagicMock,
     add_default_settings: MagicMock,
 ) -> None:
     """Test gradle command"""
@@ -324,7 +340,6 @@ def test_execute(
             os_getcwd,
             os_path_exists,
             set_gradle,
-            add_recommended_extensions,
             add_default_settings,
         )
 
@@ -343,7 +358,6 @@ def test_execute(
     set_java.assert_called_once()
     os_path_exists.assert_called_once_with(f"{CURRENT_PATH}/build.gradle")
     set_gradle.assert_called_once_with(False, WK_FILE)
-    add_recommended_extensions.assert_called_once_with(WK_FILE)
     add_default_settings.assert_called_once_with(WK_FILE, WK_PATH)
     ws_warning.assert_not_called()
     mocks_reset()
@@ -364,7 +378,6 @@ def test_execute(
     os_path_exists.assert_has_calls([call(f"{CURRENT_PATH}/build.gradle"), call(f"{CURRENT_PATH}/build.gradle.kts")])
     ws_warning.assert_called_once()
     set_gradle.assert_not_called()
-    add_recommended_extensions.assert_called_once_with(WK_FILE)
     add_default_settings.assert_called_once_with(WK_FILE, WK_PATH)
     mocks_reset()
 
@@ -413,8 +426,8 @@ def test_get_workspace_file(
             get_validated_input,
         )
 
-    # test when property and file exist
     with patch("builtins.open", m_open):
+        # test when property and file exist
         result = get_workspace_file()
         get_property.assert_called_once()
         ws_warning.assert_not_called()
@@ -616,4 +629,47 @@ def test_git_exclude(
         assert "/*.code-workspace" in lines
         assert ws_advice.call_count == 3
         ws_success.assert_not_called()
+        mocks_reset()
+
+
+def test_add_default_settings(
+    get_property: MagicMock,
+    mk_input: MagicMock,
+    os_replace: MagicMock,
+) -> None:
+    """testing _add_default_settings private method"""
+    result = None
+    result_lines = None
+    m_open: MagicMock = mock_open()
+    file_mock: MagicMock = m_open.return_value
+    read_mock: MagicMock = file_mock.read
+    write_mock: MagicMock = file_mock.write
+    # empty_wk_file_content = load_json_with_comments(EMPTY_WK_FILE)
+
+    def mocks_reset() -> None:
+        """reset mocks"""
+        nonlocal result
+        nonlocal result_lines
+        result = None
+        result_lines = None
+        reset_mocks(
+            get_property,
+            m_open,
+            read_mock,
+            write_mock,
+            mk_input,
+            os_replace,
+        )
+
+    with patch("builtins.open", m_open):
+        # test empty file when suggested settings are default
+        mk_input.return_file = ""
+        add_default_settings(EMPTY_WK_FILE, WK_PATH)
+        wk_file_content_array = []
+        for current_call in write_mock.mock_calls:
+            args = [arg for arg in current_call.args if arg]
+            if args:
+                wk_file_content_array.append("".join(set(current_call.args)))
+        result = "".join(wk_file_content_array)
+        result_lines = [line.strip().rstrip(",") for line in result.splitlines() if line]
         mocks_reset()

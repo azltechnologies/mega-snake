@@ -108,7 +108,6 @@ def _execute(git_repo: bool) -> None:  # previously untrackGradleProps
         )
     else:
         set_gradle(False, workspace_file)
-    _add_recommended_extensions(workspace_file)
     _add_default_settings(workspace_file, working_path)
 
 
@@ -223,35 +222,6 @@ def _git_exclude(working_path: str) -> None:
         file.write(exclude)
 
 
-def _add_recommended_extensions(workspace_file: str) -> None:
-    """
-    Adds recommended extensions to the workspace file.
-
-    Args:
-        workspace_file (str): The workspace file path
-    """
-    update_file: bool = False
-    json_data: dict[str, Any] = load_json_with_comments(workspace_file)
-    result = jq.compile(EXTENSIONS_QUERY).input(json_data).all()
-    if not result or not result[0]:
-        jq_query = f"{EXTENSIONS_QUERY} = {json.dumps(WORKSPACE_EXTENSIONS)}"
-        json_data = jq.compile(jq_query).input(json_data).first()
-        update_file = True
-    else:
-        ext_list: list[str] = []
-        for ext in WORKSPACE_EXTENSIONS:
-            if ext not in result[0]:
-                ext_list.append(ext)
-        if ext_list:
-            jq_query = f"{EXTENSIONS_QUERY} += {json.dumps(ext_list)}"
-            json_data = jq.compile(jq_query).input(json_data).first()
-            update_file = True
-    if update_file:
-        temp_file = f"{os.path.dirname(workspace_file)}/extensions.json"
-        update_workspace(json_data, temp_file, workspace_file)
-        ws_success("Recommended extensions added to the workspace file")
-
-
 def _add_default_settings(workspace_file: str, working_path: str) -> None:
     """
     Adds default settings to the workspace file.
@@ -262,6 +232,9 @@ def _add_default_settings(workspace_file: str, working_path: str) -> None:
     """
     json_data: dict[str, Any] = load_json_with_comments(workspace_file)
     update_file: bool = False
+
+    json_data, updated = _add_recommended_extensions(json_data)
+    update_file = update_file or updated
 
     json_data, updated = _update_git_blame(json_data)
     update_file = update_file or updated
@@ -290,6 +263,31 @@ def _add_default_settings(workspace_file: str, working_path: str) -> None:
         ws_success("Workspace settings updated successfully")
     else:
         ws_advice("Workspace settings already up-to-date")
+
+
+def _add_recommended_extensions(json_data: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    """
+    Adds recommended extensions to the json contents.
+
+    Args:
+        json_data (dict): The workspace file contents
+    """
+    update_file: bool = False
+    result = jq.compile(EXTENSIONS_QUERY).input(json_data).all()
+    if not result or not result[0]:
+        jq_query = f"{EXTENSIONS_QUERY} = {json.dumps(WORKSPACE_EXTENSIONS)}"
+        json_data = jq.compile(jq_query).input(json_data).first()
+        update_file = True
+    else:
+        ext_list: list[str] = []
+        for ext in WORKSPACE_EXTENSIONS:
+            if ext not in result[0]:
+                ext_list.append(ext)
+        if ext_list:
+            jq_query = f"{EXTENSIONS_QUERY} += {json.dumps(ext_list)}"
+            json_data = jq.compile(jq_query).input(json_data).first()
+            update_file = True
+    return json_data, update_file
 
 
 def _update_git_blame(json_data: dict[str, Any]) -> tuple[dict[str, Any], bool]:
