@@ -132,6 +132,7 @@ FILE_ASSOCIATIONS: dict[str, str] = {
     "*.yml": "yaml",
     "*.gradle": "gradle",
 }
+NEW_WORKSPACE_CONTENTS: dict[str, Any] = {"folders": [{"name": "main", "path": "."}], "settings": {}}
 
 
 def _get_workspace_file() -> str:
@@ -156,10 +157,9 @@ def _get_workspace_file() -> str:
         ws_warning("Vscode workspace file not found in current directory")
         if get_validated_input("Would you like to create a new default workspace file?", ["y", "n"]).lower() == "n":
             raise RuntimeError("Vscode workspace file is required to configure the working environment. Exiting...")
-    workspace_content: dict[str, Any] = {"folders": [{"name": "main", "path": "."}], "settings": {}}
     workspace_file = f"{os.getcwd()}/{FOLDER}.code-workspace"
     with open(workspace_file, "w", encoding="utf-8") as file:
-        json.dump(workspace_content, file, indent=4)
+        json.dump(NEW_WORKSPACE_CONTENTS, file, indent=4)
     ws_success(f"Vscode workspace file created at {workspace_file}")
     return workspace_file
 
