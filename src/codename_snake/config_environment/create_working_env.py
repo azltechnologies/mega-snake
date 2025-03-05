@@ -218,8 +218,6 @@ def _git_exclude(working_path: str) -> None:
     else:
         exclude += "/*.code-workspace\n"
         ws_success(f"Excluded root code-workspace file in {ex_file}")
-    if not exclude.endswith("\n"):
-        exclude += "\n"
     # Writing git exclude file
     with open(ex_file, "w", encoding="utf-8") as file:
         file.write(exclude)
