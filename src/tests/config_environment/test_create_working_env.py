@@ -1,9 +1,11 @@
 """ Test the java_set module. """
 
 import builtins
+import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch, mock_open, call
 from typing import Generator, Any
+import jq
 from click.testing import CliRunner
 import pytest
 from codename_snake.config_environment.create_working_env import (
@@ -12,9 +14,37 @@ from codename_snake.config_environment.create_working_env import (
     _get_working_path as get_working_path,
     _git_exclude as git_exclude,
     _add_default_settings as add_default_settings,
+    _launch_substituter as launch_substituter,
+    EXTENSIONS_QUERY,
+    GIT_BLAME_QUERY,
+    DEFAULT_PROPS,
+    FILE_ASSOCIATIONS,
+    FILE_ASSOCIATION_QUERY,
+    SUBSTITUTE_SHELL_TAG,
+    SUBSTITUTE_PROJECT_TAG,
 )
+from codename_snake.config_environment.models.github_queries import (
+    PrQueries,
+    IssuesQueries,
+    GH_PR_QUERY,
+    GH_ISSUES_QUERY,
+)
+from codename_snake.config_environment.models.log_viewer_watcher import LogWatcher, LOG_WATCHER_QUERY
+from codename_snake.config_environment.models.vscode_task import (
+    VscodeTask,
+    TASKS_INPUT_QUERY,
+    TASKS_TASKS_QUERY,
+    TASKS_VERSION_QUERY,
+)
+from codename_snake.config_environment.models.vscode_launch import (
+    VscodeLaunch,
+    LAUNCH_CONFIG_QUERY,
+    LAUNCH_VERSION_QUERY,
+    LAUNCH_INPUT_QUERY,
+)
+from codename_snake.config_environment.models.vscode_input import VscodeInput, InputType
+from codename_snake.constants import WORKSPACE_EXTENSIONS
 from codename_snake.util.util import load_json_with_comments
-from codename_snake.constants import APP_NAME, WORKSPACE_EXTENSIONS
 
 
 GRADLE_CMD_NAME = "gradle_command"
@@ -27,6 +57,7 @@ FOLDER = "folder_name"
 NEW_WORKSPACE_CONTENTS = {"prop": "value", "another_prop": 2}
 EMPTY_WK_FILE: str = "src/tests/resources/gradle/empty.code-workspace"
 DARWIN_WK_FILE: str = "src/tests/resources/gradle/darwin.code-workspace"
+OS = "Windows"
 
 real_open = builtins.open
 
@@ -162,14 +193,14 @@ def fixture_get_property() -> Generator[MagicMock]:
         elif prop == "working_path":
             return WK_PATH
         elif prop == "shell":
-            return "Windows"
+            return OS
 
     with patch("codename_snake.config_environment.create_working_env.get_property", side_effect=f_side_effect) as mock:
         yield mock
 
 
-@pytest.fixture(name="json")
-def fixture_json() -> Generator[MagicMock]:
+@pytest.fixture(name="mk_json")
+def fixture_mk_json() -> Generator[MagicMock]:
     """Mock json"""
     with patch("codename_snake.config_environment.create_working_env.json") as mock:
         yield mock
@@ -210,6 +241,13 @@ def fixture_os_replace() -> Generator[MagicMock]:
     """Mock os_replace"""
     with patch("codename_snake.config_environment.util.os") as mock:
         yield mock.replace
+
+
+@pytest.fixture(name="get_remote_url")
+def fixture_get_remote_url() -> Generator[MagicMock]:
+    """Mock get_remote_url"""
+    with patch("codename_snake.config_environment.create_working_env.get_remote_url") as mock:
+        yield mock
 
 
 def reset_mocks(*mocks: MagicMock) -> None:
@@ -386,7 +424,7 @@ def test_get_workspace_file(
     get_property: MagicMock,
     mk_os: MagicMock,
     ws_warning: MagicMock,
-    json: MagicMock,
+    mk_json: MagicMock,
     _mk_folder_const: MagicMock,
     _mk_new_wk_contents: MagicMock,
     ws_success: MagicMock,
@@ -403,7 +441,7 @@ def test_get_workspace_file(
     file_mock: MagicMock = m_open.return_value
     read_mock: MagicMock = file_mock.read
     write_mock: MagicMock = file_mock.write
-    json_dump: MagicMock = json.dump
+    json_dump: MagicMock = mk_json.dump
     result: str = None
 
     def mocks_reset() -> None:
@@ -420,7 +458,7 @@ def test_get_workspace_file(
             file_mock,
             read_mock,
             write_mock,
-            json,
+            mk_json,
             json_dump,
             ws_success,
             get_validated_input,
@@ -636,10 +674,22 @@ def test_add_default_settings(
     get_property: MagicMock,
     mk_input: MagicMock,
     os_replace: MagicMock,
+    ws_success: MagicMock,
+    ws_advice: MagicMock,
+    get_remote_url: MagicMock,
 ) -> None:
     """testing _add_default_settings private method"""
+    remote_repo = "https://github.com/dummy_user/dummy_repo"
+
+    def git_remote_side_effect() -> None:
+        """git remote side effect"""
+        nonlocal remote_repo
+        return remote_repo
+
     result = None
     result_lines = None
+    data = None
+    get_remote_url.side_effect = git_remote_side_effect
     m_open: MagicMock = mock_open()
     file_mock: MagicMock = m_open.return_value
     read_mock: MagicMock = file_mock.read
@@ -652,6 +702,8 @@ def test_add_default_settings(
         nonlocal result_lines
         result = None
         result_lines = None
+        nonlocal data
+        data = None
         reset_mocks(
             get_property,
             m_open,
@@ -659,17 +711,152 @@ def test_add_default_settings(
             write_mock,
             mk_input,
             os_replace,
+            ws_success,
+            ws_advice,
+            get_remote_url,
         )
 
-    with patch("builtins.open", m_open):
-        # test empty file when suggested settings are default
-        mk_input.return_file = ""
-        add_default_settings(EMPTY_WK_FILE, WK_PATH)
-        wk_file_content_array = []
-        for current_call in write_mock.mock_calls:
-            args = [arg for arg in current_call.args if arg]
-            if args:
-                wk_file_content_array.append("".join(set(current_call.args)))
-        result = "".join(wk_file_content_array)
-        result_lines = [line.strip().rstrip(",") for line in result.splitlines() if line]
-        mocks_reset()
+    def read_side_effect() -> str:
+        """Read side effect"""
+        nonlocal m_open
+        read_content = m_open.call_args.args[0]
+        with real_open(read_content, "r", encoding="utf-8") as file:
+            return file.read()
+
+    read_mock.side_effect = read_side_effect
+
+    def evaluate_happy_path(file: str, default_prop_value: Any) -> None:
+        """Evaluate the happy path"""
+        if isinstance(default_prop_value, list):
+            mk_input.return_value = None
+            mk_input.side_effect = list(map(str, default_prop_value))
+        else:
+            mk_input.side_effect = None
+            mk_input.return_value = default_prop_value
+        with patch("builtins.open", m_open):
+            add_default_settings(file, WK_PATH)
+            wk_file_content_array = []
+            for current_call in write_mock.mock_calls:
+                args = [arg for arg in current_call.args if arg]
+                if args:
+                    wk_file_content_array.append("".join(set(current_call.args)))
+            result = "".join(wk_file_content_array)
+            result_data = json.loads(result)
+            # verify recommended extensions are added
+            data: dict[str, Any] = jq.compile(EXTENSIONS_QUERY).input(result_data).first()
+            for ext in WORKSPACE_EXTENSIONS:
+                assert ext in data
+            # verify git blame is added
+            data = jq.compile(GIT_BLAME_QUERY).input(result_data).first()
+            assert remote_repo.replace("git@", "").replace(".com:", ".com/") in data
+            # verify PR queries are added
+            data = jq.compile(GH_PR_QUERY).input(result_data).first()
+            for query in PrQueries:
+                assert query.label in list(map(lambda x: x["label"], data))
+            # verify Issues queries are added
+            data = jq.compile(GH_ISSUES_QUERY).input(result_data).first()
+            for query in IssuesQueries:
+                assert query.label in list(map(lambda x: x["label"], data))
+            # verify log watchers are added
+            data = jq.compile(LOG_WATCHER_QUERY).input(result_data).first()
+            for query in LogWatcher:
+                assert query.title in list(map(lambda x: x["title"], data))
+            # verify vscode tasks are added
+            data = jq.compile(TASKS_TASKS_QUERY).input(result_data).first()
+            for task in VscodeTask:
+                assert task.label in list(map(lambda x: x["label"], data))
+            # verify vscode Task version is added
+            data = jq.compile(TASKS_VERSION_QUERY).input(result_data).first()
+            assert data
+            # verify vscode Launch configurations are added
+            data = jq.compile(LAUNCH_CONFIG_QUERY).input(result_data).first()
+            for launch in VscodeLaunch:
+                assert launch.task_name in list(map(lambda x: x["name"], data))
+            # verify vscode Launch version is added2
+            data = jq.compile(LAUNCH_VERSION_QUERY).input(result_data).first()
+            assert data
+            # verify vscode Input for tasks and launch are added
+            data = jq.compile(TASKS_INPUT_QUERY).input(result_data).first()
+            for input_tasks in list((x for x in VscodeInput if x.enum_type != InputType.LAUNCH)):
+                assert input_tasks.input_id in list(map(lambda x: x["id"], data))
+            data = jq.compile(LAUNCH_INPUT_QUERY).input(result_data).first()
+            for input_launch in list((x for x in VscodeInput if x.enum_type != InputType.TASK)):
+                assert input_launch.input_id in list(map(lambda x: x["id"], data))
+            # verify default properties are added
+            counter: int = 0
+            for key, value in DEFAULT_PROPS.items():
+                data = jq.compile(f'.settings.["{key}"]').input(result_data).first()
+                if isinstance(default_prop_value, list):
+                    value = default_prop_value[counter]
+                    assert data == value
+                    counter += 1
+                else:
+                    assert data == value
+            # verify file associations are added
+            for key, value in FILE_ASSOCIATIONS.items():
+                data = jq.compile(f'{FILE_ASSOCIATION_QUERY}.["{key}"]').input(result_data).first()
+                assert data == value
+            ws_success.assert_called_once()
+            ws_advice.assert_not_called()
+            mocks_reset()
+
+    # test empty file when suggested settings are default
+    evaluate_happy_path(EMPTY_WK_FILE, "")
+
+    # test empty file when suggested settings value is changed
+    dummy_values: list[Any] = []
+    counter: int = 0
+    v: Any = None
+    for _prop, value in DEFAULT_PROPS.items():
+        counter += 1
+        # if value is boolean use True
+        if isinstance(value, bool):
+            v = True
+        # if value is numeric use counter
+        elif isinstance(value, int):
+            v = counter
+        # if value is string use f"dummy_value{counter}"
+        elif isinstance(value, str):
+            v = f"dummy_value{counter}"
+        dummy_values.append(v)
+    evaluate_happy_path(EMPTY_WK_FILE, dummy_values)
+
+    # test updated file
+    add_default_settings(DARWIN_WK_FILE, WK_PATH)
+    write_mock.assert_not_called()
+    ws_advice.assert_called_once()
+    ws_success.assert_not_called()
+    mocks_reset()
+
+    # test file when some recommended extensions exists but not all
+    list_ext: list[str] = WORKSPACE_EXTENSIONS.copy()
+    # remove first and last extension
+    list_ext.pop(0)
+    list_ext.pop(-1)
+    json_query = f"{EXTENSIONS_QUERY} = {json.dumps(list_ext)}"
+    data = load_json_with_comments(EMPTY_WK_FILE)
+    data = jq.compile(json_query).input(data).first()
+    with patch("codename_snake.config_environment.create_working_env.load_json_with_comments", return_value=data):
+        evaluate_happy_path(EMPTY_WK_FILE, "")
+
+    # test file when get_remote_url starts with git@
+    remote_repo = "git@github.com:dummy_user/dummy_repo"
+    evaluate_happy_path(EMPTY_WK_FILE, "")
+
+
+def test_launch_substituter(
+    _mk_folder_const: MagicMock,
+    get_property: MagicMock,
+) -> None:
+    """testing _launch_substituter private method"""
+    # test project sample data
+    project_sample_data = '{"name": "JAVA DEBUG (Attach)", "type": "java", "request": "attach", "port": "${config:snake.java.remoteDebug.port}", "hostName": "localhost", "projectName": "[SUBS_PROJECT]"}'
+    result = launch_substituter(project_sample_data)
+    assert f'"projectName": "{FOLDER}"' in result
+    get_property.assert_not_called()
+    
+    # test shell sample data
+    shell_sample_data = '{"name": "PYTHON DEBUG (Snake)", "type": "debugpy", "request": "launch", "args": "--shell [SUBS_SHELL] -l debug msg hello world!", "module": "py", "python": "/Users/carlosmorales/IdeaProjects/stuff/.venv/bin/python3.13", "console": "integratedTerminal"}'
+    result = launch_substituter(shell_sample_data)
+    assert f'"args": "--shell {OS} -l debug msg hello world!"' in result
+    get_property.assert_called_once_with("shell")

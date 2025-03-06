@@ -131,6 +131,7 @@ FILE_ASSOCIATIONS: dict[str, str] = {
     "*.yml": "yaml",
     "*.gradle": "gradle",
 }
+FILE_ASSOCIATION_QUERY = '.settings.["files.associations"]'
 NEW_WORKSPACE_CONTENTS: dict[str, Any] = {"folders": [{"name": "main", "path": "."}], "settings": {}}
 
 
@@ -403,7 +404,7 @@ def _update_file_associations(json_data: dict[str, Any]) -> tuple[dict[str, Any]
     """Update file associations in workspace"""
     updated = False
     for key, value in FILE_ASSOCIATIONS.items():
-        file_query: str = f'.settings.["files.associations"].["{key}"]'
+        file_query: str = f'{FILE_ASSOCIATION_QUERY}.["{key}"]'
         result = jq.compile(file_query).input(json_data).first()
         if not result:
             jq_query = f"{file_query} = {json.dumps(value)}"
