@@ -14,7 +14,7 @@ from codename_snake.constants import SHELL_OPT, LOGGING_NAME_TO_LEVEL, LOGGING_L
 SOURCE_FOLDER: str = "/src"
 
 
-def get_package_root() -> str:
+def _get_package_root() -> str:
     """Get the root of the package"""
     return f'{os.getenv("PYTHONPATH")}{SOURCE_FOLDER}'
 
@@ -112,7 +112,7 @@ class AppProperties:
         self.log_level = level
 
     def __resources_path_validator(self, value: str) -> None:
-        resources_path = f"{get_package_root()}/{value}"
+        resources_path = f"{_get_package_root()}/{value}"
         # Check if the path exists
         assert os.path.exists(resources_path), (
             f"Path {resources_path} does not exist in PYTHONPATH, please check the "
@@ -255,7 +255,7 @@ def init_app_properties(log_level: str, shell: Optional[str], light_weight: bool
         shell (Optional[str]): The shell in use by the user
     """
 
-    prop_file: str = f"{get_package_root()}/config.properties"
+    prop_file: str = f"{_get_package_root()}/config.properties"
     # check if the properties file exists
     if not os.path.exists(prop_file):
         raise FileNotFoundError(f"Properties file not found: {prop_file}")

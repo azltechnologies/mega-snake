@@ -19,9 +19,7 @@ from codename_snake.config_environment.create_working_env import (
     GIT_BLAME_QUERY,
     DEFAULT_PROPS,
     FILE_ASSOCIATIONS,
-    FILE_ASSOCIATION_QUERY,
-    SUBSTITUTE_SHELL_TAG,
-    SUBSTITUTE_PROJECT_TAG,
+    FILE_ASSOCIATION_QUERY
 )
 from codename_snake.config_environment.models.github_queries import (
     PrQueries,
@@ -854,7 +852,7 @@ def test_launch_substituter(
     result = launch_substituter(project_sample_data)
     assert f'"projectName": "{FOLDER}"' in result
     get_property.assert_not_called()
-    
+
     # test shell sample data
     shell_sample_data = '{"name": "PYTHON DEBUG (Snake)", "type": "debugpy", "request": "launch", "args": "--shell [SUBS_SHELL] -l debug msg hello world!", "module": "py", "python": "/Users/carlosmorales/IdeaProjects/stuff/.venv/bin/python3.13", "console": "integratedTerminal"}'
     result = launch_substituter(shell_sample_data)
