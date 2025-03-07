@@ -16,7 +16,10 @@ SOURCE_FOLDER: str = "/src"
 
 def _get_package_root() -> str:
     """Get the root of the package"""
-    return f'{os.getenv("PYTHONPATH")}{SOURCE_FOLDER}'
+    python_path: Optional[str] = os.getenv("PYTHONPATH")
+    if not python_path:
+        raise EnvironmentError("PYTHONPATH environment variable not set")
+    return f'{python_path}{SOURCE_FOLDER}'
 
 
 def _check_forbidden_execution(
@@ -299,7 +302,8 @@ def _find_code_workspace_files(directory: str) -> str:
         prompt: str = "Multiple .code-workspace files found. Please select one:\n"
         for index, workspace_file in enumerate(workspace_files):
             prompt += f"\t{index}: {workspace_file}\n"
-        return os.path.abspath(workspace_files[int(get_validated_input(prompt, options))])
+        wk_file = workspace_files[int(get_validated_input(prompt, options))]
+        return os.path.abspath(wk_file)
     if len(workspace_files) == 0:
         raise FileNotFoundError("No .code-workspace file found.")
 
