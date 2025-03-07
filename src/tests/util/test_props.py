@@ -90,6 +90,12 @@ def test_get_property() -> None:
         assert result == return_val
 
 
+def test_get_instance_when_instance_is_none() -> None:
+    """Test get_instance method when instance is None"""
+    with pytest.raises(RuntimeError):
+        AppProperties.get_instance()
+
+
 def test_init_app_properties(
     _constant_source_folder: MagicMock,
     mk_read_properties: MagicMock,
@@ -268,8 +274,8 @@ def test_resources_path_validator(request) -> None:
 
 def _find_code_workspace_files__after_failure_injector(request: pytest.FixtureRequest) -> Callable:
     """Specialized decorator for _find_code_workspace_files__after_failure tests with predefined parameters."""
-    mk_os:MagicMock = request.getfixturevalue("mk_os")
-    mk_os_path_abspath:MagicMock = mk_os.path.abspath
+    mk_os: MagicMock = request.getfixturevalue("mk_os")
+    mk_os_path_abspath: MagicMock = mk_os.path.abspath
     os_path_abspath_wrapper = SideEffectWrapper(os.path.abspath)
     mk_os_path_abspath.side_effect = os_path_abspath_wrapper
     more_mocks = {
@@ -293,9 +299,7 @@ def test__find_code_workspace_files__after_failure(request) -> None:
         get_validated_input: MagicMock = mocks["get_validated_input"]
         get_validated_input.return_value = 1
 
-
-
-        #src/tests/resources
+        # src/tests/resources
         # Test when parent of working exists with one unique file
         result = "test.code-workspace"
         get_package_root.return_value = RESOURCE_PATH
@@ -304,12 +308,15 @@ def test__find_code_workspace_files__after_failure(request) -> None:
         assert get_property("workspace_file").endswith(result)
         reset_mocks(*mocks.values())
 
-
         # Test when parent of working exists with multiple files
         result = ".code-workspace"
-        mk_os_path_abspath.side_effect.set_values([non_existent_working_dir,f"{RESOURCE_PATH}/gradle"])
+        mk_os_path_abspath.side_effect.set_values([non_existent_working_dir, f"{RESOURCE_PATH}/gradle"])
         init_app_properties(log_level, shell, True)
         assert get_property("workspace_file").endswith(result)
+
+        # Test create an AppProperties instance twice
+        with pytest.raises(RuntimeError):
+            init_app_properties(log_level, shell, True)
         reset_mocks(*mocks.values())
 
         # Test when parent of working directory doesn't exist
