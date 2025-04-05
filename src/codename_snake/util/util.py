@@ -59,7 +59,7 @@ def run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str
             ws_warning(f"Error details: {error.stderr}")
             if attempt == num_retries:
                 raise subprocess.SubprocessError(
-                    f"{description} failed after {num_retries} attempts. Error: {error.stderr}"
+                    f"{description} failed after {num_retries} attempts.\nError: {error.stderr}\nCommnad: {cwd}"
                 ) from error
             ws_warning(f"Retrying {description} in 2 seconds...")
             time.sleep(2)  # Wait 2 seconds before retrying
