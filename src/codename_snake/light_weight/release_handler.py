@@ -17,14 +17,14 @@ def git_fetch() -> None:
     run_operation(cwd, "Fetch latest changes")
 
 
-def get_release_list() -> subprocess.CompletedProcess[str]:
+def get_release_list(limit: int) -> subprocess.CompletedProcess[str]:
     """
     Retrieves the latest release from GitHub and retries on failure up to 3 times.
 
     Returns:
         Release
     """
-    cwd: str = "gh release list 2>&1"
+    cwd: str = f"gh release list --limit {limit} 2>&1"
     return run_operation(cwd, "Retrieve release list")
 
 

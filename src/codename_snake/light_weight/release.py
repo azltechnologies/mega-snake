@@ -3,6 +3,7 @@
 import dataclasses
 from datetime import datetime
 import subprocess
+from typing import Optional
 import codename_snake.light_weight.release_handler as handler
 from codename_snake.util.formatting import ws_info, ws_advice
 
@@ -109,8 +110,15 @@ def get_latest_release() -> Release:
     Returns:
         Release
     """
-    result: subprocess.CompletedProcess[str] = handler.get_release_list()
+    limit: int = 30
+    lastest_release: Optional[Release] = None
+    while lastest_release is None and limit < 200:
+        result: subprocess.CompletedProcess[str] = handler.get_release_list(limit)
 
-    release_list: list[Release] = _create_release_list(f"{result.stdout}")
-    lastest_release: Release = [x for x in release_list if x.release_type == "Latest"][0]
+        release_list: list[Release] = _create_release_list(f"{result.stdout}")
+        try:
+            lastest_release = [x for x in release_list if x.release_type == "Latest"][0]
+        except IndexError:
+            limit += 30
+            ws_info(f"Could not find the latest release. Increasing limit to {limit} and retrying.")
     return lastest_release
