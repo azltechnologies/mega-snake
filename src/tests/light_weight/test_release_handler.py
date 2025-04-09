@@ -22,7 +22,7 @@ def test_git_fetch(run_operation: MagicMock) -> None:
 
 def test_get_release_list(run_operation: MagicMock) -> None:
     """Test get_release_list"""
-    get_release_list()
+    get_release_list(30)
     run_operation.assert_called_once()
     assert "gh release list" in run_operation.call_args[0][0]
 
