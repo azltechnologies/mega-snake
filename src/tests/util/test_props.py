@@ -2,11 +2,11 @@
 
 import builtins
 import os
-from unittest.mock import MagicMock, patch, mock_open, call
-from typing import Generator, Callable, Any
+from unittest.mock import MagicMock, patch, mock_open
+from typing import Generator, Callable
 from types import SimpleNamespace
 import pytest
-from tests.test_util.util_test import param_injector, get_mocks, get_mock
+from tests.test_util.util_test import param_injector, get_mock
 from tests.test_util.side_effect_wrapper import SideEffectWrapper
 from codename_snake.util.props import (
     init_app_properties,
