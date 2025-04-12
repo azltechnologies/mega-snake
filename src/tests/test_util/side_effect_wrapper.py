@@ -1,8 +1,7 @@
 """Emulates a function that returns a sequence of values and then a fallback value."""
 
 
-from typing import Any
-
+from typing import Any, Callable
 
 class SideEffectWrapper:
     """Emulates a function that returns a sequence of values and then a fallback value."""
@@ -23,4 +22,9 @@ class SideEffectWrapper:
         """Allows to assign a list of values and reset the counter."""
         self.values = values
         self.counter = 0
+
+    def reset(self, reset_mock: Callable, *args, **kwargs) -> Callable:
+        """Resets the counter to 0."""
+        self.counter = 0
+        reset_mock(*args, **kwargs)
 

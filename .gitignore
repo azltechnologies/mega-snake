@@ -14,3 +14,4 @@ coverage_html
 report.html
 assets/
 **/__pycache__
+src/tests/util/test_props.py

@@ -4,6 +4,24 @@ from typing import Callable, Any
 import pytest
 
 
+def get_mocks(request: pytest.FixtureRequest, *fixture_names: str) -> dict:
+    """Get mocks from the request object."""
+    result = {}
+    mocks = getattr(request, "mocks", {})
+    if fixture_names and request:
+        for name in fixture_names:
+            result[name] = mocks[name] if name in mocks else request.getfixturevalue(name)
+    return result
+
+
+def get_mock(request: pytest.FixtureRequest, name: str) -> dict:
+    """Get mocks from the request object."""
+    mocks = getattr(request, "mocks", {})
+    if request:
+        return mocks[name] if name in mocks else request.getfixturevalue(name)
+    raise ValueError(f"Fixture '{name}' not found.")
+
+
 def param_injector(request: pytest.FixtureRequest, *fixture_names: str, **dec_kwargs) -> Callable:
     """Injects variables and pytest fixtures for the __resources_path_validator private method."""
 
@@ -14,7 +32,7 @@ def param_injector(request: pytest.FixtureRequest, *fixture_names: str, **dec_kw
             """Wrapper function."""
             nonlocal dec_kwargs
             additional_mocks = dec_kwargs.pop("more_mocks", {})
-            mocks = dec_kwargs.pop("mocks", kwargs.pop("mocks", {}))
+            mocks = getattr(request, "mocks") if hasattr(request, "mocks") else {}
             mocks.update(additional_mocks)
             for key, value in dec_kwargs.items():
                 kwargs[key] = value
@@ -26,6 +44,7 @@ def param_injector(request: pytest.FixtureRequest, *fixture_names: str, **dec_kw
                     except pytest.FixtureLookupError:
                         print(f"Fixture '{name}' not found.")
             kwargs["mocks"] = mocks
+            setattr(request, "mocks", mocks)
             return func(*args, **kwargs)
 
         return wrapper

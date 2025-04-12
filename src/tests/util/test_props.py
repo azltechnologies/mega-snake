@@ -6,14 +6,17 @@ from unittest.mock import MagicMock, patch, mock_open, call
 from typing import Generator, Callable, Any
 from types import SimpleNamespace
 import pytest
-from tests.test_util.util_test import param_injector
+from tests.test_util.util_test import param_injector, get_mocks, get_mock
 from tests.test_util.side_effect_wrapper import SideEffectWrapper
 from codename_snake.util.props import (
     init_app_properties,
     get_property,
     AppProperties,
     _read_properties as read_properties,
+    _check_property as check_property,
+    _check_forbidden_execution as check_forbidden_execution,
 )
+from codename_snake.constants import LOGGING_NAME_TO_LEVEL
 
 ROOT = "src/tests"
 RESOURCE_FOLDER = "/resources"
@@ -236,7 +239,17 @@ def test_init_app_properties(
 
 def resources_path_validator_injector(request: pytest.FixtureRequest) -> Callable:
     """Specialized decorator for resources_path_validator tests with predefined parameters."""
-    return param_injector(request, "get_package_root", log_level="DEBUG", shell="bash", light_weight=False)
+    mk_os: MagicMock = get_mock(request, "mk_os")
+    mk_os_path_exists: MagicMock = mk_os.path.exists
+    os_path_exists_wrapper = SideEffectWrapper(os.path.exists)
+    mk_os_path_exists.side_effect = os_path_exists_wrapper
+    more_mocks = {
+        "mk_os": mk_os,
+        "mk_os_path_exists": mk_os_path_exists,
+    }
+    return param_injector(
+        request, "get_package_root", log_level="DEBUG", shell="bash", light_weight=False, more_mocks=more_mocks
+    )
 
 
 def test_resources_path_validator(request) -> None:
@@ -274,32 +287,37 @@ def test_resources_path_validator(request) -> None:
 
 def _find_code_workspace_files__after_failure_injector(request: pytest.FixtureRequest) -> Callable:
     """Specialized decorator for _find_code_workspace_files__after_failure tests with predefined parameters."""
-    mk_os: MagicMock = request.getfixturevalue("mk_os")
+    mk_os: MagicMock = get_mock(request, "mk_os")
+    get_validated_input: MagicMock = get_mock(request, "get_validated_input")
+    get_validated_input.return_value = 1
     mk_os_path_abspath: MagicMock = mk_os.path.abspath
     os_path_abspath_wrapper = SideEffectWrapper(os.path.abspath)
     mk_os_path_abspath.side_effect = os_path_abspath_wrapper
     more_mocks = {
         "mk_os_path_abspath": mk_os_path_abspath,
-        "mk_os": mk_os,
     }
-    return param_injector(request, "get_validated_input", more_mocks=more_mocks)
+    parent = resources_path_validator_injector(request)
+    return parent(param_injector)(request, "get_validated_input", more_mocks=more_mocks)
 
 
-def test__find_code_workspace_files__after_failure(request) -> None:
-    """Test _find_code_workspace_files__after_failure method"""
+def _find_code_workspace_files__on_success_injector(request: pytest.FixtureRequest) -> Callable:
+    """Specialized decorator for _find_code_workspace_files__after_failure tests with predefined parameters."""
+    get_package_root: MagicMock = get_mock(request, "get_package_root")
+    get_package_root.return_value = RESOURCE_PATH
+    parent = _find_code_workspace_files__after_failure_injector(request)
+    return parent(param_injector)(request, "formatting")
 
-    @resources_path_validator_injector(request)
+
+def test__find_code_workspace_files(request) -> None:
+    """Test _find_code_workspace_files method"""
+
     @_find_code_workspace_files__after_failure_injector(request)
-    def my_function(log_level: str, shell: str, light_weight: bool, mocks: dict[str, MagicMock]) -> None:
-        """Test function"""
+    def on_failure(log_level: str, shell: str, light_weight: bool, mocks: dict[str, MagicMock]) -> None:
+        """Test function on failure"""
         get_package_root: MagicMock = mocks["get_package_root"]
-        mk_os: MagicMock = mocks["mk_os"]
         mk_os_path_abspath: MagicMock = mocks["mk_os_path_abspath"]
         non_existent_working_dir: MagicMock = "src/tests/non_existent"
-        get_validated_input: MagicMock = mocks["get_validated_input"]
-        get_validated_input.return_value = 1
 
-        # src/tests/resources
         # Test when parent of working exists with one unique file
         result = "test.code-workspace"
         get_package_root.return_value = RESOURCE_PATH
@@ -324,6 +342,217 @@ def test__find_code_workspace_files__after_failure(request) -> None:
         mk_os_path_abspath.return_value = non_existent_working_dir
         with pytest.raises(FileNotFoundError):
             init_app_properties(log_level, shell, light_weight)
+        reset_mocks(*mocks.values())
+
+    on_failure()  # pylint: disable=E1120
+
+    @_find_code_workspace_files__on_success_injector(request)
+    def on_succes(log_level: str, shell: str, light_weight: bool, mocks: dict[str, MagicMock]) -> None:
+        """Test function on success"""
+        mk_os_path_abspath: MagicMock = mocks["mk_os_path_abspath"]
+
+        # Test when workspace file is not found
+        mk_os_path_abspath.side_effect.set_values([f"{RESOURCE_PATH}/test_resources/"])
+        init_app_properties(log_level, shell, True)
+        assert get_property("workspace_file") == ""
+        reset_mocks(*mocks.values())
+
+        # Test when workspace file is found
+        result = "test.code-workspace"
+        mk_os_path_abspath.side_effect.set_values(
+            [f"{RESOURCE_PATH}/test_resources/", f"{RESOURCE_PATH}/test_resources/"]
+        )
+        init_app_properties(log_level, shell, light_weight)
+        assert get_property("workspace_file").endswith(result)
+        reset_mocks(*mocks.values())
+
+    on_succes()  # pylint: disable=E1120
+
+
+def __log_level_from_str_injector(request: pytest.FixtureRequest) -> Callable:
+    """Specialized decorator for _find_code_workspace_files__after_failure tests with predefined parameters."""
+    parent = _find_code_workspace_files__on_success_injector(request)
+    mk_os_path_abspath: MagicMock = get_mock(request, "mk_os_path_abspath")
+    rm = mk_os_path_abspath.reset_mock
+    mk_os_path_abspath.reset_mock = lambda *args, **kwargs: mk_os_path_abspath.side_effect.reset(rm, *args, **kwargs)
+    mk_os_path_abspath.side_effect.set_values([f"{RESOURCE_PATH}/test_resources/", f"{RESOURCE_PATH}/test_resources/"])
+    return parent(param_injector)(request)
+
+
+def test__log_level_from_str(request) -> None:
+    """Test _log_level_from_str method"""
+
+    @__log_level_from_str_injector(request)
+    def my_function(log_level: str, shell: str, light_weight: bool, mocks: dict[str, MagicMock]) -> None:
+        """Test function on failure"""
+        mk_os_path_exists = mocks["mk_os_path_exists"]
+        mk_os_makedirs: MagicMock = MagicMock()
+        mocks["mk_os"].makedirs = mk_os_makedirs
+
+        # changing debug to info
+        init_app_properties(log_level, shell, light_weight)
+        AppProperties.get_instance().log_level = LOGGING_NAME_TO_LEVEL["INFO"]
+        reset_mocks(*mocks.values())
+
+        # Test when log level is not found
+        with pytest.raises(KeyError):
+            init_app_properties("GREAT", shell, light_weight)
+        reset_mocks(*mocks.values())
+
+        # Test when log level is found and log file parent folder doesn't exist
+        mk_os_path_exists.side_effect.set_values([True, True, True, False])
+        init_app_properties(log_level, shell, light_weight)
+        assert AppProperties.get_instance().log_level == LOGGING_NAME_TO_LEVEL[log_level]
+        mk_os_makedirs.assert_called_once()
+        result = get_property("log_file")
+        assert result.endswith(".log") and "/logs" in result
+        reset_mocks(*mocks.values())
+
+    my_function()  # pylint: disable=E1120
+
+
+def test__shell_validator(request) -> None:
+    """Test _shell_validator method"""
+
+    @__log_level_from_str_injector(request)
+    def my_function(log_level: str, shell: str, light_weight: bool, mocks: dict[str, MagicMock]) -> None:
+        """Test function on failure"""
+        # Test when shell is not found
+        with pytest.raises(ValueError):
+            init_app_properties(log_level, "GREAT", light_weight)
+        reset_mocks(*mocks.values())
+
+        # Test when shell is found
+        init_app_properties(log_level, shell, light_weight)
+        assert get_property("shell") == shell
+        reset_mocks(*mocks.values())
+
+    my_function()  # pylint: disable=E1120
+
+
+def test_fail_scenarios(request) -> None:
+    """Test when a property with no value is passed"""
+
+    @__log_level_from_str_injector(request)
+    def my_function(log_level: str, shell: str, light_weight: bool, mocks: dict[str, MagicMock]) -> None:
+        """Test function on failure"""
+        mk_os = mocks["mk_os"]
+        mk_os_path_isdir = mk_os.path.isdir
+        mk_os_path_isdir.side_effect = SideEffectWrapper(os.path.isdir)
+        mk_os_path_isdir.side_effect.set_values([True, False])
+        mocks["mk_os_path_isdir"] = mk_os_path_isdir
+
+        # Test when working_path is not a directory
+        with pytest.raises(NotADirectoryError):
+            init_app_properties(log_level, shell, light_weight)
+        mk_os_path_isdir.side_effect.set_values([])
+        reset_mocks(*mocks.values())
+
+        mk_os_access = mk_os.access
+        mk_os_access.side_effect = SideEffectWrapper(os.access)
+        mk_os_access.side_effect.set_values([True, False])
+        mocks["mk_os_access"] = mk_os_access
+
+        # Test when working_path is not accessible
+        with pytest.raises(PermissionError):
+            init_app_properties(log_level, shell, light_weight)
+        mk_os_access.side_effect.set_values([])
+        reset_mocks(*mocks.values())
+        
+        # Test when log level string is none
+        with patch("codename_snake.util.props.LOGGING_NAME_TO_LEVEL", {"DEBUG": None}) as mock_check:
+            with pytest.raises(ValueError):
+                init_app_properties(log_level, shell, light_weight)
+        reset_mocks(*mocks.values())
+
+        # Test when log level is none
+        with patch("codename_snake.util.props.LOGGING_LEVEL_TO_NANE", {10: None}) as mock_check:
+            with pytest.raises(ValueError):
+                init_app_properties(log_level, shell, light_weight)
+        reset_mocks(*mocks.values())
+
+        # Test when log level is not found
+        with patch("codename_snake.util.props.LOGGING_LEVEL_TO_NANE", {}) as mock_check:
+            with pytest.raises(KeyError):
+                init_app_properties(log_level, shell, light_weight)
+        reset_mocks(*mocks.values())
+
+        # Test when retrieving unknown property
+        init_app_properties(log_level, shell, light_weight)
+        with pytest.raises(KeyError):
+            AppProperties.get_instance()._retrieve_property("unknown")
+        reset_mocks(*mocks.values())
+
+        # Test when getting props directly
+        init_app_properties(log_level, shell, light_weight)
+        with pytest.raises(PermissionError):
+            props = AppProperties.get_instance().props
+        reset_mocks(*mocks.values())
+
+        # Test when empty props are passed
+        init_app_properties(log_level, shell, light_weight)
+        with patch(
+            "codename_snake.util.props._check_forbidden_execution",
+            side_effect=lambda method, message, reload, props: check_forbidden_execution(
+                method, message, reload, None
+            ),
+        ) as mock_check:
+            with pytest.raises(ValueError):
+                AppProperties.get_instance().log_level = LOGGING_NAME_TO_LEVEL["INFO"]
+        reset_mocks(*mocks.values())
+
+        def check_property_side_effect(prop: str, dic: dict[str, str]) -> None:
+            """Side effect for check_property"""
+            if prop == "local_config_file_name":
+                prop = None
+            result: str = check_property(prop, dic)
+            return result
+
+        # Test when property is not found at check_property
+        with patch("codename_snake.util.props._check_property", side_effect=check_property_side_effect) as mock_check:
+            with pytest.raises(KeyError):
+                init_app_properties(log_level, shell, light_weight)
+            reset_mocks(*mocks.values())
+
+        original_method = AppProperties._AppProperties__adding_prop_validator  # pylint: disable=W0212
+
+        def adding_prop_validator_side_effect(key: str, value: str) -> None:
+            """Side effect for adding_prop_validator"""
+            instance = AppProperties.get_instance()
+            if key == "local_config_file":
+                value = None
+            result: str = original_method(instance, key, value)  # pylint: disable=E1121
+            return result
+
+        # Test when property is not found at adding_prop_validator
+        with patch(
+            "codename_snake.util.props.AppProperties._AppProperties__adding_prop_validator",
+            side_effect=adding_prop_validator_side_effect,
+        ):
+            with pytest.raises(ValueError):
+                init_app_properties(log_level, shell, light_weight)
+            reset_mocks(*mocks.values())
+
+        original_method = AppProperties.__post_init__  # pylint: disable=W0212
+
+        def post_init_side_effect() -> None:
+            """Side effect for __post_init__"""
+            instance = AppProperties.get_instance()
+            instance._log_level = None  # pylint: disable=W0212
+            original_method(instance)
+
+        # Test when property is not found at __post_init__
+        with patch(
+            "codename_snake.util.props.AppProperties.__post_init__",
+            side_effect=post_init_side_effect,
+        ):
+            with pytest.raises(ValueError):
+                init_app_properties(log_level, shell, light_weight)
+            reset_mocks(*mocks.values())
+
+        # Test when creating instance outside of module
+        with pytest.raises(PermissionError):
+            AppProperties(log_level, shell, {})
         reset_mocks(*mocks.values())
 
     my_function()  # pylint: disable=E1120
