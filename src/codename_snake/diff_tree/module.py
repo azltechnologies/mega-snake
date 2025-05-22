@@ -42,6 +42,7 @@ def main(commit_hash: Optional[str], delete_original_files: bool) -> None:
     """
     tree_output: str = f"{get_property("working_path")}/diff_tree"
     diff_commit_file: str = f"{tree_output}/diff_commit.txt"
+    diff_changes_file: str = f"{tree_output}/diff_changes.txt"
     diff_tree_dummy_repo: str = f"{tree_output}/diff_tree_dummy_repo"
 
     # check if tree_output directory exists. if so, delete it
@@ -89,6 +90,14 @@ def main(commit_hash: Optional[str], delete_original_files: bool) -> None:
         diff_commit.write(commits)
     run_operation(f"code {diff_commit_file}", "opening diff commit file")
     ws_success(f"Commit list created at {diff_commit_file}")
+    # write all the changes to a file
+    changes: str = run_operation(
+        f"git diff {main_branch}..{current_branch}", "getting all git commited changes"
+    ).stdout.strip()
+    with open(diff_changes_file, "w", encoding="utf-8") as diff_changes:
+        diff_changes.write(changes)
+    run_operation(f"code {diff_changes_file}", "opening diff changes file")
+    ws_success(f"Changes list created at {diff_changes_file}")
     if delete_original_files:
         shutil.rmtree(diff_tree_dummy_repo)
         ws_success("Deleted the generated copy of the original files in the diff tree")
