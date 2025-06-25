@@ -1,29 +1,42 @@
 [tool.poetry]
-name = "py"
+name = "codename_snake"
 version = "0.1.0"
-description = "cli for setting environment for vscode coding"
+description = "CLI for setting environment for VSCode coding"
 authors = ["Morales Ortega, Carlos Alberto <carlos.mor.ort@gmail.com>"]
 readme = "README.md"
+packages = [
+    { include = "codename_snake", from = "src" },
+    { include = "tests", from = "src" }
+]
+
 
 [tool.poetry.dependencies]
-python = "^3.13"
-pytest = "8.2.0"
-graphql-core = "3.2.5"
+astroid = "3.3.8"
+click = "8.1.7"
 colorama = "0.4.6"
 directory-tree = "1.0.0"
-mypy = "1.13.0"
-mypy-extensions = "1.0.0"
-poetry = "1.8.4"
-pylint = "3.3.1"
-types-colorama = "0.4.15.20240311"
-virtualenv = "20.27.1"
-astroid = "3.3.5"
-click = "8.1.7"
+graphql-core = "3.2.5"
 jq = "1.8.0"
 json-spec = "0.12.0"
 jsoncomment = "0.4.2"
+poetry = "1.8.4"
 pyperclip = "1.9.0"
+python = "^3.13"
 rich-click = "1.8.5"
+types-colorama = "0.4.15.20240311"
+virtualenv = "20.27.1"
+pytest-mock = "3.14.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest-cov = "^6.0.0"
+pytest = "8.3.4"
+pylint = "3.3.3"
+mypy = "1.13.0"
+mypy-extensions = "1.0.0"
+pytest-pylint = "^0.21.0"
+flake8 = "^7.1.1"
+flake8-pyproject = "^1.2.3"
+pytest-html = "^4.1.1"
 
 [build-system]
 requires = ["poetry-core"]
@@ -33,11 +46,18 @@ build-backend = "poetry.core.masonry.api"
 python_version = "3.13"
 disable_error_code = ["import-untyped"]
 mypy_path = "./out"
+exclude = [
+    '\.venv/.*',
+    '.+\.pyi',
+    '/opt/.*',
+    '.*/site-packages/.*',
+    'workspace_temp/.*',
+    'src/tests/.*'
+]
 
 [tool.pylint.master]
-init-hook = 'import sys; sys.path.append("/Users/carlosmorales/IdeaProjects/stuff/.venv/lib/python3.13/site-packages")'
-load-plugins = ["py.pylint.custom_checkers"]
-ignore-patterns = [".+\\.pyi", "/opt/.*"]
+load-plugins = ["src.codename_snake.pylint.custom_checkers"]
+ignore-patterns = ["\\.venv/.*", ".+\\.pyi", "/opt/.*",".*/site-packages/.*", "workspace_temp/.*"]
 
 [tool.pylint.messages_control]
 enable = ["MissingReturnTypeChecker"]
@@ -49,3 +69,39 @@ max-line-length = 200
 [tool.pylint.design]
 max-args = 10
 max-positional-arguments = 10
+max-attributes = 12
+
+[tool.pytest.ini_options]
+testpaths = ["src/tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --cov=codename_snake --cov-report=term-missing --cov-report=html:coverage_html --cov-fail-under=95 --html=report.html"
+
+[tool.coverage.run]
+omit = [
+    "*/tests/*",
+    "*/__init__.py",
+    "*/site-packages/*",
+    # Add specific files to exclude
+    "codename_snake/pylint/custom_checkers.py"
+]
+
+[tool.coverage.report]
+exclude_also=["\\s*TYPE_CHECKING:\\s*\\n\\s*from.*"]
+
+[tool.flake8]
+max-line-length = 120
+ignore = [
+    "E303", # too many blank lines
+]
+exclude = [
+    ".venv",
+    "build",
+    "dist",
+    "__pycache__",
+    "*.pyc",
+    "*.egg-info",
+    "**/pylint/**",
+    "src/tests/**"
+]

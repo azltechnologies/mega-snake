@@ -1,0 +1,42 @@
+type Mutation {
+  createUser(username: String!, email: String!): User!
+  updateProfile(userId: ID!, bio: String, avatar: String): Profile!
+  createPost(title: String!, content: String!, authorId: ID!): Post!
+  addComment(postId: ID!, content: String!, authorId: ID!): Comment!
+  deletePost(id: ID!): Boolean!
+  
+  # Product related mutations
+  createProduct(name: String!, description: String!, price: Float!, categoryId: ID!, sellerId: ID!): Product!
+  updateProduct(id: ID!, name: String, description: String, price: Float): Product!
+  createReview(productId: ID!, rating: Int!, content: String!, authorId: ID!): Review!
+  
+  # Event related mutations
+  createEvent(title: String!, description: String!, locationId: ID!, date: String!, organizerId: ID!): Event!
+  attendEvent(eventId: ID!, userId: ID!): Event!
+  
+  # Message related mutations
+  sendMessage(content: String!, senderId: ID!, receiverId: ID!): Message!
+  createGroup(name: String!, description: String, adminId: ID!): Group!
+  sendGroupMessage(content: String!, senderId: ID!, groupId: ID!): GroupMessage!
+  
+  # Order related mutations
+  createOrder(userId: ID!, products: [OrderItemInput!]!): Order!
+  updateOrderStatus(orderId: ID!, status: String!): Order!
+  
+  # Subscription related mutations
+  createSubscription(userId: ID!, planId: ID!): Subscription!
+  cancelSubscription(subscriptionId: ID!): Boolean!
+  
+  # Wishlist mutations
+  addToWishlist(userId: ID!, productId: ID!): Wishlist!
+  removeFromWishlist(userId: ID!, productId: ID!): Wishlist!
+  
+  # Notification mutations
+  markNotificationAsRead(notificationId: ID!): Notification!
+  markAllNotificationsAsRead(userId: ID!): Boolean!
+}
+
+input OrderItemInput {
+  productId: ID!
+  quantity: Int!
+}

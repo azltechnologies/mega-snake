@@ -30,4 +30,8 @@ jobs:
     
     - name: Run pytest
       run: |
-        pytest
+        poetry run pytest
+
+    - name: Run flake8
+      run: |
+        poetry run flake8 codename_snake

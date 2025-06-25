@@ -1,0 +1,356 @@
+{
+    "folders": [
+        {
+            "path": ".",
+            "name": "main"
+        }
+        //this has comments
+    ],
+    "settings": {
+        "git-blame.gitWebUrl": "https://github.com/kalin91/unix-scripts/tree/$ID",
+        "githubPullRequests.queries": [
+            {
+                "label": "My Closed PRs",
+                "query": "is:closed author:${user}"
+            },
+            {
+                "label": "Waiting for My Review",
+                "query": "is:open review-requested:${user}"
+            },
+            {
+                "label": "Assigned to Me",
+                "query": "is:open assignee:${user}"
+            },
+            {
+                "label": "Created by Me",
+                "query": "is:open author:${user}"
+            }
+        ],
+        "githubIssues.queries": [
+            {
+                "label": "My Issues",
+                "query": "is:open assignee:${user} repo:${owner}/${repository}",
+                "groupBy": [
+                    "milestone"
+                ]
+            },
+            {
+                "label": "Created Issues",
+                "query": "author:${user} state:open repo:${owner}/${repository} sort:created-desc"
+            },
+            {
+                "label": "Recent Issues",
+                "query": "state:open repo:${owner}/${repository} sort:updated-desc"
+            }
+        ],
+        "logViewer.watch": [
+            {
+                "title": "GRADLE CLEAN BUILD NO TEST",
+                "pattern": "/root/parent_folder/some_path/logs/clean_build_no_test_*.log",
+                "autoScroll": true
+            },
+            {
+                "title": "GRADLE CLEAN BUILD",
+                "pattern": "/root/parent_folder/some_path/logs/clean_build_*.log",
+                "autoScroll": true
+            },
+            {
+                "title": "GENERIC LOG",
+                "pattern": "/root/parent_folder/some_path/logs/output_*.log",
+                "autoScroll": true
+            },
+            {
+                "title": "JAVA DEBUG LOG",
+                "pattern": "/root/parent_folder/some_path/logs/java_debug_*.log",
+                "autoScroll": true
+            },
+            {
+                "title": "PYTHON SNAKE LOG",
+                "pattern": "/root/parent_folder/some_path/logs/python_snake_*.log",
+                "autoScroll": true
+            }
+        ],
+        "snake.java.remoteDebug.port": 5005,
+        "snake.java.remoteDebug.profile": "dev",
+        "snake.java.remoteDebug.jar": "build/libs/*.jar",
+        "terminal.integrated.scrollback": 9000,
+        "editor.largeFileOptimizations": false,
+        "editor.maxTokenizationLineLength": 2000000,
+        "logViewer.followTailMode": "auto",
+        "logViewer.chunkSizeKb": 81920,
+        "java.jdt.ls.vmargs": "-XX:+UseParallelGC -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90 -Dsun.zip.disableMemoryMapping=true -Xmx4G -Xms100m -Xlog:disable",
+        "files.associations": {
+            "**/.github/workflows/*.yml": "github-actions-workflow",
+            "*.yml": "yaml",
+            "*.gradle": "gradle"
+        },
+        "java.configuration.runtimes": [
+            {
+                "name": "JavaSE-21",
+                "path": "/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home",
+                "default": false
+            },
+            {
+                "name": "JavaSE-21",
+                "path": "/Users/carlosmorales/Library/Java/JavaVirtualMachines/openjdk-21.0.2/Contents/Home",
+                "default": false
+            },
+            {
+                "name": "JavaSE-19",
+                "path": "/Users/carlosmorales/Library/Java/JavaVirtualMachines/temurin-19.0.2/Contents/Home",
+                "default": true
+            },
+            {
+                "name": "JavaSE-17",
+                "path": "/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home",
+                "default": false
+            },
+            {
+                "name": "JavaSE-17",
+                "path": "/Library/Java/JavaVirtualMachines/jdk-17.jdk/Contents/Home",
+                "default": false
+            },
+            {
+                "name": "JavaSE-11",
+                "path": "/Users/carlosmorales/Library/Java/JavaVirtualMachines/temurin-11.0.22/Contents/Home",
+                "default": false
+            },
+            {
+                "name": "JavaSE-11",
+                "path": "/Library/Java/JavaVirtualMachines/jdk-11.0.2.jdk/Contents/Home",
+                "default": false
+            },
+            {
+                "name": "JavaSE-1.8",
+                "path": "/Users/carlosmorales/Library/Java/JavaVirtualMachines/corretto-1.8.0_402/Contents/Home",
+                "default": false
+            }
+        ],
+        "java.import.gradle.home": "/opt/homebrew/Cellar/gradle@8.4/8.4/libexec",
+        "terminal.integrated.env.osx": {
+            "JAVA_HOME": "/Users/carlosmorales/Library/Java/JavaVirtualMachines/temurin-19.0.2/Contents/Home",
+            "GRADLE_HOME": "/opt/homebrew/Cellar/gradle@8.4/8.4/libexec"
+        },
+        "java.import.gradle.java.home": "/Users/carlosmorales/Library/Java/JavaVirtualMachines/temurin-19.0.2/Contents/Home",
+        "java.import.gradle.wrapper.enabled": false,
+        "java.format.settings.url": "cwd_path/.vscode/java-formatter.xml"
+    },
+    "extensions": {
+        "recommendations": [
+            "augustocdias.tasks-shell-input",
+            "berublan.vscode-log-viewer",
+            "bradzacher.vscode-copy-filename",
+            "github.vscode-github-actions",
+            "github.vscode-pull-request-github",
+            "graphql.vscode-graphql-syntax",
+            "graphql.vscode-graphql",
+            "letmaik.git-tree-compare",
+            "mhutchie.git-graph",
+            "natqe.reload",
+            "sandcastle.vscode-open",
+            "solomonkinard.git-blame",
+            "vscjava.vscode-gradle",
+            "vscjava.vscode-java-pack"
+        ]
+    },
+    "tasks": {
+        "version": "2.0.0",
+        "inputs": [
+            {
+                "id": "todayTimestamp",
+                "type": "command",
+                "command": "shellCommand.execute",
+                "args": {
+                    "command": "python3 -c 'from datetime import datetime; print(datetime.now().strftime(\"%Y-%m-%d\"));'",
+                    "useSingleResult": true
+                }
+            },
+            {
+                "id": "selectBuildTask",
+                "type": "command",
+                "command": "workbench.action.tasks.runTask",
+                "args": {
+                    "task": "Java-debug: "
+                }
+            }
+        ],
+        "tasks": [
+            {
+                "label": "No Build",
+                "hide": true,
+                "detail": "No build task",
+                "problemMatcher": [],
+                "type": "shell",
+                "command": "echo",
+                "args": [
+                    "Skipping Gradle Building"
+                ]
+            },
+            {
+                "label": "Gradle Build No Test",
+                "hide": true,
+                "detail": "Run a gradle clean build without tests",
+                "problemMatcher": [],
+                "type": "shell",
+                "command": "${config:java.import.gradle.home}/bin/gradle",
+                "args": [
+                    "clean",
+                    "build",
+                    "-x",
+                    "test",
+                    ">",
+                    "'/root/parent_folder/some_path/logs/clean_build_no_test_${input:todayTimestamp}.log'",
+                    "2>&1"
+                ],
+                "group": "build",
+                "windows": {
+                    "command": "${config:java.import.gradle.home}/bin/gradle.bat",
+                    "args": [
+                        "clean",
+                        "build",
+                        "-x",
+                        "test",
+                        ">",
+                        "'/root/parent_folder/some_path/logs/clean_build_no_test_${input:todayTimestamp}.log'",
+                        "2>&1"
+                    ]
+                }
+            },
+            {
+                "label": "Gradle Build",
+                "hide": true,
+                "detail": "Run a gradle clean build",
+                "problemMatcher": [],
+                "type": "shell",
+                "command": "${config:java.import.gradle.home}/bin/gradle",
+                "args": [
+                    "clean",
+                    "build",
+                    ">",
+                    "'/root/parent_folder/some_path/logs/clean_build_${input:todayTimestamp}.log'",
+                    "2>&1"
+                ],
+                "group": "build",
+                "windows": {
+                    "command": "${config:java.import.gradle.home}/bin/gradle.bat",
+                    "args": [
+                        "clean",
+                        "build",
+                        ">",
+                        "'/root/parent_folder/some_path/logs/clean_build_${input:todayTimestamp}.log'",
+                        "2>&1"
+                    ]
+                }
+            },
+            {
+                "label": "Java Remote Debug Start",
+                "hide": true,
+                "detail": "Start a Java Remote Debug execution",
+                "problemMatcher": [],
+                "type": "shell",
+                "command": "java",
+                "args": [
+                    "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=${config:snake.java.remoteDebug.port}",
+                    "-Dspring.profiles.active=${config:snake.java.remoteDebug.profile}",
+                    "-jar",
+                    "${config:snake.java.remoteDebug.jar}",
+                    ">",
+                    "'/root/parent_folder/some_path/logs/java_debug_${input:todayTimestamp}.log'",
+                    "2>&1"
+                ],
+                "isBackground": false
+            },
+            {
+                "label": "1 - Java-debug: Gradle Build No Test",
+                "hide": false,
+                "detail": "Debug java while building gradle without tests",
+                "problemMatcher": [],
+                "dependsOn": [
+                    "Gradle Build No Test",
+                    "Java Remote Debug Start"
+                ],
+                "dependsOrder": "sequence"
+            },
+            {
+                "label": "2 - Java-debug: No Build",
+                "hide": false,
+                "detail": "Debug java without building gradle",
+                "problemMatcher": [],
+                "dependsOn": [
+                    "No Build",
+                    "Java Remote Debug Start"
+                ],
+                "dependsOrder": "sequence"
+            },
+            {
+                "label": "3 - Java-debug: Gradle Build",
+                "hide": false,
+                "detail": "Debug java while building gradle",
+                "problemMatcher": [],
+                "dependsOn": [
+                    "Gradle Build",
+                    "Java Remote Debug Start"
+                ],
+                "dependsOrder": "sequence"
+            },
+            {
+                "label": "Run Java Debug",
+                "hide": false,
+                "detail": "Debug java application",
+                "problemMatcher": [],
+                "type": "process",
+                "command": "${input:selectBuildTask}"
+            }
+        ]
+    },
+    "launch": {
+        "version": "0.2.0",
+        "inputs": [
+            {
+                "id": "todayTimestamp",
+                "type": "command",
+                "command": "shellCommand.execute",
+                "args": {
+                    "command": "python3 -c 'from datetime import datetime; print(datetime.now().strftime(\"%Y-%m-%d\"));'",
+                    "useSingleResult": true
+                }
+            }
+        ],
+        "configurations": [
+            {
+                "name": "JAVA DEBUG (Attach)",
+                "type": "java",
+                "request": "attach",
+                "port": "${config:snake.java.remoteDebug.port}",
+                "hostName": "localhost",
+                "projectName": "stuff"
+            },
+            {
+                "name": "PYTHON DEBUG (File)",
+                "type": "debugpy",
+                "request": "launch",
+                "args": "> '/root/parent_folder/some_path/logs/output_${input:todayTimestamp}.log' 2>&1",
+                "program": "${file}"
+            },
+            {
+                "name": "PYTHON DEBUG (Module)",
+                "type": "debugpy",
+                "request": "launch",
+                "env": {
+                    "PYTHONPATH": "${fileDirnameBasename}"
+                },
+                "args": "> '/root/parent_folder/some_path/logs/output_${input:todayTimestamp}.log' 2>&1",
+                "module": "${fileDirnameBasename}"
+            },
+            {
+                "name": "PYTHON DEBUG (Snake)",
+                "type": "debugpy",
+                "request": "launch",
+                "args": "--shell Windows -l debug msg hello world!",
+                "module": "py",
+                "python": "/Users/carlosmorales/IdeaProjects/stuff:/Users/carlosmorales/IdeaProjects/stuff:/Users/carlosmorales/IdeaProjects/stuff/.venv/bin/python3.13",
+                "console": "integratedTerminal"
+            }
+        ]
+    }
+}

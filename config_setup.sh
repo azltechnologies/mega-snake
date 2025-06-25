@@ -9,7 +9,7 @@ else
     export WS_SHELL="zsh"
 fi
 l_reload() {
-    local PROP_FILE="$WS_CONFIG_HOME/config.properties"
+    local PROP_FILE="$WS_CONFIG_HOME/src/config.properties"
     local LOCAL_CONFIG=$(grep "local_config_file_name" "$PROP_FILE" | sed 's/local_config_file_name=//')
     local WORKING_PATH=$(grep "working_path" "$PROP_FILE" | sed 's/working_path=//')
     local local_config_file="$PWD/$WORKING_PATH/$LOCAL_CONFIG.sh"
@@ -21,7 +21,7 @@ l_reload() {
     fi
 }
 snake() {
-    local PROP_FILE="$WS_CONFIG_HOME/config.properties"
+    local PROP_FILE="$WS_CONFIG_HOME/src/config.properties"
 
     local RE_PY_ENV=$(grep "python_virtual_bash" "$PROP_FILE" | sed 's/python_virtual_bash=//')
     local PY_MODULE=$(grep "python_module" "$PROP_FILE" | sed 's/python_module=//')
