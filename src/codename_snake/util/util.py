@@ -173,7 +173,7 @@ def get_main_branch() -> str:
 
 def get_current_commit() -> str:
     """
-    Gets the current branch of the repository.
+    Gets the current commit of the repository.
 
     Returns:
         str
