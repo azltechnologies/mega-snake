@@ -1,13 +1,10 @@
 """Test cases for formatting.py"""
 
 import logging
-import subprocess
-from unittest.mock import MagicMock, patch, mock_open
+from unittest.mock import MagicMock, patch
 from typing import Generator, Callable
 from types import SimpleNamespace
 import pytest
-import click
-from click.testing import CliRunner
 from codename_snake.util.formatting import (
     ErrorFilter,
     DefaultFilter,
@@ -22,7 +19,7 @@ from codename_snake.util.formatting import (
     WorkspaceError,
     Color,
     _on_crash as on_crash,
-    ERROR_CODES
+    ERROR_CODES,
 )
 
 
@@ -39,17 +36,20 @@ def fixture_mk_logger() -> Generator[Callable]:
     with patch("codename_snake.util.formatting.logger") as mk_logger:
         yield mk_logger
 
+
 @pytest.fixture(name="mk_error")
 def fixture_mk_error() -> Generator[Callable]:
     """Mock logger"""
     with patch("codename_snake.util.formatting.logger.error") as mk_error:
         yield mk_error
 
+
 @pytest.fixture(name="mk_old_hook")
 def fixture_mk_old_hook() -> Generator[Callable]:
     """Mock old exception hook"""
     with patch("codename_snake.util.formatting.old_hook") as old_hook:
         yield old_hook
+
 
 @pytest.fixture(name="mk_sys_exit")
 def fixture_mk_sys_exit() -> Generator[Callable]:
@@ -58,10 +58,8 @@ def fixture_mk_sys_exit() -> Generator[Callable]:
         yield mock_exit
 
 
-
-def test_on_crash(mk_old_hook: MagicMock, mk_sys_exit:MagicMock) -> None:
+def test_on_crash(mk_old_hook: MagicMock, mk_sys_exit: MagicMock) -> None:
     """Test _on_crash function"""
-
 
     # Simulate an exception
     try:
@@ -86,6 +84,7 @@ def test_on_crash(mk_old_hook: MagicMock, mk_sys_exit:MagicMock) -> None:
             mk_old_hook.assert_not_called()
             mk_sys_exit.assert_called_once_with(expected_error_code)
             assert ws_err.error_code == expected_error_code
+
 
 def test_error_filter() -> None:
     """Test ErrorFilter class"""
@@ -168,12 +167,13 @@ def test_ws_tip(mk_logger: MagicMock) -> None:
     """Test ws_tip function"""
     msg_blue = "Test tip message"
     msg_yellow = "with a color"
-    message ={Color.BLUE: msg_blue, Color.YELLOW: msg_yellow}
+    message = {Color.BLUE: msg_blue, Color.YELLOW: msg_yellow}
     ws_tip(message)
     mk_logger.info.assert_called_once()
     logged_message = mk_logger.info.call_args[0][0]
     assert msg_blue in logged_message
     assert msg_yellow in logged_message
+
 
 def test_ws_error(mk_logger: MagicMock) -> None:
     """Test ws_error function"""
@@ -191,7 +191,6 @@ def test_ws_error(mk_logger: MagicMock) -> None:
     assert extra.get("namefile") == "unknown file"
     mk_error.reset_mock()
 
-
     # Test with a simple error message
     ws_error(err_msg)
     mk_error.assert_called_once()
@@ -207,7 +206,7 @@ def test_ws_error(mk_logger: MagicMock) -> None:
     try:
         raise ValueError("Dummy exception")
     except ValueError as e:
-        ws_error(err_msg,e)
+        ws_error(err_msg, e)
         mk_error.assert_called_once()
         args, kwargs = mk_error.call_args
         assert err_msg in args[0]
@@ -227,7 +226,7 @@ def test_workspace_error(mk_error: MagicMock) -> None:
         raise ValueError(value_error_message)
     except ValueError as val_err:
         try:
-            raise WorkspaceError(workspace_error_message,val_err) from val_err
+            raise WorkspaceError(workspace_error_message, val_err) from val_err
         except WorkspaceError:
             mk_error.assert_called_once()
             args, kwargs = mk_error.call_args
@@ -243,7 +242,7 @@ def test_workspace_error(mk_error: MagicMock) -> None:
         raise ValueError(value_error_message)
     except ValueError as val_err:
         try:
-            raise WorkspaceError(workspace_error_message,val_err) from val_err
+            raise WorkspaceError(workspace_error_message, val_err) from val_err
         except WorkspaceError:
             mk_error.assert_called_once()
             args, kwargs = mk_error.call_args
@@ -253,15 +252,15 @@ def test_workspace_error(mk_error: MagicMock) -> None:
             assert extra.get("line") == 0
             assert extra.get("namefile") == "unknown file"
     mk_error.reset_mock()
-    
+
     # Test when logs are set up
-    #with patch("codename_snake.util.formatting.logging") as mock_file_handler:
+    # with patch("codename_snake.util.formatting.logging") as mock_file_handler:
     config_log("workspace_error_file.log", logging.INFO)
     try:
         raise ValueError(value_error_message)
     except ValueError as val_err:
         try:
-            raise WorkspaceError(workspace_error_message,val_err) from val_err
+            raise WorkspaceError(workspace_error_message, val_err) from val_err
         except WorkspaceError:
             mk_error.assert_called_once()
             args, kwargs = mk_error.call_args
