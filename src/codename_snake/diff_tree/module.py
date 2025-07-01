@@ -6,7 +6,7 @@ from typing import Optional
 import click
 from directory_tree import DisplayTree
 from codename_snake.util.formatting import ws_info, ws_success
-from codename_snake.util.util import run_operation, get_main_branch, get_current_commit
+from codename_snake.util.util import run_operation, get_main_branch, get_current_commit, get_remote
 from codename_snake.util.props import get_property
 from codename_snake.diff_tree.file_type import FileType
 
@@ -54,7 +54,7 @@ def main(commit_hash: Optional[str], delete_original_files: bool) -> None:
     current_branch: str = get_current_commit()
     main_branch: str
     if commit_hash is None:
-        main_branch = get_main_branch()
+        main_branch = get_main_branch(get_remote())
         ws_info(f"Main branch: {main_branch}")
     else:
         commit_validation: str = run_operation(

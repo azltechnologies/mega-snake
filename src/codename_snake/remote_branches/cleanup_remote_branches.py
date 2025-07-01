@@ -4,7 +4,7 @@ import os
 from typing import Optional
 import click
 from codename_snake.util.formatting import ws_info, ws_success
-from codename_snake.util.util import get_validated_input
+from codename_snake.util.util import get_validated_input, get_remote
 from codename_snake.remote_branches.parse_remote_branches import (
     define_branches,
     RemoteBranch,
@@ -24,6 +24,8 @@ def remote_branches_cleanup() -> None:
     """
     Deletes branches that have been merged into the main branch from the remote repository
     """
+    if not (remote := get_remote()):
+        raise LookupError("No remote repository found. Please add a remote repository to the current repository.")
     prompt: str = "Do you want to rerun the remoteBranchesDetails function?"
     yes_no_options: list[str] = ["y", "n"]
     if get_validated_input(prompt, yes_no_options) == "y":
@@ -31,7 +33,7 @@ def remote_branches_cleanup() -> None:
         prompt = "Filter branches by (a)ll or (m)erged?"
         user_input: str = get_validated_input(prompt, filter_options).upper()
         ws_info(f"Filtering branches by: {user_input}")
-        remote_branches_details(user_input)
+        remote_branches_details(user_input, remote)
         ws_success(f"Successfully ran `remoteBranchesDetails -f {user_input}` function")
     input_file: str = get_output_file()
     # check if input_file exists
@@ -52,6 +54,6 @@ def remote_branches_cleanup() -> None:
     branches_list: list[RemoteBranch] = [x for x in opt_branches_list if x is not None]
     branches_list = sorted(branches_list, reverse=False)
     # parsing branches
-    garbage: list[str] = parsing_branches(branches_list)
+    garbage: list[str] = parsing_branches(branches_list, remote)
     delete_branches(garbage)
     ws_success("Successfully deleted branches that have been merged into the main branch from the remote repository")

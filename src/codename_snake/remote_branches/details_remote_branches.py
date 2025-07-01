@@ -6,7 +6,7 @@ from typing import Optional
 import click
 from codename_snake.util.formatting import ws_info
 from codename_snake.remote_branches.remote_branch import RemoteBranch
-from codename_snake.util.util import run_operation, get_main_branch
+from codename_snake.util.util import run_operation, get_main_branch, get_remote
 from codename_snake.util.props import get_property
 from codename_snake.constants import REMOTE_BRANCHES_OPT
 
@@ -46,7 +46,7 @@ def remote_branches_details(filter_by: str) -> None:
     execute(filter_by)
 
 
-def execute(filter_by: str) -> None:
+def execute(filter_by: str, remote: Optional[str] = None) -> None:
     """
     Creates a detailed list of remote branches filtered by type
 
@@ -57,7 +57,11 @@ def execute(filter_by: str) -> None:
         raise ValueError(
             f"Invalid filter: {filter_by}; filter value must be one of:\n {' | '.join(REMOTE_BRANCHES_OPT)}"
         )
-    main_branch: str = get_main_branch()
+    if not remote:
+        remote = get_remote()
+    if not remote:
+        raise LookupError("No remote repository found. Please add a remote repository to the current repository.")
+    main_branch: str = get_main_branch(remote)
     list_output: str = get_output_file()
     # check if list_output directory exists. if so, delete it
     if os.path.exists(list_output):
@@ -68,13 +72,14 @@ def execute(filter_by: str) -> None:
     if not branches:
         raise ValueError("No remote branches found in the current repository")
     branches = f"{branches}\n remotes/origin/HEAD master"
-    matches = re.findall(r"^\s*(remotes/(?!origin/HEAD).+)$", branches, re.MULTILINE)
+    matches = re.findall(rf"^\s*(remotes/(?!{remote}/HEAD){remote}/.+)$", branches, re.MULTILINE)
     total_branches = len(matches)
     ws_info(f"Main branch: {main_branch}; Found {total_branches} remote branches to process")
     for match in matches:
         branch = str(match)
         ws_info(f"Processing branch: {branch} filtered by: '{filter_by}'")
-        opt_remote_branches.append(RemoteBranch.from_branch(branch, filter_by, main_branch))
+        if remote:
+            opt_remote_branches.append(RemoteBranch.from_branch(branch, filter_by, main_branch, remote))
         total_branches -= 1
         ws_info(f"Remaining branches to process: {total_branches}")
 

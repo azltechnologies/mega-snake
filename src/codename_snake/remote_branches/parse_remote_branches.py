@@ -25,7 +25,7 @@ def define_branches(line: str) -> Optional[RemoteBranch]:
     return None
 
 
-def parsing_branches(branches: list[RemoteBranch]) -> list[str]:
+def parsing_branches(branches: list[RemoteBranch], remote: str) -> list[str]:
     """
     Parses the branches and returns the branches that require deletion
 
@@ -36,7 +36,7 @@ def parsing_branches(branches: list[RemoteBranch]) -> list[str]:
         list[RemoteBranch]
     """
     options: list[str] = ["y", "n", "f", "yes", "no", "finalize"]
-    main_branch: str = get_main_branch()
+    main_branch: str = get_main_branch(remote)
     garbage: list[str] = []
     for branch in branches:
         if branch.merged_on_main and branch.branch != main_branch:
