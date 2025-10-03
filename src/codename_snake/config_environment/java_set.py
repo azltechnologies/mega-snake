@@ -211,21 +211,30 @@ def _get_versions() -> list[JavaVersion]:
         list[JavaVersion]: List of JavaVersion objects
     """
     version_list: list[JavaVersion] = []
+    command: str
+    pattern: str
     if OS == "Windows":
         # ToDO: Implement Windows version
         raise NotImplementedError("Windows version pending implementation")
     if OS == "Linux":
-        # ToDO: Implement Linux version
-        raise NotImplementedError("Linux version pending implementation")
-    if OS == "Darwin":
-        versions: str = run_operation("/usr/libexec/java_home -V 2>&1", "Getting Java versions").stdout.strip()
-        matches = re.findall(r"^\s*([0-9\._]+)\s+(.+\")\s*(/.+$)", versions, re.MULTILINE)
-        # order matches by version number
-        matches = sorted(matches, key=lambda x: get_version_number(x[0].strip()), reverse=True)
-        version_list = [
-            JavaVersion(version=version[0].strip(), path=version[2].strip(), description=version[1].strip())
-            for version in matches
-        ]
+        command = (
+            'update-alternatives --list java | xargs -I{} bash -c \'{} -version 2>&1 | head -n 2 | '
+            'paste -sd "\t" | tr -d "\n"; printf "\t{}\n"\''
+        )
+        pattern = r"\"([0-9\._]+)\".*\t(.+)\t(/.+)/bin/java"
+    elif OS == "Darwin":
+        command = "/usr/libexec/java_home -V 2>&1"
+        pattern = r"^\s*([0-9\._]+)\s+(.+\")\s*(/.+$)"
+    else:
+        raise NotImplementedError(f"OS not supported: {OS}")
+    versions: str = run_operation(command, "Getting Java versions").stdout.strip()
+    matches = re.findall(pattern, versions, re.MULTILINE)
+    # order matches by version number
+    matches = sorted(matches, key=lambda x: get_version_number(x[0].strip()), reverse=True)
+    version_list = [
+        JavaVersion(version=version[0].strip(), path=version[2].strip(), description=version[1].strip())
+        for version in matches
+    ]
     return version_list
 
 

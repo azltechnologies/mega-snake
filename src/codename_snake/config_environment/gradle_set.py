@@ -166,20 +166,25 @@ def _get_versions() -> list[GradleVersion]:
         list[GradleVersion]: List of GradleVersion objects
     """
     version_list: list[GradleVersion] = []
+    command: str
+    pattern: str
+    suffix: str
     if OS == "Windows":
         # ToDO: Implement Windows version
         raise NotImplementedError("Windows version pending implementation")
     if OS == "Linux":
-        # ToDO: Implement Linux version
-        raise NotImplementedError("Linux version pending implementation")
+        command = "update-alternatives --list gradle"
+        pattern = r"(^.*?([0-9\._]+))/bin/gradle$"
+        suffix = ""
     if OS == "Darwin":
-        versions: str = run_operation(
-            "find $(brew --cellar) -type d -depth 2 2>/dev/null | grep gradle", "Getting Gradle versions"
-        ).stdout.strip()
-        matches = re.findall(r"(^.*/([0-9\._]+))$", versions, re.MULTILINE)
-        # order matches by version number
-        matches = sorted(matches, key=lambda x: get_version_number(x[1].strip()), reverse=True)
-        version_list = [
-            GradleVersion(version=version[1].strip(), path=version[0].strip() + "/libexec") for version in matches
-        ]
+        command = "find $(brew --cellar) -type d -depth 2 2>/dev/null | grep gradle"
+        pattern = r"(^.*/([0-9\._]+))$"
+        suffix = "/libexec"
+    versions: str = run_operation(command, "Getting Gradle versions").stdout.strip()
+    matches = re.findall(pattern, versions, re.MULTILINE)
+    # order matches by version number
+    matches = sorted(matches, key=lambda x: get_version_number(x[1].strip()), reverse=True)
+    version_list = [
+        GradleVersion(version=version[1].strip(), path=version[0].strip() + suffix) for version in matches
+    ]
     return version_list
