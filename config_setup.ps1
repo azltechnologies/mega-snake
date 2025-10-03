@@ -18,13 +18,18 @@ function snake {
     $ws_config_home = $PSScriptRoot
     $ws_shell = "powershell"
     $properties_file = "$ws_config_home/src/config.properties"
+    $python_virtual_key =  $IsWindows ? "python_virtual_ps1_win" : "python_virtual_ps1_osx"
 
     # read prop working_path from properties file
-    $re_py_env = $(Get-Content $properties_file | Select-String -Pattern "python_virtual_ps1" | ForEach-Object { $_ -replace "python_virtual_ps1=", "" })
+    $re_py_env = $(Get-Content $properties_file | Select-String -Pattern "$python_virtual_key" | ForEach-Object { $_ -replace "$python_virtual_key=", "" })
     $py_module = $(Get-Content $properties_file | Select-String -Pattern "python_module" | ForEach-Object { $_ -replace "python_module=", "" })
     $python_env = "$ws_config_home/$re_py_env"
     & $python_env
     $env:PYTHONPATH = "$ws_config_home"
+    
+    if ($IsWindows) {
+        New-Alias -Scope Local -Name python3 -Value python
+    }
 
     if ($args.Count -eq 0) {
         python3 -m $py_module --shell "$ws_shell" --help
