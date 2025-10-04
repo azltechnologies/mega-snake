@@ -181,8 +181,7 @@ def _get_versions() -> list[GradleVersion]:
     """
     version_list: list[GradleVersion] = []
     pattern: str = r"^(.+)\t(.+)$"
-    command_details: Callable[[str], str]
-    suffix: str = ""
+    command_details: Callable[[str], str] = lambda path: f'echo "{path}/lib" | xargs ls | grep -oE "^gradle-core-[0-9\\.]+\\.jar" | sed "s:gradle-core-::" | sed "s:\\.jar::"'
     if OS == "Windows":
         command_paths = (
             'scoop list 6>&1 | Where-Object { $_.Name -like "gradle*" } '
@@ -191,17 +190,14 @@ def _get_versions() -> list[GradleVersion]:
         command_details = lambda path: f"(Get-ChildItem \"{path}\\lib\\\" 6>&1 | Where-Object {{ $_.Name -match '^gradle-core-[0-9\\.]+\\.jar' }}).Name -replace 'gradle-core-', '' -replace '\\.jar', ''"
     if OS == "Linux":
         command_paths = "update-alternatives --list gradle | sed 's:/bin/gradle$::'"
-        command_details = lambda path: f'echo "{path}/lib" | xargs ls | grep -oE "^gradle-core-[0-9\\.]+\\.jar" | sed "s:gradle-core-::" | sed "s:\\.jar::"'
     if OS == "Darwin":
-        command = "find $(brew --cellar) -type d -depth 2 2>/dev/null | grep gradle"
-        pattern = r"(^.*/([0-9\._]+))$"
-        suffix = "/libexec"
+        command_paths = "find $(brew --cellar) -type d -depth 2 2>/dev/null | grep gradle | sed -E 's/$/\\/libexec/'"
     paths: list[str] = run_operation(command_paths, "Getting Gradle versions").stdout.strip().splitlines()
     details: str = "\n".join(map(lambda path: _get_version_from_commnad(path, command_details), paths))
     matches = re.findall(pattern, details, re.MULTILINE)
     # order matches by version number
     matches = sorted(matches, key=lambda x: get_version_number(x[1].strip()), reverse=True)
     version_list = [
-        GradleVersion(version=version[1].strip(), _path=version[0].strip() + suffix) for version in matches
+        GradleVersion(version=version[1].strip(), _path=version[0].strip()) for version in matches
     ]
     return version_list

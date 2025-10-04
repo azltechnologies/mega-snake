@@ -226,7 +226,7 @@ def _get_versions() -> list[JavaVersion]:
     """
     version_list: list[JavaVersion] = []
     pattern: str = r"\"([0-9\._]+)\".*\t(.+?)\t.+\t([^\t]+)/bin/.+$"
-    command_details: Callable[[str], str]
+    command_details: Callable[[str], str] = lambda path: f'{path} -version 2>&1'
     if OS == "Windows":
         command_paths = (
             'scoop list 6>&1 | Where-Object { $_.Source -eq "java" } '
@@ -237,10 +237,8 @@ def _get_versions() -> list[JavaVersion]:
         )
     elif OS == "Linux":
         command_paths ="update-alternatives --list java"
-        command_details = lambda path: f'{path} -version 2>&1'
     elif OS == "Darwin":
-        command = "/usr/libexec/java_home -V 2>&1"
-        pattern = r"^\s*([0-9\._]+)\s+(.+\")\s*(/.+$)"
+        command_paths = "/usr/libexec/java_home -V 2>&1 | grep -oE '\"\\s+/.+$' | sed -E 's/^\" //' | sed -E 's/$/\\/bin\\/java/'"
     else:
         raise NotImplementedError(f"OS not supported: {OS}")
     paths: list[str] = run_operation(command_paths, "Getting Java versions").stdout.strip().splitlines()
