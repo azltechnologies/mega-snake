@@ -214,9 +214,15 @@ def _get_versions() -> list[JavaVersion]:
     command: str
     pattern: str
     if OS == "Windows":
-        # ToDO: Implement Windows version
-        raise NotImplementedError("Windows version pending implementation")
-    if OS == "Linux":
+        command = (
+            'scoop list | Where-Object { $_.Source -eq "java" } '
+            '| ForEach-Object { [pscustomobject]@{ Version = $_.Version; Path = scoop prefix $_.Name } } '
+            '| ForEach-Object { "$($_.Version)'
+            '`t $(& (Join-Path $_.Path "/bin/java.exe") -version 2>&1)'
+            '`t$($_.Path)" }'
+        )
+        pattern = r"(\S+)\t(.*)\t(.+)"
+    elif OS == "Linux":
         command = (
             'update-alternatives --list java | xargs -I{} bash -c \'{} -version 2>&1 | head -n 2 | '
             'paste -sd "\t" | tr -d "\n"; printf "\t{}\n"\''

@@ -61,7 +61,7 @@ ignore-patterns = ["\\.venv/.*", ".+\\.pyi", "/opt/.*",".*/site-packages/.*", "w
 
 [tool.pylint.messages_control]
 enable = ["MissingReturnTypeChecker"]
-disable = ["R0903", "I1101"]
+disable = ["R0903", "I1101", "C0301"]
 
 [tool.pylint.format]
 max-line-length = 200

@@ -37,10 +37,18 @@ class ToolVersion:
     """
 
     version: str
-    path: str
+    _path: str
     default: bool = field(default=False)
     id: int = field(init=False)
 
+    @property
+    def path(self) -> str:
+        """Get the installation path with normalized slashes."""
+        return self._path.replace("\\", "/")
+
+    @path.setter
+    def path(self, value: str) -> None:
+        self._path = value
     _id_counter: int = 0  # Class variable to keep track of the count
 
     def __post_init__(self) -> None:

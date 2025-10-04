@@ -8,7 +8,6 @@ import inspect
 import os
 from datetime import datetime
 from codename_snake.util import formatting
-from codename_snake.util.util import get_validated_input
 from codename_snake.constants import SHELL_OPT, LOGGING_NAME_TO_LEVEL, LOGGING_LEVEL_TO_NANE
 
 SOURCE_FOLDER: str = "/src"
@@ -292,6 +291,7 @@ def _find_code_workspace_files(directory: str) -> str:
     """
     Find the .code-workspace file in the specified directory
     """
+    from codename_snake.util.util import get_validated_input
     directory = os.path.abspath(directory)
     # Find all .code-workspace files in the specified directory
     workspace_files = glob.glob(os.path.join(directory, "*.code-workspace"))

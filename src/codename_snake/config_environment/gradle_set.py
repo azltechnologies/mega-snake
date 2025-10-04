@@ -185,6 +185,6 @@ def _get_versions() -> list[GradleVersion]:
     # order matches by version number
     matches = sorted(matches, key=lambda x: get_version_number(x[1].strip()), reverse=True)
     version_list = [
-        GradleVersion(version=version[1].strip(), path=version[0].strip() + suffix) for version in matches
+        GradleVersion(version=version[1].strip(), _path=version[0].strip() + suffix) for version in matches
     ]
     return version_list
