@@ -37,7 +37,7 @@ def load_json_with_comments(file_path: str) -> dict:
         return parser.loads(json_str)
 
 
-def run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str]:
+def run_operation(cwd: str, description: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     """
     Runs the given command and retries on failure up to 3 times.
 
@@ -55,7 +55,7 @@ def run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str
         flag: str = "-c" if platform.system() != "Windows" else "-Command"
         try:
             ws_advice(f"Running: {cwd}")
-            result = subprocess.run([shell, flag, cwd], shell=False, check=True, capture_output=True, text=True)
+            result = subprocess.run([shell, flag, cwd], shell=False, check=check, capture_output=True, text=True)
             ws_advice(f"{description} successfully on attempt {attempt}!")
             ws_advice(f"stdout: {result.stdout}")
             break  # Exit the loop on successful push

@@ -1,4 +1,4 @@
-""" Properties for the application """
+"""Properties for the application"""
 
 from dataclasses import dataclass, field
 import glob
@@ -18,7 +18,7 @@ def _get_package_root() -> str:
     python_path: Optional[str] = os.getenv("PYTHONPATH")
     if not python_path:
         raise EnvironmentError("PYTHONPATH environment variable not set")
-    return f'{python_path}{SOURCE_FOLDER}'
+    return f"{python_path}{SOURCE_FOLDER}"
 
 
 def _check_forbidden_execution(
@@ -287,11 +287,13 @@ def init_app_properties(log_level: str, shell: Optional[str], light_weight: bool
     formatting.ws_advice(f"Set local config file: {app_props._retrieve_property("local_config_file")}")
 
 
+# pylint: disable=C0415
 def _find_code_workspace_files(directory: str) -> str:
     """
     Find the .code-workspace file in the specified directory
     """
     from codename_snake.util.util import get_validated_input
+
     directory = os.path.abspath(directory)
     # Find all .code-workspace files in the specified directory
     workspace_files = glob.glob(os.path.join(directory, "*.code-workspace"))

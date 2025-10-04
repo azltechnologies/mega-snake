@@ -2,7 +2,7 @@
 
 import re
 import json
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 import typing
 import jq
 import click
@@ -159,6 +159,20 @@ def _workspace_update(json_data: Any, temp_path: str, workspace_file: str) -> No
     update_workspace(updated_json_data, temp_path, workspace_file)
 
 
+def _get_version_from_commnad(path: str, command: Callable[[str], str]) -> str:
+    """Get Gradle version from the command output.
+
+    Args:
+        path (str): Path to the Gradle executable
+    Returns:
+        str: Gradle version details
+    """
+    output: str = run_operation(command(path), "Getting Gradle details").stdout.strip()
+    return f"{path}\t{output}"
+
+
+# pylint: disable=C3001
+# flake8: noqa: E501
 def _get_versions() -> list[GradleVersion]:
     """Get Gradle versions installed on the system.
 
@@ -166,22 +180,25 @@ def _get_versions() -> list[GradleVersion]:
         list[GradleVersion]: List of GradleVersion objects
     """
     version_list: list[GradleVersion] = []
-    command: str
-    pattern: str
-    suffix: str
+    pattern: str = r"^(.+)\t(.+)$"
+    command_details: Callable[[str], str]
+    suffix: str = ""
     if OS == "Windows":
-        # ToDO: Implement Windows version
-        raise NotImplementedError("Windows version pending implementation")
+        command_paths = (
+            'scoop list 6>&1 | Where-Object { $_.Name -like "gradle*" } '
+            '| ForEach-Object { "$(scoop prefix $_.Name)" } '
+        )
+        command_details = lambda path: f"(Get-ChildItem \"{path}\\lib\\\" 6>&1 | Where-Object {{ $_.Name -match '^gradle-core-[0-9\\.]+\\.jar' }}).Name -replace 'gradle-core-', '' -replace '\\.jar', ''"
     if OS == "Linux":
         command = "update-alternatives --list gradle"
         pattern = r"(^.*?([0-9\._]+))/bin/gradle$"
-        suffix = ""
     if OS == "Darwin":
         command = "find $(brew --cellar) -type d -depth 2 2>/dev/null | grep gradle"
         pattern = r"(^.*/([0-9\._]+))$"
         suffix = "/libexec"
-    versions: str = run_operation(command, "Getting Gradle versions").stdout.strip()
-    matches = re.findall(pattern, versions, re.MULTILINE)
+    paths: list[str] = run_operation(command_paths, "Getting Gradle versions").stdout.strip().splitlines()
+    details: str = "\n".join(map(lambda path: _get_version_from_commnad(path, command_details), paths))
+    matches = re.findall(pattern, details, re.MULTILINE)
     # order matches by version number
     matches = sorted(matches, key=lambda x: get_version_number(x[1].strip()), reverse=True)
     version_list = [

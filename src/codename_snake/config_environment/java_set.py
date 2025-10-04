@@ -4,7 +4,7 @@ import os
 import re
 import json
 import shutil
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 import typing
 import jq
 import click
@@ -204,6 +204,20 @@ def _set_version_runtime(versions: list[JavaVersion], json_data: Any) -> str:
     return updated_json_data
 
 
+def _get_version_from_commnad(path: str, command: Callable[[str], str]) -> str:
+    """Get Java version from the command output.
+
+    Args:
+        path (str): Path to the Java executable
+    Returns:
+        str: Java version details
+    """
+    output: str = run_operation(command(path), "Getting Java details").stdout.strip()
+    return f"{output.replace('\n', '\t')}\t{path}"
+
+
+# pylint: disable=C3001
+# flake8: noqa: E501
 def _get_versions() -> list[JavaVersion]:
     """Get Java versions installed on the system.
 
@@ -211,20 +225,19 @@ def _get_versions() -> list[JavaVersion]:
         list[JavaVersion]: List of JavaVersion objects
     """
     version_list: list[JavaVersion] = []
-    command: str
-    pattern: str
+    pattern: str = r"\"([0-9\._]+)\".*\t(.+?)\t.+\t([^\t]+)/bin/.+$"
+    command_details: Callable[[str], str]
     if OS == "Windows":
-        command = (
-            'scoop list | Where-Object { $_.Source -eq "java" } '
-            '| ForEach-Object { [pscustomobject]@{ Version = $_.Version; Path = scoop prefix $_.Name } } '
-            '| ForEach-Object { "$($_.Version)'
-            '`t $(& (Join-Path $_.Path "/bin/java.exe") -version 2>&1)'
-            '`t$($_.Path)" }'
+        command_paths = (
+            'scoop list 6>&1 | Where-Object { $_.Source -eq "java" } '
+            '| ForEach-Object { "$(scoop prefix $_.Name)/bin/java.exe" }'
         )
-        pattern = r"(\S+)\t(.*)\t(.+)"
+        command_details = (
+            lambda path: f'$(& \'{path}\' -version 2>&1  | ForEach-Object {{ $_ -replace "\\n", "\\n\\n" }} | Out-String)'
+        )
     elif OS == "Linux":
         command = (
-            'update-alternatives --list java | xargs -I{} bash -c \'{} -version 2>&1 | head -n 2 | '
+            "update-alternatives --list java | xargs -I{} bash -c '{} -version 2>&1 | head -n 2 | "
             'paste -sd "\t" | tr -d "\n"; printf "\t{}\n"\''
         )
         pattern = r"\"([0-9\._]+)\".*\t(.+)\t(/.+)/bin/java"
@@ -233,8 +246,9 @@ def _get_versions() -> list[JavaVersion]:
         pattern = r"^\s*([0-9\._]+)\s+(.+\")\s*(/.+$)"
     else:
         raise NotImplementedError(f"OS not supported: {OS}")
-    versions: str = run_operation(command, "Getting Java versions").stdout.strip()
-    matches = re.findall(pattern, versions, re.MULTILINE)
+    paths: list[str] = run_operation(command_paths, "Getting Java versions").stdout.strip().splitlines()
+    details: str = "\n".join(map(lambda path: _get_version_from_commnad(path, command_details), paths))
+    matches = re.findall(pattern, details, re.MULTILINE)
     # order matches by version number
     matches = sorted(matches, key=lambda x: get_version_number(x[0].strip()), reverse=True)
     version_list = [
