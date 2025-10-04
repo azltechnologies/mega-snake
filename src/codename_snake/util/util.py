@@ -15,6 +15,7 @@ from jsoncomment import JsonComment
 from codename_snake.util.formatting import ws_advice, ws_warning
 from codename_snake.util.props import get_property
 
+OS = platform.system()
 
 # Initialize colopiprama
 init(autoreset=True)
@@ -49,10 +50,16 @@ def run_operation(cwd: str, description: str, check: bool = True) -> subprocess.
         subprocess.CompletedProcess[str]
     """
     num_retries = 3
-    ws_advice(f"Running operation: {description}")
+    ws_advice(f"Running operation: {description} ñnCommand: {cwd}")
     for attempt in range(1, num_retries + 1):
         shell: str = get_property("shell")
-        flag: str = "-c" if platform.system() != "Windows" else "-Command"
+        if OS == "Windows" and shell not in ["powershell", "pwsh"]:
+            shell = "powershell"
+        elif OS != "Darwin" and shell not in ["bash", "zsh"]:
+            shell = "zsh"
+        elif OS == "Linux" and shell not in ["bash", "zsh"]:
+            shell = "bash"
+        flag: str = "-Command" if shell in ["powershell", "pwsh"] else "-c"
         try:
             ws_advice(f"Running: {cwd}")
             result = subprocess.run([shell, flag, cwd], shell=False, check=check, capture_output=True, text=True)
@@ -64,7 +71,11 @@ def run_operation(cwd: str, description: str, check: bool = True) -> subprocess.
             ws_warning(f"Error details: {error.stderr}")
             if attempt == num_retries:
                 raise subprocess.SubprocessError(
-                    f"{description} failed after {num_retries} attempts.\nError: {error.stderr}\nCommnad: {cwd}"
+                    (
+                        f"{description} failed after {num_retries} attempts.\n"
+                        f"Error: {error.stderr}\n"
+                        f"Commnad: {cwd}, Shell: {shell}"
+                    )
                 ) from error
             ws_warning(f"Retrying {description} in 2 seconds...")
             time.sleep(2)  # Wait 2 seconds before retrying

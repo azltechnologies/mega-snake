@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 import glob
 from configparser import ConfigParser
+import shutil
 from typing import Optional
 import inspect
 import os
@@ -270,6 +271,13 @@ def init_app_properties(log_level: str, shell: Optional[str], light_weight: bool
 
     if not shell:
         raise EnvironmentError("Environment variable 'WS_SHELL' is not set")
+    if not shutil.which(shell):
+        if shell == "powershell" and shutil.which("pwsh"):
+            shell = "pwsh"
+        elif shell == "pwsh" and shutil.which("powershell"):
+            shell = "powershell"
+        else:
+            raise ValueError(f"Shell '{shell}' not found in PATH")
     try:
         AppProperties(log_level, shell, properties)
     except FileNotFoundError as e:

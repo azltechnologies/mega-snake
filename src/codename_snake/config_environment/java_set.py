@@ -22,7 +22,7 @@ from codename_snake.config_environment.models.tools_version import (
 )
 from codename_snake.util.util import run_operation, load_json_with_comments
 from codename_snake.util.props import get_property
-from codename_snake.util.formatting import ws_info, ws_success, ws_warning
+from codename_snake.util.formatting import ws_info, ws_success, ws_warning, ws_advice
 
 
 @click.command(
@@ -212,6 +212,7 @@ def _get_version_from_commnad(path: str, command: Callable[[str], str]) -> str:
     Returns:
         str: Java version details
     """
+    ws_advice(f"Getting Java details from {path}")
     output: str = run_operation(command(path), "Getting Java details").stdout.strip()
     return f"{output.replace('\n', '\t')}\t{path}"
 
@@ -242,6 +243,7 @@ def _get_versions() -> list[JavaVersion]:
     else:
         raise NotImplementedError(f"OS not supported: {OS}")
     paths: list[str] = run_operation(command_paths, "Getting Java versions").stdout.strip().splitlines()
+    ws_advice(f"Found {len(paths)} Java installations on the system\n{paths}")
     details: str = "\n".join(map(lambda path: _get_version_from_commnad(path, command_details), paths))
     matches = re.findall(pattern, details, re.MULTILINE)
     # order matches by version number

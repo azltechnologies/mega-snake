@@ -41,7 +41,7 @@ def execute(override: bool) -> None:  # previously initialLoad
             case "bash" | "zsh":
                 contents += ("example() {\n    snake msg 'Hello, World!'\n}\nexport "
                              "ORG_GRADLE_PROJECT_example_password='some value'\n")
-            case "powershell":
+            case "powershell" | "pwsh":
                 contents = ("function example {\n    snake msg 'Hello, World!'\n}\n"
                             "$env:ORG_GRADLE_PROJECT_example_password = 'some value'\n")
             case _:

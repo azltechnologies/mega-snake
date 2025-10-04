@@ -19,7 +19,7 @@ def get_local_file() -> str:
     match shell:
         case "bash" | "zsh":
             local_file = f"{local_file}.sh"
-        case "powershell":
+        case "powershell" | "pwsh":
             local_file = f"{local_file}.ps1"
         case _:
             raise NotImplementedError(f"Shell type not supported: {shell}")
