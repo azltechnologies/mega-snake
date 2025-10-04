@@ -41,7 +41,7 @@ for windows:
       ```json
             {
                "python.binPath": ".venv/Scripts",
-               "python.defaultInterpreterPath": ".venv/Scripts/python3.13"
+               "python.defaultInterpreterPath": ".venv/Scripts/python.exe"
             }
       ```
 

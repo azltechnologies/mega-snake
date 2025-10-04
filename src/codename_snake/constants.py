@@ -27,7 +27,7 @@ LOGGING_LEVEL_TO_NANE = {
     NOTSET: "NOTSET",
 }
 LOGGING_OPT: list[str] = list(LOGGING_NAME_TO_LEVEL.keys())
-SHELL_OPT: list[str] = ["bash", "zsh", "powershell"]
+SHELL_OPT: list[str] = ["bash", "zsh", "powershell", "pwsh"]
 
 MSG_OPT: dict[str, Callable] = {
     "S": formatting.ws_success,

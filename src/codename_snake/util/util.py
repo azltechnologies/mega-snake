@@ -5,6 +5,7 @@ This module contains utility functions for common operations.
 import json
 import re
 import subprocess
+import platform
 import time
 from typing import Any, Callable, Optional
 import inspect
@@ -12,6 +13,9 @@ import click
 from colorama import init, Fore, Back, Style
 from jsoncomment import JsonComment
 from codename_snake.util.formatting import ws_advice, ws_warning
+from codename_snake.util.props import get_property
+
+OS = platform.system()
 
 # Initialize colopiprama
 init(autoreset=True)
@@ -34,7 +38,7 @@ def load_json_with_comments(file_path: str) -> dict:
         return parser.loads(json_str)
 
 
-def run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str]:
+def run_operation(cwd: str, description: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     """
     Runs the given command and retries on failure up to 3 times.
 
@@ -46,11 +50,19 @@ def run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str
         subprocess.CompletedProcess[str]
     """
     num_retries = 3
-    ws_advice(f"Running operation: {description}")
+    ws_advice(f"Running operation: {description} ñnCommand: {cwd}")
     for attempt in range(1, num_retries + 1):
+        shell: str = get_property("shell")
+        if OS == "Windows" and shell not in ["powershell", "pwsh"]:
+            shell = "powershell"
+        elif OS != "Darwin" and shell not in ["bash", "zsh"]:
+            shell = "zsh"
+        elif OS == "Linux" and shell not in ["bash", "zsh"]:
+            shell = "bash"
+        flag: str = "-Command" if shell in ["powershell", "pwsh"] else "-c"
         try:
             ws_advice(f"Running: {cwd}")
-            result = subprocess.run(cwd, shell=True, check=True, capture_output=True, text=True)
+            result = subprocess.run([shell, flag, cwd], shell=False, check=check, capture_output=True, text=True)
             ws_advice(f"{description} successfully on attempt {attempt}!")
             ws_advice(f"stdout: {result.stdout}")
             break  # Exit the loop on successful push
@@ -59,7 +71,11 @@ def run_operation(cwd: str, description: str) -> subprocess.CompletedProcess[str
             ws_warning(f"Error details: {error.stderr}")
             if attempt == num_retries:
                 raise subprocess.SubprocessError(
-                    f"{description} failed after {num_retries} attempts.\nError: {error.stderr}\nCommnad: {cwd}"
+                    (
+                        f"{description} failed after {num_retries} attempts.\n"
+                        f"Error: {error.stderr}\n"
+                        f"Commnad: {cwd}, Shell: {shell}"
+                    )
                 ) from error
             ws_warning(f"Retrying {description} in 2 seconds...")
             time.sleep(2)  # Wait 2 seconds before retrying
@@ -151,14 +167,13 @@ def get_remote_url() -> Optional[str]:
     return re.sub(r"\.git$", "", run_operation(f"git remote get-url {remote}", "Getting remote URL").stdout.strip())
 
 
-def get_main_branch() -> str:
+def get_main_branch(remote: Optional[str]) -> str:
     """
     Gets the main branch of the repository.
 
     Returns:
         str
     """
-    remote: Optional[str] = get_remote()
     if not remote:
         return run_operation("git symbolic-ref --short HEAD", "Getting current local branch").stdout.strip()
     result = run_operation(f"git remote show {remote}", "Getting main branch").stdout.strip()
@@ -173,7 +188,7 @@ def get_main_branch() -> str:
 
 def get_current_commit() -> str:
     """
-    Gets the current branch of the repository.
+    Gets the current commit of the repository.
 
     Returns:
         str

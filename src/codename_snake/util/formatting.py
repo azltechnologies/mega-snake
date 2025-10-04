@@ -74,11 +74,11 @@ def config_log(path: str, level: int) -> None:
     error_formatter = logging.Formatter(error_format)
 
     # Create a file handler with encoding
-    default_file_handler = logging.FileHandler(path, encoding="utf-8")
+    default_file_handler = logging.FileHandler(path, encoding="utf-8", delay=True)
     default_file_handler.setLevel(logging.DEBUG)
     default_file_handler.setFormatter(default_formatter)
     default_file_handler.addFilter(DefaultFilter())
-    error_file_handler = logging.FileHandler(path, encoding="utf-8")
+    error_file_handler = logging.FileHandler(path, encoding="utf-8", delay=True)
     error_file_handler.setLevel(logging.ERROR)
     error_file_handler.setFormatter(error_formatter)
     error_file_handler.addFilter(ErrorFilter())
@@ -141,7 +141,7 @@ def ws_warning(message: str) -> None:
 def _ws_error(error: BaseException, message: Optional[str] = None) -> None:
     """Print an error message"""
     if not message:
-        message = str(error)
+        message = str(error) if str(error) else "unknown error"
     print(Back.BLACK + Fore.RED + message)
     # Capture the traceback
     tb = traceback.extract_tb(error.__traceback__)

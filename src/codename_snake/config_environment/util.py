@@ -19,7 +19,7 @@ def get_local_file() -> str:
     match shell:
         case "bash" | "zsh":
             local_file = f"{local_file}.sh"
-        case "powershell":
+        case "powershell" | "pwsh":
             local_file = f"{local_file}.ps1"
         case _:
             raise NotImplementedError(f"Shell type not supported: {shell}")
@@ -57,5 +57,5 @@ def get_version_number(s_str: str) -> int:
     # Remove any non-numeric characters
     arr_s = ["".join(filter(str.isdigit, s)) for s in arr_s]
     arr_s = arr_s + ["0"] * (3 - len(arr_s)) if len(arr_s) < 3 else arr_s
-    i_s = int(arr_s[0]) * 100 + int(arr_s[1]) * 10 + int(arr_s[2])
+    i_s = int(arr_s[0]) * 1000000 + int(arr_s[1]) * 1000 + int(arr_s[2])
     return i_s

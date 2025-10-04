@@ -458,21 +458,21 @@ def test_fail_scenarios(request) -> None:
             init_app_properties(log_level, shell, light_weight)
         mk_os_access.side_effect.set_values([])
         reset_mocks(*mocks.values())
-        
+
         # Test when log level string is none
-        with patch("codename_snake.util.props.LOGGING_NAME_TO_LEVEL", {"DEBUG": None}) as mock_check:
+        with patch("codename_snake.util.props.LOGGING_NAME_TO_LEVEL", {"DEBUG": None}):
             with pytest.raises(ValueError):
                 init_app_properties(log_level, shell, light_weight)
         reset_mocks(*mocks.values())
 
         # Test when log level is none
-        with patch("codename_snake.util.props.LOGGING_LEVEL_TO_NANE", {10: None}) as mock_check:
+        with patch("codename_snake.util.props.LOGGING_LEVEL_TO_NANE", {10: None}):
             with pytest.raises(ValueError):
                 init_app_properties(log_level, shell, light_weight)
         reset_mocks(*mocks.values())
 
         # Test when log level is not found
-        with patch("codename_snake.util.props.LOGGING_LEVEL_TO_NANE", {}) as mock_check:
+        with patch("codename_snake.util.props.LOGGING_LEVEL_TO_NANE", {}):
             with pytest.raises(KeyError):
                 init_app_properties(log_level, shell, light_weight)
         reset_mocks(*mocks.values())
@@ -480,13 +480,13 @@ def test_fail_scenarios(request) -> None:
         # Test when retrieving unknown property
         init_app_properties(log_level, shell, light_weight)
         with pytest.raises(KeyError):
-            AppProperties.get_instance()._retrieve_property("unknown")
+            AppProperties.get_instance()._retrieve_property("unknown") # pylint: disable=W0212
         reset_mocks(*mocks.values())
 
         # Test when getting props directly
         init_app_properties(log_level, shell, light_weight)
         with pytest.raises(PermissionError):
-            props = AppProperties.get_instance().props
+            _ = AppProperties.get_instance().props
         reset_mocks(*mocks.values())
 
         # Test when empty props are passed
@@ -496,7 +496,7 @@ def test_fail_scenarios(request) -> None:
             side_effect=lambda method, message, reload, props: check_forbidden_execution(
                 method, message, reload, None
             ),
-        ) as mock_check:
+        ):
             with pytest.raises(ValueError):
                 AppProperties.get_instance().log_level = LOGGING_NAME_TO_LEVEL["INFO"]
         reset_mocks(*mocks.values())
@@ -509,7 +509,7 @@ def test_fail_scenarios(request) -> None:
             return result
 
         # Test when property is not found at check_property
-        with patch("codename_snake.util.props._check_property", side_effect=check_property_side_effect) as mock_check:
+        with patch("codename_snake.util.props._check_property", side_effect=check_property_side_effect):
             with pytest.raises(KeyError):
                 init_app_properties(log_level, shell, light_weight)
             reset_mocks(*mocks.values())

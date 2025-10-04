@@ -95,7 +95,7 @@ class RemoteBranch:
         raise ValueError("Invalid input string. String is empty or None")
 
     @classmethod
-    def from_branch(cls, branch: str, filter_by: str, main_branch: str) -> Optional["RemoteBranch"]:
+    def from_branch(cls, branch: str, filter_by: str, main_branch: str, remote: str) -> Optional["RemoteBranch"]:
         """
         Get the remote branch info from a branch
 
@@ -106,7 +106,7 @@ class RemoteBranch:
         Returns:
             RemoteBranch
         """
-        pattern1 = r"(?<=^remotes/origin/)\S+"
+        pattern1 = rf"(?<=^remotes/{remote}/)\S+"
         match = re.search(pattern1, branch)
         if not match:
             raise LookupError(f"Unable to parse local branch name for remote branch: {branch}")
@@ -117,7 +117,7 @@ class RemoteBranch:
         ).stdout.strip()
         if not within_branches:
             raise LookupError(f"Commit {commit.commit_hash} not found in any branch")
-        pattern: str = rf"\s*remotes/origin/{main_branch}\s*$"
+        pattern: str = rf"\s*remotes/{remote}/{main_branch}\s*$"
         merged_on_main: bool = bool(re.search(pattern, within_branches, re.MULTILINE))
         if filter_by == "M" and not merged_on_main:
             return None

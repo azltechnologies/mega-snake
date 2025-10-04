@@ -37,10 +37,18 @@ class ToolVersion:
     """
 
     version: str
-    path: str
+    _path: str
     default: bool = field(default=False)
     id: int = field(init=False)
 
+    @property
+    def path(self) -> str:
+        """Get the installation path with normalized slashes."""
+        return self._path.replace("\\", "/")
+
+    @path.setter
+    def path(self, value: str) -> None:
+        self._path = value
     _id_counter: int = 0  # Class variable to keep track of the count
 
     def __post_init__(self) -> None:
@@ -114,7 +122,7 @@ def find_local_tool_home(path: str, shell: str, var: str) -> Optional[str]:
         local_file_data = file.read()
     if local_file_data:
         match shell:
-            case "powershell":
+            case "powershell" | "pwsh":
                 matches = re.findall(rf"\s*\$env:{var}\s*=\s*(.+)\s*", local_file_data)
                 if matches:
                     return matches[0].replace('"', "").replace("'", "").strip()
@@ -142,7 +150,7 @@ def set_version_local_config(version: ToolVersion, local_parh: str, shell: str, 
         with open(local_parh, "r", encoding="utf-8") as file:
             local_file_data = file.read()
         match shell:
-            case "powershell":
+            case "powershell" | "pwsh":
                 pattern = rf"^\s*\$env:{var}\s*=.+$"
                 local_file_data = re.sub(pattern, "\n", local_file_data, flags=re.MULTILINE)
                 pattern = rf"^\s*\$env:PATH\s*=\s*\"\$env:{var}\{path_divider}bin\{separator}\$env:PATH\"\s*$"

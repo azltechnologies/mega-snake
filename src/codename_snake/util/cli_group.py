@@ -29,7 +29,7 @@ class CliGroup(RichGroup):
                 super().add_command(alias_cmd, alias)
 
     def add_command_with_alias(self, cmd: click.Command, aliases: list[str] | None = None) -> None:
-        """Adds the ability to add `aliases` to commands."""
+        """Adds the ability to add `|` to commands."""
         if aliases and isinstance(aliases, list):
             setattr(cmd, ATTR_ALIAS, aliases)
             super().add_command(cmd)

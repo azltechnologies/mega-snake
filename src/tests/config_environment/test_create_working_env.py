@@ -1,4 +1,4 @@
-""" Test the java_set module. """
+"""Test the java_set module."""
 
 import builtins
 import json
@@ -19,7 +19,7 @@ from codename_snake.config_environment.create_working_env import (
     GIT_BLAME_QUERY,
     DEFAULT_PROPS,
     FILE_ASSOCIATIONS,
-    FILE_ASSOCIATION_QUERY
+    FILE_ASSOCIATION_QUERY,
 )
 from codename_snake.config_environment.models.github_queries import (
     PrQueries,
@@ -166,8 +166,8 @@ def fixture_add_recommended_extensions() -> Generator[MagicMock]:
         yield mock
 
 
-@pytest.fixture(name="add_default_settings")
-def fixture_add_default_settings() -> Generator[MagicMock]:
+@pytest.fixture(name="mk_add_default_settings")
+def fixture_mk_add_default_settings() -> Generator[MagicMock]:
     """Mock _add_default_settings"""
     with patch("codename_snake.config_environment.create_working_env._add_default_settings") as mock:
         yield mock
@@ -347,7 +347,7 @@ def test_execute(
     mk_os: MagicMock,
     set_gradle: MagicMock,
     _gradle_command: MagicMock,
-    add_default_settings: MagicMock,
+    mk_add_default_settings: MagicMock,
 ) -> None:
     """Test gradle command"""
 
@@ -376,7 +376,7 @@ def test_execute(
             os_getcwd,
             os_path_exists,
             set_gradle,
-            add_default_settings,
+            mk_add_default_settings,
         )
 
     # Test when git_repo is false and build.gradle exists
@@ -394,7 +394,7 @@ def test_execute(
     set_java.assert_called_once()
     os_path_exists.assert_called_once_with(f"{CURRENT_PATH}/build.gradle")
     set_gradle.assert_called_once_with(False, WK_FILE)
-    add_default_settings.assert_called_once_with(WK_FILE, WK_PATH)
+    mk_add_default_settings.assert_called_once_with(WK_FILE, WK_PATH)
     ws_warning.assert_not_called()
     mocks_reset()
 
@@ -414,7 +414,7 @@ def test_execute(
     os_path_exists.assert_has_calls([call(f"{CURRENT_PATH}/build.gradle"), call(f"{CURRENT_PATH}/build.gradle.kts")])
     ws_warning.assert_called_once()
     set_gradle.assert_not_called()
-    add_default_settings.assert_called_once_with(WK_FILE, WK_PATH)
+    mk_add_default_settings.assert_called_once_with(WK_FILE, WK_PATH)
     mocks_reset()
 
 
@@ -848,13 +848,20 @@ def test_launch_substituter(
 ) -> None:
     """testing _launch_substituter private method"""
     # test project sample data
-    project_sample_data = '{"name": "JAVA DEBUG (Attach)", "type": "java", "request": "attach", "port": "${config:snake.java.remoteDebug.port}", "hostName": "localhost", "projectName": "[SUBS_PROJECT]"}'
+    project_sample_data = (
+        '{"name": "JAVA DEBUG (Attach)", "type": "java", "request": "attach",'
+        ' "port": "${config:snake.java.remoteDebug.port}", "hostName": "localhost", "projectName": "[SUBS_PROJECT]"}'
+    )
     result = launch_substituter(project_sample_data)
     assert f'"projectName": "{FOLDER}"' in result
     get_property.assert_not_called()
 
     # test shell sample data
-    shell_sample_data = '{"name": "PYTHON DEBUG (Snake)", "type": "debugpy", "request": "launch", "args": "--shell [SUBS_SHELL] -l debug msg hello world!", "module": "py", "python": "/Users/carlosmorales/IdeaProjects/stuff/.venv/bin/python3.13", "console": "integratedTerminal"}'
+    shell_sample_data = (
+        '{"name": "PYTHON DEBUG (Snake)", "type": "debugpy", "request": "launch",'
+        ' "args": "--shell [SUBS_SHELL] -l debug msg hello world!", "module": "py",'
+        ' "python": "/Users/carlosmorales/IdeaProjects/stuff/.venv/bin/python3.13", "console": "integratedTerminal"}'
+    )
     result = launch_substituter(shell_sample_data)
     assert f'"args": "--shell {OS} -l debug msg hello world!"' in result
     get_property.assert_called_once_with("shell")

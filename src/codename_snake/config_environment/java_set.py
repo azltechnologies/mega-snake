@@ -4,7 +4,7 @@ import os
 import re
 import json
 import shutil
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 import typing
 import jq
 import click
@@ -22,7 +22,7 @@ from codename_snake.config_environment.models.tools_version import (
 )
 from codename_snake.util.util import run_operation, load_json_with_comments
 from codename_snake.util.props import get_property
-from codename_snake.util.formatting import ws_info, ws_success, ws_warning
+from codename_snake.util.formatting import ws_info, ws_success, ws_warning, ws_advice
 
 
 @click.command(
@@ -204,6 +204,21 @@ def _set_version_runtime(versions: list[JavaVersion], json_data: Any) -> str:
     return updated_json_data
 
 
+def _get_version_from_commnad(path: str, command: Callable[[str], str]) -> str:
+    """Get Java version from the command output.
+
+    Args:
+        path (str): Path to the Java executable
+    Returns:
+        str: Java version details
+    """
+    ws_advice(f"Getting Java details from {path}")
+    output: str = run_operation(command(path), "Getting Java details").stdout.strip()
+    return f"{output.replace('\n', '\t')}\t{path}"
+
+
+# pylint: disable=C3001
+# flake8: noqa: E501
 def _get_versions() -> list[JavaVersion]:
     """Get Java versions installed on the system.
 
@@ -211,21 +226,32 @@ def _get_versions() -> list[JavaVersion]:
         list[JavaVersion]: List of JavaVersion objects
     """
     version_list: list[JavaVersion] = []
+    pattern: str = r"\"([0-9\._]+)\".*\t(.+?)\t.+\t([^\t]+)/bin/.+$"
+    command_details: Callable[[str], str] = lambda path: f'{path} -version 2>&1'
     if OS == "Windows":
-        # ToDO: Implement Windows version
-        raise NotImplementedError("Windows version pending implementation")
-    if OS == "Linux":
-        # ToDO: Implement Linux version
-        raise NotImplementedError("Linux version pending implementation")
-    if OS == "Darwin":
-        versions: str = run_operation("/usr/libexec/java_home -V 2>&1", "Getting Java versions").stdout.strip()
-        matches = re.findall(r"^\s*([0-9\._]+)\s+(.+\")\s*(/.+$)", versions, re.MULTILINE)
-        # order matches by version number
-        matches = sorted(matches, key=lambda x: get_version_number(x[0].strip()), reverse=True)
-        version_list = [
-            JavaVersion(version=version[0].strip(), path=version[2].strip(), description=version[1].strip())
-            for version in matches
-        ]
+        command_paths = (
+            'scoop list 6>&1 | Where-Object { $_.Source -eq "java" } '
+            '| ForEach-Object { "$(scoop prefix $_.Name)/bin/java.exe" }'
+        )
+        command_details = (
+            lambda path: f'$(& \'{path}\' -version 2>&1  | ForEach-Object {{ $_ -replace "\\n", "\\n\\n" }} | Out-String)'
+        )
+    elif OS == "Linux":
+        command_paths ="update-alternatives --list java"
+    elif OS == "Darwin":
+        command_paths = "/usr/libexec/java_home -V 2>&1 | grep -oE '\"\\s+/.+$' | sed -E 's/^\" //' | sed -E 's/$/\\/bin\\/java/'"
+    else:
+        raise NotImplementedError(f"OS not supported: {OS}")
+    paths: list[str] = run_operation(command_paths, "Getting Java versions").stdout.strip().splitlines()
+    ws_advice(f"Found {len(paths)} Java installations on the system\n{paths}")
+    details: str = "\n".join(map(lambda path: _get_version_from_commnad(path, command_details), paths))
+    matches = re.findall(pattern, details, re.MULTILINE)
+    # order matches by version number
+    matches = sorted(matches, key=lambda x: get_version_number(x[0].strip()), reverse=True)
+    version_list = [
+        JavaVersion(version=version[0].strip(), path=version[2].strip(), description=version[1].strip())
+        for version in matches
+    ]
     return version_list
 
 

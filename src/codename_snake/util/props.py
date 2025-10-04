@@ -1,14 +1,14 @@
-""" Properties for the application """
+"""Properties for the application"""
 
 from dataclasses import dataclass, field
 import glob
 from configparser import ConfigParser
+import shutil
 from typing import Optional
 import inspect
 import os
 from datetime import datetime
 from codename_snake.util import formatting
-from codename_snake.util.util import get_validated_input
 from codename_snake.constants import SHELL_OPT, LOGGING_NAME_TO_LEVEL, LOGGING_LEVEL_TO_NANE
 
 SOURCE_FOLDER: str = "/src"
@@ -19,7 +19,7 @@ def _get_package_root() -> str:
     python_path: Optional[str] = os.getenv("PYTHONPATH")
     if not python_path:
         raise EnvironmentError("PYTHONPATH environment variable not set")
-    return f'{python_path}{SOURCE_FOLDER}'
+    return f"{python_path}{SOURCE_FOLDER}"
 
 
 def _check_forbidden_execution(
@@ -271,6 +271,13 @@ def init_app_properties(log_level: str, shell: Optional[str], light_weight: bool
 
     if not shell:
         raise EnvironmentError("Environment variable 'WS_SHELL' is not set")
+    if not shutil.which(shell):
+        if shell == "powershell" and shutil.which("pwsh"):
+            shell = "pwsh"
+        elif shell == "pwsh" and shutil.which("powershell"):
+            shell = "powershell"
+        else:
+            raise ValueError(f"Shell '{shell}' not found in PATH")
     try:
         AppProperties(log_level, shell, properties)
     except FileNotFoundError as e:
@@ -288,10 +295,13 @@ def init_app_properties(log_level: str, shell: Optional[str], light_weight: bool
     formatting.ws_advice(f"Set local config file: {app_props._retrieve_property("local_config_file")}")
 
 
+# pylint: disable=C0415
 def _find_code_workspace_files(directory: str) -> str:
     """
     Find the .code-workspace file in the specified directory
     """
+    from codename_snake.util.util import get_validated_input
+
     directory = os.path.abspath(directory)
     # Find all .code-workspace files in the specified directory
     workspace_files = glob.glob(os.path.join(directory, "*.code-workspace"))

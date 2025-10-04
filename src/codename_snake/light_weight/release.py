@@ -121,4 +121,6 @@ def get_latest_release() -> Release:
         except IndexError:
             limit += 30
             ws_info(f"Could not find the latest release. Increasing limit to {limit} and retrying.")
+    if not lastest_release:
+        raise ValueError("Could not find the latest release. Please check your GitHub repository settings.")
     return lastest_release
