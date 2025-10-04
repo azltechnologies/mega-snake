@@ -236,11 +236,8 @@ def _get_versions() -> list[JavaVersion]:
             lambda path: f'$(& \'{path}\' -version 2>&1  | ForEach-Object {{ $_ -replace "\\n", "\\n\\n" }} | Out-String)'
         )
     elif OS == "Linux":
-        command = (
-            "update-alternatives --list java | xargs -I{} bash -c '{} -version 2>&1 | head -n 2 | "
-            'paste -sd "\t" | tr -d "\n"; printf "\t{}\n"\''
-        )
-        pattern = r"\"([0-9\._]+)\".*\t(.+)\t(/.+)/bin/java"
+        command_paths ="update-alternatives --list java"
+        command_details = lambda path: f'{path} -version 2>&1'
     elif OS == "Darwin":
         command = "/usr/libexec/java_home -V 2>&1"
         pattern = r"^\s*([0-9\._]+)\s+(.+\")\s*(/.+$)"

@@ -190,8 +190,8 @@ def _get_versions() -> list[GradleVersion]:
         )
         command_details = lambda path: f"(Get-ChildItem \"{path}\\lib\\\" 6>&1 | Where-Object {{ $_.Name -match '^gradle-core-[0-9\\.]+\\.jar' }}).Name -replace 'gradle-core-', '' -replace '\\.jar', ''"
     if OS == "Linux":
-        command = "update-alternatives --list gradle"
-        pattern = r"(^.*?([0-9\._]+))/bin/gradle$"
+        command_paths = "update-alternatives --list gradle | sed 's:/bin/gradle$::'"
+        command_details = lambda path: f'echo "{path}/lib" | xargs ls | grep -oE "^gradle-core-[0-9\\.]+\\.jar" | sed "s:gradle-core-::" | sed "s:\\.jar::"'
     if OS == "Darwin":
         command = "find $(brew --cellar) -type d -depth 2 2>/dev/null | grep gradle"
         pattern = r"(^.*/([0-9\._]+))$"

@@ -18,7 +18,13 @@ function snake {
     $ws_config_home = $PSScriptRoot
     $ws_shell = "powershell"
     $properties_file = "$ws_config_home/src/config.properties"
-    $python_virtual_key =  $IsWindows ? "python_virtual_ps1_win" : "python_virtual_ps1_osx"
+    if ($IsWindows) {
+        $python_virtual_key = "python_virtual_ps1_win"
+    } elseif ($IsLinux) {
+        $python_virtual_key = "python_virtual_ps1_linux"
+    } else {
+        $python_virtual_key = "python_virtual_ps1_osx"
+    }
 
     # read prop working_path from properties file
     $re_py_env = $(Get-Content $properties_file | Select-String -Pattern "$python_virtual_key" | ForEach-Object { $_ -replace "$python_virtual_key=", "" })
