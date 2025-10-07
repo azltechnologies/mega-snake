@@ -5,6 +5,7 @@ import re
 from typing import Optional
 from datetime import datetime, timezone
 from codename_snake.util.util import run_operation
+from codename_snake.util.formatting import ws_advice
 
 
 @dataclasses.dataclass
@@ -106,8 +107,14 @@ class RemoteBranch:
         Returns:
             RemoteBranch
         """
+        pattern_branch = branch
+        if pattern_branch.startswith("'") and pattern_branch.endswith("'"):
+            pattern_branch = pattern_branch[1:-1]
+        elif pattern_branch.startswith('"') and pattern_branch.endswith('"'):
+            pattern_branch = pattern_branch[1:-1]
+        ws_advice(f"Parsing branch: {pattern_branch} with remote: {remote}")
         pattern1 = rf"(?<=^remotes/{remote}/)\S+"
-        match = re.search(pattern1, branch)
+        match = re.search(pattern1, pattern_branch)
         if not match:
             raise LookupError(f"Unable to parse local branch name for remote branch: {branch}")
         local_branch: str = match.group(0)

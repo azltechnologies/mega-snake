@@ -78,6 +78,11 @@ def execute(filter_by: str, remote: Optional[str] = None) -> None:
     ws_info(f"Main branch: {main_branch}; Found {total_branches} remote branches to process")
     for match in matches:
         branch = str(match)
+        # if branch include single or double quotes, wrap it in the opposite quotes
+        if '"' in branch:
+            branch = f"'{branch}'"
+        elif "'" in branch:
+            branch = f'"{branch}"'
         ws_info(f"Processing branch: {branch} filtered by: '{filter_by}'")
         if remote:
             opt_remote_branches.append(RemoteBranch.from_branch(branch, filter_by, main_branch, remote))
