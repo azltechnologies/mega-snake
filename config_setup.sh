@@ -26,6 +26,8 @@ snake() {
     local RE_PY_ENV=$(grep "python_virtual_bash" "$PROP_FILE" | sed 's/python_virtual_bash=//')
     local PY_MODULE=$(grep "python_module" "$PROP_FILE" | sed 's/python_module=//')
     local PYTHON_ENV="$WS_CONFIG_HOME/$RE_PY_ENV"
+    local was_active=$VIRTUAL_ENV
+
     source "$PYTHON_ENV"
     export PYTHONPATH="$WS_CONFIG_HOME"
     if [ $# -eq 0 ]; then
@@ -39,6 +41,10 @@ snake() {
     local exit_code=$?
 
     deactivate
+
+    if [ -n "$was_active" ]; then
+        source "$was_active/bin/activate"
+    fi
 
     if [ $exit_code -eq 21 ]; then
         l_reload
