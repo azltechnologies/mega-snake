@@ -4,7 +4,7 @@ import re
 import os
 from typing import Optional
 import click
-from codename_snake.util.formatting import ws_info
+from codename_snake.util.formatting import ws_info, ws_success
 from codename_snake.remote_branches.remote_branch import RemoteBranch
 from codename_snake.util.util import run_operation, get_main_branch, get_remote
 from codename_snake.util.props import get_property
@@ -13,7 +13,7 @@ from codename_snake.constants import REMOTE_BRANCHES_OPT
 
 def get_output_file() -> str:
     """Returns the path to the output file"""
-    return f"{get_property("working_path")}/remote_branches.txt"
+    return f"{get_property('working_path')}/remote_branches.txt"
 
 
 @click.command(
@@ -61,6 +61,7 @@ def execute(filter_by: str, remote: Optional[str] = None) -> None:
         remote = get_remote()
     if not remote:
         raise LookupError("No remote repository found. Please add a remote repository to the current repository.")
+    run_operation("git fetch --all --prune", "Fetching all remotes and pruning deleted branches")
     main_branch: str = get_main_branch(remote)
     list_output: str = get_output_file()
     # check if list_output directory exists. if so, delete it
@@ -77,6 +78,11 @@ def execute(filter_by: str, remote: Optional[str] = None) -> None:
     ws_info(f"Main branch: {main_branch}; Found {total_branches} remote branches to process")
     for match in matches:
         branch = str(match)
+        # if branch include single or double quotes, wrap it in the opposite quotes
+        if '"' in branch:
+            branch = f"'{branch}'"
+        elif "'" in branch:
+            branch = f'"{branch}"'
         ws_info(f"Processing branch: {branch} filtered by: '{filter_by}'")
         if remote:
             opt_remote_branches.append(RemoteBranch.from_branch(branch, filter_by, main_branch, remote))
@@ -92,3 +98,4 @@ def execute(filter_by: str, remote: Optional[str] = None) -> None:
     with open(list_output, "a", encoding="utf-8") as file:
         file.write(output)
     run_operation(f"code {list_output}", "opening remote branches file")
+    ws_success(f"Successfully created remote branches details file at: {list_output}")

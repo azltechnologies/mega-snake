@@ -4,7 +4,7 @@ import os
 from typing import Optional
 import click
 from codename_snake.util.formatting import ws_info, ws_success
-from codename_snake.util.util import get_validated_input, get_remote
+from codename_snake.util.util import get_validated_input, get_remote, run_operation
 from codename_snake.remote_branches.parse_remote_branches import (
     define_branches,
     RemoteBranch,
@@ -18,7 +18,10 @@ from codename_snake.remote_branches.details_remote_branches import execute as re
     name="remoteBranchesCleanUp",
     short_help="Helper function for deleting branches merged branches from the remote repository.",
     help="Iterates over the remote branches asking the user which merged branches to delete",
-    epilog="Requires user input to delete branches",
+    epilog=(
+        "Requires user input to delete branches. "
+        "It doewsn't have any options, just execute it and follow the prompts.\n"
+    ),
 )
 def remote_branches_cleanup() -> None:
     """
@@ -56,4 +59,5 @@ def remote_branches_cleanup() -> None:
     # parsing branches
     garbage: list[str] = parsing_branches(branches_list, remote)
     delete_branches(garbage)
+    run_operation("git fetch --all --prune", "Fetching all remotes and pruning deleted branches")
     ws_success("Successfully deleted branches that have been merged into the main branch from the remote repository")

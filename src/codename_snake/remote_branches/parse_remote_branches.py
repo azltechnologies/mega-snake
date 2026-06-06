@@ -35,7 +35,7 @@ def parsing_branches(branches: list[RemoteBranch], remote: str) -> list[str]:
     Returns:
         list[RemoteBranch]
     """
-    options: list[str] = ["y", "n", "f", "yes", "no", "finalize"]
+    options: list[str] = ["y", "n", "f"]
     main_branch: str = get_main_branch(remote)
     garbage: list[str] = []
     for branch in branches:
@@ -66,7 +66,7 @@ def delete_branches(garbage: list[str]) -> None:
     """
     for branch in garbage:
         try:
-            result = run_operation(f'git push -d origin "{branch}" 2>&1', f"Deleting branch {branch}")
+            result = run_operation(f'git push -d origin "{branch}" --no-verify 2>&1', f"Deleting branch {branch}")
             ws_success(result.stdout.strip())
             continue  # Continue to the next branch
         except subprocess.SubprocessError:

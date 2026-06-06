@@ -1,46 +1,43 @@
-[tool.poetry]
+[project]
 name = "codename_snake"
 version = "0.1.0"
 description = "CLI for setting environment for VSCode coding"
-authors = ["Morales Ortega, Carlos Alberto <carlos.mor.ort@gmail.com>"]
+authors = [{name = "Morales Ortega, Carlos Alberto", email = "carlos.mor.ort@gmail.com"}]
 readme = "README.md"
-packages = [
-    { include = "codename_snake", from = "src" },
-    { include = "tests", from = "src" }
+requires-python = ">=3.13"
+dependencies = [
+    "astroid==3.3.8",
+    "click==8.1.7",
+    "colorama==0.4.6",
+    "directory-tree==1.0.0",
+    "graphql-core==3.2.5",
+    "jq==1.8.0",
+    "json-spec==0.12.0",
+    "jsoncomment==0.4.2",
+    "pyperclip==1.9.0",
+    "rich-click==1.8.5",
+    "types-colorama==0.4.15.20240311",
+    "virtualenv==20.27.1",
+    "pytest-mock==3.14.0",
 ]
 
-
-[tool.poetry.dependencies]
-astroid = "3.3.8"
-click = "8.1.7"
-colorama = "0.4.6"
-directory-tree = "1.0.0"
-graphql-core = "3.2.5"
-jq = "1.8.0"
-json-spec = "0.12.0"
-jsoncomment = "0.4.2"
-poetry = "1.8.4"
-pyperclip = "1.9.0"
-python = "^3.13"
-rich-click = "1.8.5"
-types-colorama = "0.4.15.20240311"
-virtualenv = "20.27.1"
-pytest-mock = "3.14.0"
-
-[tool.poetry.group.dev.dependencies]
-pytest-cov = "^6.0.0"
-pytest = "8.3.4"
-pylint = "3.3.3"
-mypy = "1.13.0"
-mypy-extensions = "1.0.0"
-pytest-pylint = "^0.21.0"
-flake8 = "^7.1.1"
-flake8-pyproject = "^1.2.3"
-pytest-html = "^4.1.1"
+[project.optional-dependencies]
+dev = [
+    "pytest-cov>=6.0.0",
+    "pytest==8.3.4",
+    "mypy==1.13.0",
+    "mypy-extensions==1.0.0",
+    "pytest-pylint>=0.21.0",
+    "pytest-html>=4.1.1",
+    "ruff>=0.1.0",
+]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/codename_snake"]
 
 [tool.mypy]
 python_version = "3.13"
@@ -54,22 +51,6 @@ exclude = [
     'workspace_temp/.*',
     'src/tests/.*'
 ]
-
-[tool.pylint.master]
-load-plugins = ["src.codename_snake.pylint.custom_checkers"]
-ignore-patterns = ["\\.venv/.*", ".+\\.pyi", "/opt/.*",".*/site-packages/.*", "workspace_temp/.*"]
-
-[tool.pylint.messages_control]
-enable = ["MissingReturnTypeChecker"]
-disable = ["R0903", "I1101", "C0301"]
-
-[tool.pylint.format]
-max-line-length = 200
-
-[tool.pylint.design]
-max-args = 10
-max-positional-arguments = 10
-max-attributes = 12
 
 [tool.pytest.ini_options]
 testpaths = ["src/tests"]
@@ -90,11 +71,12 @@ omit = [
 [tool.coverage.report]
 exclude_also=["\\s*TYPE_CHECKING:\\s*\\n\\s*from.*"]
 
-[tool.flake8]
-max-line-length = 120
-ignore = [
-    "E303", # too many blank lines
-]
+[tool.ruff]
+# Preserved the more permissive line length you had in pylint
+line-length = 120
+
+
+# Exclude large/irrelevant folders (equivalent to your flake8/pylint excludes)
 exclude = [
     ".venv",
     "build",
@@ -102,6 +84,15 @@ exclude = [
     "__pycache__",
     "*.pyc",
     "*.egg-info",
-    "**/pylint/**",
-    "src/tests/**"
+    "node_modules",
+    "workspace_temp",
+    "src/tests",
+]
+include = ["src/**/*.py"]
+[tool.ruff.lint]
+select = ["E", "F", "D1", "ANN2"]
+# Ignore pycodestyle checks you had in flake8
+extend-ignore = [
+    "E303", # too many blank lines
+    "E701", # multiple statements on one line
 ]

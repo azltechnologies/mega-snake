@@ -1,58 +1,52 @@
-# CodeName  `Snake`
+# CodeName `Snake`
 
-A CLI tool focused on simplifying Java development with VSCode by automating workspace configuration and providing essential development tools. Its primary goal is to help developers quickly set up a fully configured workspace for Java projects using Gradle, complete with debugging capabilities and recommended extensions.
+A CLI tool designed to standardize and automate the local development lifecycle. While its core focus is simplifying **Java/Gradle development in VS Code** ensuring consistent environments across teams, it also serves as a productivity swiss-army knife with utilities for **Git operations**, **GitHub release management**, and **Google Cloud Platform** observability.
 
 ## Project Setup
 
 ### Verify your Python version (3.13)
 
-      ```bash
-         python --version
-      ```
+     ```bash
+        python --version
+     ```
 
-      If don't have the right one, you can [download it from here](https://www.python.org/downloads/)
+     If don't have the right one, you can [download it from here](https://www.python.org/downloads/)
 
-### Check if Poetry is installed
+### Install uv
 
-      ```bash
-         poetry --version
-      ```
+     ```bash
+        pip install uv
+     ```
 
-   If not, [install it here.](https://python-poetry.org/docs/#installation)
-
-### Configure Poetry to create venv in the current project
-
-      ```bash
-            poetry config virtualenvs.in-project true
-      ```
+     Or follow the [installation guide](https://docs.astral.sh/uv/getting-started/installation/).
 
 ### While being in the root path of this repository, install dependencies
 
-      ```sh
-            poetry install
-      ```
+     ```sh
+           uv sync --all-extras
+     ```
 
-   > **Note**: Repeat this command once inside the virtual env if some dependencies failed to generate.
+     This installs both the main dependencies and development dependencies (testing, linting, type checking).
 
-### Create (or update) .`vscode/settings.json` file by adding the properties _`python.binPath`_ and _`python.defaultInterpreterPath`_
+### Create (or update) `.vscode/settings.json` file by adding the properties _`python.binPath`_ and _`python.defaultInterpreterPath`_
 
 for windows:
 
-      ```json
-            {
-               "python.binPath": ".venv/Scripts",
-               "python.defaultInterpreterPath": ".venv/Scripts/python.exe"
-            }
-      ```
+     ```json
+           {
+              "python.binPath": ".venv/Scripts",
+              "python.defaultInterpreterPath": ".venv/Scripts/python.exe"
+           }
+     ```
 
 for mac & linux:
 
-      ```json
-            {
-               "python.binPath": ".venv/bin",
-               "python.defaultInterpreterPath": ".venv/bin/python3.13"
-            }
-      ```
+     ```json
+           {
+              "python.binPath": ".venv/bin",
+              "python.defaultInterpreterPath": ".venv/bin/python3.13"
+           }
+     ```
 
 ## Usage
 
@@ -110,11 +104,11 @@ for mac & linux:
 
    > **Note**: Each command has its own help. Use `snake <command> --help` for specific details.
 
-### Core Commands
+### Available Commands
 
-The following commands are essential for setting up your development workspace:
+#### Environment & Configuration
 
-#### `snake createWorkingEnv` (aliases: `cwe`, `env`)
+##### `snake createWorkingEnv` (aliases: `cwe`, `env`)
 
 Sets up a complete VSCode workspace configuration for Java development:
 
@@ -126,7 +120,7 @@ Sets up a complete VSCode workspace configuration for Java development:
 - Sets up log watchers and GitHub queries
 - Creates task definitions for common operations
 
-#### `snake setJava` (alias: `java`)
+##### `snake setJava` (alias: `java`)
 
 Configures Java for your workspace:
 
@@ -135,9 +129,8 @@ Configures Java for your workspace:
 - Updates workspace settings to use selected version
 - Configures both VSCode and shell environment
 - Sets up Java formatter settings
-- Ensures consistent Java version across team
 
-#### `snake setGradle` (alias: `gradle`)
+##### `snake setGradle` (alias: `gradle`)
 
 Manages Gradle configuration:
 
@@ -145,15 +138,74 @@ Manages Gradle configuration:
 - Allows selection of specific Gradle version
 - Updates workspace settings to use selected version
 - Configures both VSCode and shell environment
-- Ensures consistent Gradle version across team
 
-#### `snake initLocalConfig` (alias: `iload`)
+##### `snake initLocalConfig` (alias: `iload`)
 
 Sets up local development configurations:
 
 - Creates a local configuration file for developer-specific settings
 - Configures shell-specific environment variables
 - Allows custom function definitions
-- Provides template for common local configurations
 
-### Additional Commands
+#### Git & Release Management
+
+##### `snake createDiffTree` (aliases: `dt`, `tree`)
+
+Creates a visual diff tree of the current branch against master.
+
+- **Usage**: `snake createDiffTree [OPTIONS]`
+- **Options**:
+  - `-c, --commit-hash <hash>`: Compare against a specific commit instead of master.
+  - `-d, --delete-original-files`: Delete generated copy of original files in the tree.
+- **Output**: Generates a tree structure in `workspace_temp/diff_tree/` and opens it in VSCode.
+
+##### `snake remoteBranchesDetails`
+
+Generates a detailed report of remote branches.
+
+- **Usage**: `snake remoteBranchesDetails [OPTIONS]`
+- **Options**:
+  - `-f, --filter-by <A|M|U>`: Filter by (A)ll, (M)erged, or (U)nmerged status against master.
+- **Output**: Creates `workspace_temp/remote_branches.txt` with branch details (author, date, etc.).
+
+##### `snake remoteBranchesCleanUp`
+
+Interactive tool to clean up merged remote branches.
+
+- Parses the output of `remoteBranchesDetails`
+- Interactively asks which merged branches to delete from the remote
+- Prunes local references
+
+##### `snake createRelease`
+
+Creates a GitHub release and tag for the project.
+
+- **Usage**: `snake createRelease <tag_suffix> <release_type> [notes] [branch]`
+- **Arguments**:
+  - `tag_suffix`: Suffix for the new tag.
+  - `release_type`: `p` (Pre-release), `l` (Latest), `r` (Replace latest/Release).
+  - `notes`: (Optional) Release notes.
+  - `branch`: (Optional) Branch to create release from (defaults to current).
+
+#### Utilities
+
+##### `snake createGraphqlSchema` (aliases: `graphql`, `gql`)
+
+Compiles GraphQL schema files.
+
+- **Usage**: `snake createGraphqlSchema <schema_path>`
+- Combines all schema files in the given directory into a single `.graphql` file and a `.json` introspection file.
+
+##### `snake expiredCertsJks`
+
+Checks a Java KeyStore (JKS) for expired certificates.
+
+- **Usage**: `snake expiredCertsJks <jks_path> [-p password]`
+- Lists aliases and valid dates, creating warnings for expired certs.
+
+##### `snake msg`
+
+Internal utility to print and log formatted messages.
+
+- **Usage**: `snake msg <message> [-t type]`
+- **Types**: `S` (Success), `I` (Info), `W` (Warning), `E` (Error), `T` (Tip).

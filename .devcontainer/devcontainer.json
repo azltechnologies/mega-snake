@@ -1,0 +1,71 @@
+{
+  "name": "Snake CLI - Java 21 + Python 3.13",
+  "image": "mcr.microsoft.com/devcontainers/java:21-bullseye",
+  "features": {
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "21",
+      "installMaven": false,
+      "installGradle": true
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.13"
+    },
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
+  "containerEnv": {
+    "PYTHONPATH": "${containerWorkspaceFolder}",
+    "JAVA_HOME": "/usr/local/sdkman/candidates/java/current",
+    "GRADLE_HOME": "/opt/gradle/gradle-8.11"
+  },
+  "remoteEnv": {
+    "PYTHONPATH": "${containerWorkspaceFolder}"
+  },
+  "postCreateCommand": "pip install --upgrade pip && pip install poetry",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.debugpy",
+        "vscjava.vscode-java-pack",
+        "vscjava.vscode-gradle",
+        "vscjava.vscode-java-debug",
+        "redhat.java",
+        "github.vscode-github-actions",
+        "github.vscode-pull-request-github",
+        "graphql.vscode-graphql-syntax",
+        "graphql.vscode-graphql"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python3.13",
+        "python.analysis.extraPaths": [
+          "${containerWorkspaceFolder}"
+        ],
+        "python.linting.enabled": true,
+        "python.linting.pylintEnabled": true,
+        "python.linting.pylintPath": "/usr/local/bin/pylint",
+        "[python]": {
+          "editor.defaultFormatter": "ms-python.python",
+          "editor.formatOnSave": true
+        }
+      }
+    }
+  },
+  "mounts": [
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
+  ],
+  "forwardPorts": [
+    5005,
+    8080
+  ],
+  "portsAttributes": {
+    "5005": {
+      "label": "Java Debug",
+      "onAutoForward": "notify"
+    },
+    "8080": {
+      "label": "Application",
+      "onAutoForward": "notify"
+    }
+  }
+}

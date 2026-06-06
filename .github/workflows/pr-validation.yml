@@ -16,22 +16,18 @@ jobs:
       with:
         python-version: '3.13'
     
-    - name: Install Poetry
+    - name: Install uv
       run: |
-        curl -sSL https://install.python-poetry.org | python3 -
-    
-    - name: Configure Poetry
-      run: |
-        poetry config virtualenvs.in-project true
+        pip install uv
     
     - name: Install dependencies
       run: |
-        poetry install
+        uv sync --all-extras
     
     - name: Run pytest
       run: |
-        poetry run pytest
+        uv run pytest
 
     - name: Run flake8
       run: |
-        poetry run flake8 codename_snake
+        uv run flake8 codename_snake
