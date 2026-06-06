@@ -13,7 +13,7 @@ from codename_snake.constants import REMOTE_BRANCHES_OPT
 
 def get_output_file() -> str:
     """Returns the path to the output file"""
-    return f"{get_property("working_path")}/remote_branches.txt"
+    return f"{get_property('working_path')}/remote_branches.txt"
 
 
 @click.command(

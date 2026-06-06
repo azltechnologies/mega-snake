@@ -7,7 +7,7 @@
 **Core Philosophy:**
 - **Zero Config Start**: A developer should be able to run `snake createWorkingEnv` and have a fully functional IDE state immediately.
 - **Idempotency**: Commands should be safe to run multiple times without destructive side effects unless explicitly requested.
-- **System Integration**: The tool deeply integrates with the OS shell (Bash/Zsh/PowerShell) and external tools (Git, GCloud, Java, Gradle).
+- **System Integration**: The tool deeply integrates with the OS shell (Bash/Zsh/PowerShell) and external tools (Git, Java, Gradle).
 
 **Tech Stack:**
 - **Runtime**: Python 3.13+
@@ -53,25 +53,25 @@ cli.add_command_with_alias(diff_tree, ["dt", "tree"])
 
 ### 2.3 The Wrapper Pattern (`module.py` files)
 
-Each functional module (e.g., `gcloud`, `config_environment`) exposes an `add_wrapper` decorator. This allows module-specific checks (like verifying `gcloud` is installed) to run before the command execution, keeping the core logic clean.
+Each functional module (e.g., `config_environment`) exposes an `add_wrapper` decorator. This allows module-specific checks to run before the command execution, keeping the core logic clean.
 
-**Example from `src/codename_snake/gcloud/module.py`:**
+**Example from `src/codename_snake/config_environment/module.py`:**
 ```python
 def wrapper(_ctx: click.Context, *_args, **_kwargs) -> None:
-    # Pre-flight check
-    if get_command_return_code("gcloud --version") != 0:
-        raise RuntimeError("gcloud command not found.")
+    # Pre-flight check: verify we're in a valid workspace
+    if not get_workspace_folder():
+        raise RuntimeError("Not in a valid workspace.")
 
 add_wrapper = wrapper_decorator(wrapper) 
 
 # Usage in __main__.py
-for command in gcloud.commands.values():
+for command in config_environment.commands.values():
     # Wraps every command in the module with the pre-flight check
-    cli.add_command(gcloud_result_callback(command))
+    cli.add_command(config_environment_result_callback(command))
 ```
 
 **Educational Logic:**
-This implements the **Decorator Pattern**. Instead of repeating `if not gcloud_installed: return` in every single gcloud command, we define it once in the wrapper. The `__main__.py` entry point applies this wrapper dynamically when registering commands, ensuring that dependencies are checked only when a relevant command is invoked.
+This implements the **Decorator Pattern**. Instead of repeating validation logic in every command, we define it once in the wrapper. The `__main__.py` entry point applies this wrapper dynamically when registering commands, ensuring checks only run when a relevant command is invoked.
 
 ---
 
@@ -194,22 +194,7 @@ We use the `gh` (GitHub CLI) tool because it leverages the user's existing authe
 **Educational Logic:**
 Instead of re-implementing the GitHub API client (which requires managing OAuth tokens, permissions, etc.), we delegate the heavy lifting to the `gh` binary. This is a common "shell wrapper" pattern where Python manages the *control flow* and *validation*, but the shell executes the *remote action*.
 
-### 3.5 Cloud & Observability (`src/codename_snake/gcloud/`)
-
-#### `gcloudLogin` / `gcloudLogout`
-Wrappers around standard `gcloud auth` commands.
-**Feature:** `gcloudLogin` supports a `type-login` flag to authenticate both User and Application Default credentials in one go, simplifying setup for local development that mimics production service accounts.
-
-#### `bqInstancesQuery`
-Generates SQL queries for BigQuery to analyze logs.
-
-**Why?**
-Searching logs in the GCP Console UI can be slow and limited. By generating a pre-formatted SQL query that filters by `resource.labels.instance_id` based on deployment IDs, we allow developers to jump straight to the relevant data in BigQuery.
-
-#### `parseJsonLogs`
-Converts newline-delimited JSON logs (common export format from GCP) into readable text logs.
-
-### 3.6 Other Utilities
+### 3.5 Other Utilities
 
 #### `createGraphqlSchema` (`graphql_schema.py`)
 Compiles multiple `.graphql` files into a single schema and generates introspection JSON.

@@ -187,35 +187,6 @@ Creates a GitHub release and tag for the project.
   - `notes`: (Optional) Release notes.
   - `branch`: (Optional) Branch to create release from (defaults to current).
 
-#### Cloud & Logging (GCP)
-
-##### `snake gcloudLogin` (alias: `gl`)
-
-Logs into Google Cloud SDK.
-
-- **Usage**: `snake gcloudLogin [OPTIONS]`
-- **Options**:
-  - `type-login`: Login type. `A` (Application Default), `U` (User), `B` (Both). Default is `B`.
-  - `project`: (Optional) Project ID to set.
-
-##### `snake gcloudLogout` (alias: `lg`)
-
-Logs out of Google Cloud SDK and revokes credentials for both user and application default.
-
-##### `snake bqInstancesQuery`
-
-Generates a BigQuery-compatible query to filter logs by instance ID.
-
-- **Usage**: `snake bqInstancesQuery <project> <deployment_id>...`
-- Filters instances by deployment ID labels and copies the query to clipboard.
-
-##### `snake parseJsonLogs`
-
-Parses and formats JSON log files.
-
-- **Usage**: `snake parseJsonLogs`
-- Reads JSON logs from `workspace_temp/logs/parsed/*.json` and converts them to readable `.log` files in the same directory.
-
 #### Utilities
 
 ##### `snake createGraphqlSchema` (aliases: `graphql`, `gql`)
