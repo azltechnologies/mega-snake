@@ -269,6 +269,8 @@ The CLI is designed to run inside a specific virtual environment managed by the 
 
 ## 6. Development Rules
 
+### 6.1 Code Quality Standards
+
 1.  **Type Hinting**: All functions must have complete type hints (`-> None`, `: str`, etc.).
 2.  **Docstrings**: All modules, classes, and functions must have Google-style docstrings.
 3.  **Imports**: Group imports: Standard Library -> Third Party -> Local Application.
@@ -277,4 +279,57 @@ The CLI is designed to run inside a specific virtual environment managed by the 
     -   Raise `click.ClickException` for expected CLI errors.
     -   Let unexpected errors bubble up to `__main__.py` to be caught by the global handler.
 5.  **Paths**: Always use `pathlib.Path` or `os.path` joins. Never string concatenation for paths.
+
+### 6.2 Testing & Coverage Requirements (CRITICAL)
+
+**MANDATORY: Any file created, modified, or deleted must have corresponding tests created, updated, or removed respectively.**
+
+#### Core Principles
+
+- **Do not simplify, remove, weaken, or rewrite existing passing tests** unless strictly necessary to fix a defect.
+- **Do not exclude files, modules, classes, or functions from the pytest test suite** to artificially increase coverage.
+- **Do not modify source code solely to make testing easier** or to reduce the number of required tests.
+- **New tests must validate real application behavior**, not be written solely to inflate coverage metrics.
+- **Reuse existing fixtures, helpers, and testing patterns** whenever possible to maintain consistency.
+- **Preserve the current project structure and testing conventions** throughout all changes.
+
+#### Coverage Requirements
+
+- **Overall project coverage**: Minimum 95%
+- **All new or modified source code**: Minimum 98% coverage
+- **All tests must pass** before any PR is submitted
+
+#### Testing Workflow
+
+1. **New Source Code**: Create comprehensive tests in `src/tests/{module}/` directory. Ensure 98% coverage.
+2. **Modified Source Code**: Update existing tests to reflect changes. Add new tests for new behavior. Maintain 98% coverage.
+3. **Deleted Source Code**: Remove or update corresponding tests in `src/tests/{module}/` directory.
+4. **Run Tests**: Execute `pytest` to verify all tests pass and coverage goals are met.
+
+```bash
+# Run full test suite with coverage reporting
+pytest
+
+# This generates:
+# - report.html: HTML report of test results
+# - coverage_html/index.html: Detailed coverage breakdown by file
+# - Fails if coverage < 95% overall or < 98% for new code
+```
+
+#### Example: What This Means
+
+**If you modify `config_environment/java_set.py`:**
+- Update tests in `src/tests/config_environment/test_java_set.py`
+- Add tests for any new functions or branches
+- Ensure the modified functions have 98% coverage
+- Verify overall project coverage remains ≥ 95%
+
+**If you create `util/new_helper.py`:**
+- Create `src/tests/util/test_new_helper.py` with comprehensive tests
+- All functions must have 98% coverage
+- Tests must validate real behavior, not just code paths
+
+**If you delete a module:**
+- Remove its corresponding test file or test class
+- Verify overall coverage still meets 95% threshold
 
