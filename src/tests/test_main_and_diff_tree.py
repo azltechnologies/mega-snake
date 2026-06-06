@@ -33,6 +33,10 @@ def test_file_type_and_diff_tree_helpers() -> None:
     with pytest.raises(ValueError):
         FileType.from_symbol("X")
 
+    # Reset global enum state for test isolation
+    for ft in FileType:
+        ft.files_added = 0
+        ft.files.clear()
     with patch("codename_snake.diff_tree.module.run_operation") as run_operation, patch(
         "builtins.open", mock_open()
     ), patch("codename_snake.diff_tree.module.os.makedirs"), patch(
