@@ -253,7 +253,16 @@ def test_set_java_version_darwin_empty_files(
     )
 
     def run_op_side_effect(cmd: str, msg: str) -> MagicMock:
-        """Side effect for run_operation: returns paths on first call, version details on rest."""
+        """Return Java paths on the first call and per-path version details on subsequent calls.
+
+        Parameters:
+            cmd: The shell command string (unused by this side effect).
+            msg: The descriptive message passed to run_operation; used to distinguish call type.
+
+        Returns:
+            MagicMock whose `.stdout` contains Java executable paths when *msg* is
+            "Getting Java versions", or a synthetic `java -version` output otherwise.
+        """
         result: MagicMock = MagicMock()
         result.stdout = java_paths_stdout if msg == "Getting Java versions" else java_detail_stdout
         return result
@@ -261,7 +270,11 @@ def test_set_java_version_darwin_empty_files(
     run_operation.side_effect = run_op_side_effect
 
     def read_side_effect() -> str:
-        """Read side effect"""
+        """Read the local shell config file from disk so write assertions can inspect its content.
+
+        Returns:
+            The current text content of the local configuration file.
+        """
         with real_open(local_file, "r", encoding="utf-8") as file:
             return file.read()
 
@@ -331,7 +344,16 @@ def test_set_java_version_darwin_defined_versions(
     )
 
     def run_op_side_effect(cmd: str, msg: str) -> MagicMock:
-        """Side effect for run_operation: returns paths on first call, version details on rest."""
+        """Return Java paths on the first call and per-path version details on subsequent calls.
+
+        Parameters:
+            cmd: The shell command string (unused by this side effect).
+            msg: The descriptive message passed to run_operation; used to distinguish call type.
+
+        Returns:
+            MagicMock whose `.stdout` contains Java executable paths when *msg* is
+            "Getting Java versions", or a synthetic `java -version` output otherwise.
+        """
         result: MagicMock = MagicMock()
         result.stdout = java_paths_stdout if msg == "Getting Java versions" else java_detail_stdout
         return result
@@ -339,7 +361,11 @@ def test_set_java_version_darwin_defined_versions(
     run_operation.side_effect = run_op_side_effect
 
     def read_side_effect() -> str:
-        """Read side effect"""
+        """Read the local shell config file from disk so write assertions can inspect its content.
+
+        Returns:
+            The current text content of the local configuration file.
+        """
         with real_open(local_file, "r", encoding="utf-8") as file:
             return file.read()
 
