@@ -13,7 +13,7 @@
 - **Runtime**: Python 3.13+
 - **CLI Framework**: `click` (Command composition), `rich-click` (Beautiful help text/formatting)
 - **UI/Output**: `colorama` (Terminal colors), `rich` (Tables/Trees)
-- **Dependency Management**: `poetry`
+- **Dependency Management**: `uv`
 - **Shell Interop**: Custom shell scripts (`config_setup.sh/ps1`) that wrap the python execution.
 
 ---

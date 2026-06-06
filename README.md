@@ -6,53 +6,47 @@ A CLI tool designed to standardize and automate the local development lifecycle.
 
 ### Verify your Python version (3.13)
 
-      ```bash
-         python --version
-      ```
+     ```bash
+        python --version
+     ```
 
-      If don't have the right one, you can [download it from here](https://www.python.org/downloads/)
+     If don't have the right one, you can [download it from here](https://www.python.org/downloads/)
 
-### Check if Poetry is installed
+### Install uv
 
-      ```bash
-         poetry --version
-      ```
+     ```bash
+        pip install uv
+     ```
 
-   If not, [install it here.](https://python-poetry.org/docs/#installation)
-
-### Configure Poetry to create venv in the current project
-
-      ```bash
-            poetry config virtualenvs.in-project true
-      ```
+     Or follow the [installation guide](https://docs.astral.sh/uv/getting-started/installation/).
 
 ### While being in the root path of this repository, install dependencies
 
-      ```sh
-            poetry install
-      ```
+     ```sh
+           uv sync --all-extras
+     ```
 
-   > **Note**: Repeat this command once inside the virtual env if some dependencies failed to generate.
+     This installs both the main dependencies and development dependencies (testing, linting, type checking).
 
-### Create (or update) .`vscode/settings.json` file by adding the properties _`python.binPath`_ and _`python.defaultInterpreterPath`_
+### Create (or update) `.vscode/settings.json` file by adding the properties _`python.binPath`_ and _`python.defaultInterpreterPath`_
 
 for windows:
 
-      ```json
-            {
-               "python.binPath": ".venv/Scripts",
-               "python.defaultInterpreterPath": ".venv/Scripts/python.exe"
-            }
-      ```
+     ```json
+           {
+              "python.binPath": ".venv/Scripts",
+              "python.defaultInterpreterPath": ".venv/Scripts/python.exe"
+           }
+     ```
 
 for mac & linux:
 
-      ```json
-            {
-               "python.binPath": ".venv/bin",
-               "python.defaultInterpreterPath": ".venv/bin/python3.13"
-            }
-      ```
+     ```json
+           {
+              "python.binPath": ".venv/bin",
+              "python.defaultInterpreterPath": ".venv/bin/python3.13"
+           }
+     ```
 
 ## Usage
 
