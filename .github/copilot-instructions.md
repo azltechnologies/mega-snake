@@ -271,14 +271,69 @@ The CLI is designed to run inside a specific virtual environment managed by the 
 
 ### 6.1 Code Quality Standards
 
-1.  **Type Hinting**: All functions must have complete type hints (`-> None`, `: str`, etc.).
-2.  **Docstrings**: All modules, classes, and functions must have Google-style docstrings.
-3.  **Imports**: Group imports: Standard Library -> Third Party -> Local Application.
+**ALL code must follow these standards without exception:**
+
+1.  **Type Hinting - MANDATORY for all functions and parameters:**
+    -   **All function parameters** must have explicit type annotations (e.g., `name: str`, `count: int`)
+    -   **All function return types** must be explicitly declared (e.g., `-> str`, `-> None`, `-> list[str]`)
+    -   **Use `Optional[T]`** for optional types instead of `T | None` (e.g., `Optional[str]` not `str | None`)
+    -   Example:
+        ```python
+        def process_data(items: list[str], timeout: Optional[int] = None) -> dict[str, int]:
+            """Process items with optional timeout."""
+            pass
+        ```
+
+2.  **Docstrings - MANDATORY for all modules, classes, and functions:**
+    -   **Module-level docstring**: Must be at the top of every `.py` file
+    -   **Class docstring**: Required for all class definitions
+    -   **Function/method docstring**: Required for every function and method (including `__init__`, `__str__`, etc.)
+    -   **Format**: Use the following structure for methods:
+        ```python
+        """Brief description of what the method does.
+        
+        Parameters:
+            param_name: Description of parameter.
+            another_param: Description of another parameter.
+            
+        Raises:
+            ValueError: Description of when this exception is raised.
+            RuntimeError: Description of when this exception is raised.
+
+        Returns:
+            str: Description of the return value.
+        """
+        ```
+    -   **Note**: If there are no parameters, raises, or returns, explicitly state `None` in those sections.
+    -   Example:
+        ```python
+        def validate_path(path: str) -> bool:
+            """Check if the given path is valid and accessible.
+            
+            Parameters:
+                path: The file system path to validate.
+                
+            Raises:
+                ValueError: If path is None or empty string.
+
+            Returns:
+                bool: True if the path is valid, False otherwise.
+            """
+            pass
+        ```
+
+3.  **Imports**: Group imports in this order:
+    -   Standard Library
+    -   Third Party
+    -   Local Application
+    -   Each group separated by a blank line
+
 4.  **Error Handling**:
-    -   Raise `ValueError` for invalid user input.
-    -   Raise `click.ClickException` for expected CLI errors.
-    -   Let unexpected errors bubble up to `__main__.py` to be caught by the global handler.
-5.  **Paths**: Always use `pathlib.Path` or `os.path` joins. Never string concatenation for paths.
+    -   Raise `ValueError` for invalid user input
+    -   Raise `click.ClickException` for expected CLI errors
+    -   Let unexpected errors bubble up to `__main__.py` to be caught by the global handler
+
+5.  **Paths**: Always use `pathlib.Path` or `os.path` joins. Never use string concatenation for paths.
 
 ### 6.2 Testing & Coverage Requirements (CRITICAL)
 

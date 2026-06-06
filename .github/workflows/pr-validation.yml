@@ -28,6 +28,10 @@ jobs:
       run: |
         uv run pytest
 
-    - name: Run flake8
+    - name: Run ruff check
       run: |
-        uv run flake8 codename_snake
+        uv run ruff check src/codename_snake --output-format=concise
+
+    - name: Run mypy
+      run: |
+        uv run mypy --show-column-numbers --no-error-summary src/codename_snake
