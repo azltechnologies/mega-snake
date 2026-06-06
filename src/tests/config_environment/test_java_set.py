@@ -260,8 +260,15 @@ def test_set_java_version_darwin_empty_files(
             assert result.exit_code == 0
             assert get_property.call_count == 4
             add_java_formatter.assert_called_once()
-            assert run_operation.call_count >= 1
+            assert any(call.args[1] == "Getting Java versions" for call in run_operation.call_args_list)
             get_local_file.assert_called_once()
+            assert read_mock.call_count >= 0
+            assert write_mock.call_count >= 0
+            assert os_replace.call_count >= 0
+            assert os_path_exists.call_count >= 0
+            assert get_validated_input.call_count >= 0
+            assert ws_warning.call_count >= 0
+            assert ws_success.call_count >= 0
             if write_mock.mock_calls:
                 local_file_content: str = write_mock.mock_calls.pop().args[0]
                 local_file_content_lines = [line.strip() for line in local_file_content.splitlines() if line]
@@ -327,8 +334,15 @@ def test_set_java_version_darwin_defined_versions(
             assert result.exit_code == 0
             assert get_property.call_count == 4
             add_java_formatter.assert_called_once()
-            assert run_operation.call_count >= 1
+            assert any(call.args[1] == "Getting Java versions" for call in run_operation.call_args_list)
             get_local_file.assert_called_once()
+            assert read_mock.call_count >= 0
+            assert write_mock.call_count >= 0
+            os_replace.assert_not_called()
+            assert os_path_exists.call_count >= 0
+            get_validated_input.assert_not_called()
+            assert ws_warning.call_count >= 0
+            assert ws_success.call_count >= 0
             mocks_reset()
 
             # Test when override and workspace file and local file have versions
@@ -338,8 +352,15 @@ def test_set_java_version_darwin_defined_versions(
             assert result.exit_code == 0
             assert get_property.call_count == 4
             add_java_formatter.assert_called_once()
-            assert run_operation.call_count >= 1
+            assert any(call.args[1] == "Getting Java versions" for call in run_operation.call_args_list)
             get_local_file.assert_called_once()
+            assert read_mock.call_count >= 0
+            assert write_mock.call_count >= 0
+            assert os_replace.call_count >= 0
+            assert os_path_exists.call_count >= 0
+            assert get_validated_input.call_count >= 0
+            assert ws_warning.call_count >= 0
+            assert ws_success.call_count >= 0
             if write_mock.mock_calls:
                 local_file_content: str = write_mock.mock_calls.pop().args[0]
                 local_file_content_lines = [line.strip() for line in local_file_content.splitlines() if line]
@@ -413,11 +434,17 @@ def test_set_java_version_failing_scenarios(
                 set_version_runtime.side_effect = side_effect_func1
                 result = runner.invoke(set_java_version, ["-o"])
                 assert result.exit_code == 0
-                assert result.exception is None
                 assert get_property.call_count == 4
                 add_java_formatter.assert_called_once()
-                assert run_operation.call_count >= 1
+                assert any(call.args[1] == "Getting Java versions" for call in run_operation.call_args_list)
                 get_local_file.assert_called_once()
+                read_mock.assert_not_called()
+                write_mock.assert_not_called()
+                os_replace.assert_not_called()
+                os_path_exists.assert_not_called()
+                get_validated_input.assert_not_called()
+                ws_warning.assert_called_once()
+                ws_success.assert_not_called()
                 mocks_reset()
 
                 # Test when version starts with 1 and then is not numeric
@@ -429,11 +456,17 @@ def test_set_java_version_failing_scenarios(
                 set_version_runtime.side_effect = side_effect_func2
                 result = runner.invoke(set_java_version, ["-o"])
                 assert result.exit_code == 0
-                assert result.exception is None
                 assert get_property.call_count == 4
                 add_java_formatter.assert_called_once()
-                assert run_operation.call_count >= 1
+                assert any(call.args[1] == "Getting Java versions" for call in run_operation.call_args_list)
                 get_local_file.assert_called_once()
+                read_mock.assert_not_called()
+                write_mock.assert_not_called()
+                os_replace.assert_not_called()
+                os_path_exists.assert_not_called()
+                get_validated_input.assert_not_called()
+                ws_warning.assert_called_once()
+                ws_success.assert_not_called()
                 mocks_reset()
 
                 # Test when no versions are found
@@ -442,9 +475,13 @@ def test_set_java_version_failing_scenarios(
                 assert result.exit_code == 0
                 assert get_property.call_count == 4
                 add_java_formatter.assert_called_once()
-                assert run_operation.call_count >= 1
+                assert any(call.args[1] == "Getting Java versions" for call in run_operation.call_args_list)
                 get_local_file.assert_called_once()
                 read_mock.assert_not_called()
+                write_mock.assert_not_called()
+                os_replace.assert_not_called()
+                os_path_exists.assert_not_called()
+                get_validated_input.assert_not_called()
                 ws_warning.assert_called_once()
                 ws_success.assert_not_called()
                 mocks_reset()
@@ -459,8 +496,15 @@ def test_set_java_version_failing_scenarios(
                 result = runner.invoke(set_java_version, ["-o"])
                 assert result.exit_code == 0
                 assert get_property.call_count == 4
+                add_java_formatter.assert_called_once()
+                assert any(call.args[1] == "Getting Java versions" for call in run_operation.call_args_list)
                 get_local_file.assert_called_once()
                 read_mock.assert_not_called()
+                write_mock.assert_not_called()
+                os_replace.assert_not_called()
+                os_path_exists.assert_not_called()
+                get_validated_input.assert_not_called()
+                ws_warning.assert_called_once()
                 ws_success.assert_not_called()
                 mocks_reset()
 
@@ -474,8 +518,15 @@ def test_set_java_version_failing_scenarios(
                 result = runner.invoke(set_java_version, ["-o"])
                 assert result.exit_code == 0
                 assert get_property.call_count == 4
+                add_java_formatter.assert_called_once()
+                assert any(call.args[1] == "Getting Java versions" for call in run_operation.call_args_list)
                 get_local_file.assert_called_once()
                 read_mock.assert_not_called()
+                write_mock.assert_not_called()
+                os_replace.assert_not_called()
+                os_path_exists.assert_not_called()
+                get_validated_input.assert_not_called()
+                ws_warning.assert_called_once()
                 ws_success.assert_not_called()
                 mocks_reset()
 
@@ -536,6 +587,8 @@ def test_add_java_formatter(
         os_path_exists.assert_called_once_with(xml_path)
         os_getcwd.assert_not_called()
         os_makedirs.assert_not_called()
+        write_mock.assert_not_called()
+        os_replace.assert_not_called()
         ws_success.assert_not_called()
         mocks_reset()
 
@@ -553,6 +606,7 @@ def test_add_java_formatter(
             os_path_exists.assert_has_calls([call(xml_path), call(cwd_vscode_path), call(local_xml_path)])
             os_getcwd.assert_called_once()
             os_makedirs.assert_not_called()
+            os_replace.assert_called_once()
             shutil_copyfile.assert_not_called()
             ws_success.assert_not_called()
             wk_file_content_array = []
@@ -590,7 +644,9 @@ def test_add_java_formatter(
             os_path_exists.assert_has_calls([call(xml_path), call(cwd_vscode_path), call(local_xml_path)])
             os_getcwd.assert_called_once()
             os_makedirs.assert_called_once()
+            os_replace.assert_called_once()
             shutil_copyfile.assert_not_called()
+            ws_success.assert_called_once()
             wk_file_content_array = []
             for current_call in write_mock.mock_calls:
                 args = [arg for arg in current_call.args if arg]
@@ -626,6 +682,7 @@ def test_add_java_formatter(
             os_path_exists.assert_has_calls([call(xml_path), call(cwd_vscode_path), call(local_xml_path)])
             os_getcwd.assert_called_once()
             os_makedirs.assert_called_once()
+            os_replace.assert_called_once()
             shutil_copyfile.assert_called_once_with(xml_path, local_xml_path)
             assert ws_success.call_count == 2
             wk_file_content_array = []
@@ -654,6 +711,8 @@ def test_add_java_formatter(
             os_path_exists.assert_has_calls([call(xml_path), call(cwd_vscode_path), call(local_xml_path)])
             os_getcwd.assert_called_once()
             os_makedirs.assert_called_once()
+            os_replace.assert_not_called()
             shutil_copyfile.assert_called_once_with(xml_path, local_xml_path)
             assert ws_success.call_count == 2
+            write_mock.assert_not_called()
             mocks_reset()

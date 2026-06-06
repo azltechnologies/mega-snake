@@ -15,7 +15,7 @@ SOURCE_FOLDER: str = "/src"
 
 
 def get_validated_input(p_prompt: str, valid_values: list[str]) -> str:
-    """Proxy to avoid circular imports while keeping this symbol patchable in tests."""
+    """Proxy to keep this symbol patchable in tests and avoid import cycles."""
     from codename_snake.util.util import get_validated_input as util_get_validated_input
 
     return util_get_validated_input(p_prompt, valid_values)
@@ -307,7 +307,6 @@ def _find_code_workspace_files(directory: str) -> str:
     """
     Find the .code-workspace file in the specified directory
     """
-
     directory = os.path.abspath(directory)
     # Find all .code-workspace files in the specified directory
     workspace_files = glob.glob(os.path.join(directory, "*.code-workspace"))

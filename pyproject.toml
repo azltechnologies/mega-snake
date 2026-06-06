@@ -65,17 +65,7 @@ omit = [
     "*/__init__.py",
     "*/site-packages/*",
     # Add specific files to exclude
-    "codename_snake/pylint/custom_checkers.py",
-    "src/codename_snake/__main__.py",
-    "src/codename_snake/diff_tree/*",
-    "src/codename_snake/light_weight/create_release.py",
-    "src/codename_snake/light_weight/echo.py",
-    "src/codename_snake/light_weight/jks_expired_certs.py",
-    "src/codename_snake/light_weight/release.py",
-    "src/codename_snake/remote_branches/cleanup_remote_branches.py",
-    "src/codename_snake/remote_branches/details_remote_branches.py",
-    "src/codename_snake/remote_branches/parse_remote_branches.py",
-    "src/codename_snake/remote_branches/remote_branch.py"
+    "codename_snake/pylint/custom_checkers.py"
 ]
 
 [tool.coverage.report]
