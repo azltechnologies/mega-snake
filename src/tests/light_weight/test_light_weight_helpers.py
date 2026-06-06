@@ -55,7 +55,8 @@ def test_release_model_and_lookup() -> None:
         rel = Release("Title\tLatest\tv1.0.0\t2025-01-01T00:00:00Z")
         assert rel and rel.commit == "abc"
 
-    assert Release("") is None
+    with pytest.raises(ValueError):
+        Release(None)
     with patch("codename_snake.light_weight.release.handler.get_commit_from_release", return_value="abc"):
         releases = _create_release_list("A\tLatest\tv1.0.0\t2025-01-01T00:00:00Z\nB\tDraft\tv0.9.0\t2024-01-01T00:00:00Z")
         assert len(releases) == 2

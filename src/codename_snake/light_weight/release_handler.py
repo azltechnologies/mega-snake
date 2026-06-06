@@ -19,10 +19,10 @@ def git_fetch() -> None:
 
 def get_release_list(limit: int) -> subprocess.CompletedProcess[str]:
     """
-    Retrieves the latest release from GitHub and retries on failure up to 3 times.
+    Retrieves the list of releases from GitHub and retries on failure up to 3 times.
 
     Returns:
-        Release
+        subprocess.CompletedProcess[str]
     """
     cwd: str = f"gh release list --limit {limit} 2>&1"
     return run_operation(cwd, "Retrieve release list")
@@ -53,7 +53,7 @@ def set_release_to_latest(tag: str) -> None:
     Sets the given release as the latest release on GitHub and retries on failure up to 3 times.
 
     Args:
-        release: Release
+        tag: str
 
     Returns:
         None
@@ -64,10 +64,10 @@ def set_release_to_latest(tag: str) -> None:
 
 def get_commit_from_release(tag: str) -> str:
     """
-    Retrieves the commit hash from the given release and retries on failure up to 3 times.
+    Retrieves the commit hash associated with the given release tag and retries on failure up to 3 times.
 
     Args:
-        release: Release
+        tag: str
 
     Returns:
         str

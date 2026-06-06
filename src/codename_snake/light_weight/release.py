@@ -32,10 +32,12 @@ class Release:
     published_at: datetime
     commit: str
 
-    def __new__(cls, input_string: str) -> "Release | None":
-        """Return None when the input string is empty; otherwise create a new Release instance."""
+    def __new__(cls, input_string: str) -> "Release":
+        """Override the __new__ method to handle empty or None input strings gracefully
+        by raising a ValueError if the input string is empty.
+        """
         if input_string is None or not bool(input_string):
-            return None
+            raise ValueError("Input string is empty. Cannot create Release instance.")
         return super().__new__(cls)
 
     def __init__(self, input_string: str) -> None:
@@ -52,10 +54,12 @@ class Release:
 
     def get_release_tag(self, suffix: str) -> str:
         """
-        Returns the tag name of the release
+        Generates a new tag name by appending a suffix to the existing tag name, ensuring that the new tag does not
+        already exist in the Git repository. Retries up to 20 times with incrementing suffixes until
+        an available tag name is found.
 
         Args:
-            release: Release
+            suffix: str
 
         Returns:
             str
@@ -86,17 +90,17 @@ class Release:
 
 def _create_release_list(list_string: str) -> list[Release]:
     """
-    Converts a string into a list of Release instances
+    Creates a list of Release objects from a string containing tab-separated release records.
 
     Args:
         list_string: str
 
     Returns:
-        List[Release]
+        list[Release]
     """
     if list_string is not None and bool(list_string):
         array_of_strings = list_string.split("\n")
-        releases: list[Release] = [Release(f"{string}") for string in array_of_strings]
+        releases: list[Release] = [Release(f"{string}") for string in array_of_strings if string.strip()]
         releases = [x for x in releases if x is not None]
         # printing the releases size
         ws_advice(f"Releases size: {len(releases)}")
@@ -107,7 +111,7 @@ def _create_release_list(list_string: str) -> list[Release]:
 
 def get_latest_release() -> Release:
     """
-    Retrieves the latest release from GitHub.
+    Retrieves the latest release from GitHub and retries on failure up to 3 times.
 
     Returns:
         Release
