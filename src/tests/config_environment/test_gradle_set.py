@@ -220,12 +220,7 @@ def test_set_gradle_version_darwin_empty_files(
             assert run_operation.call_count >= 1
             get_local_file.assert_called_once()
             assert read_mock.call_count >= 1
-            assert write_mock.call_count >= 0
-            assert os_replace.call_count >= 0
-            assert os_path_exists.call_count >= 0
             get_validated_input.assert_called_once()
-            assert ws_warning.call_count >= 0
-            assert ws_success.call_count >= 0
             local_file_content: str = write_mock.mock_calls.pop().args[0]
             local_file_content_lines = [line.strip() for line in local_file_content.splitlines() if line]
             assert any(line.startswith("export GRADLE_HOME='") for line in local_file_content_lines)
@@ -300,12 +295,6 @@ def test_set_gradle_version_darwin_defined_versions(
             assert run_operation.call_count >= 1
             get_local_file.assert_called_once()
             assert read_mock.call_count >= 1
-            assert write_mock.call_count >= 0
-            assert os_replace.call_count >= 0
-            assert os_path_exists.call_count >= 0
-            assert get_validated_input.call_count >= 0
-            assert ws_warning.call_count >= 0
-            assert ws_success.call_count >= 0
             mocks_reset()
 
             # Test when override and workspace file and local file have versions
@@ -317,12 +306,7 @@ def test_set_gradle_version_darwin_defined_versions(
             assert run_operation.call_count >= 1
             get_local_file.assert_called_once()
             assert read_mock.call_count >= 1
-            assert write_mock.call_count >= 0
-            assert os_replace.call_count >= 0
-            assert os_path_exists.call_count >= 0
             get_validated_input.assert_called_once()
-            assert ws_warning.call_count >= 0
-            assert ws_success.call_count >= 0
             local_file_content: str = write_mock.mock_calls.pop().args[0]
             local_file_content_lines = [line.strip() for line in local_file_content.splitlines() if line]
             assert any(line.startswith("export GRADLE_HOME='") for line in local_file_content_lines)
@@ -398,10 +382,6 @@ def test_set_gradle_version_failing_scenarios(
                 assert run_operation.call_count >= 1
                 get_local_file.assert_called_once()
                 read_mock.assert_not_called()
-                assert write_mock.call_count >= 0
-                assert os_replace.call_count >= 0
-                assert os_path_exists.call_count >= 0
-                assert get_validated_input.call_count >= 0
                 ws_warning.assert_called_once()
                 ws_success.assert_not_called()
                 mocks_reset()
@@ -419,10 +399,6 @@ def test_set_gradle_version_failing_scenarios(
                 assert run_operation.call_count >= 1
                 get_local_file.assert_called_once()
                 read_mock.assert_not_called()
-                assert write_mock.call_count >= 0
-                assert os_replace.call_count >= 0
-                assert os_path_exists.call_count >= 0
-                assert get_validated_input.call_count >= 0
                 ws_warning.assert_called_once()
                 ws_success.assert_not_called()
                 mocks_reset()
@@ -440,10 +416,6 @@ def test_set_gradle_version_failing_scenarios(
                 assert run_operation.call_count >= 1
                 get_local_file.assert_called_once()
                 read_mock.assert_not_called()
-                assert write_mock.call_count >= 0
-                assert os_replace.call_count >= 0
-                assert os_path_exists.call_count >= 0
-                assert get_validated_input.call_count >= 0
                 ws_warning.assert_called_once()
                 ws_success.assert_not_called()
                 mocks_reset()
