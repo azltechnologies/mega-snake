@@ -18,10 +18,10 @@ def test_main_cli_and_post_command() -> None:
         result = runner.invoke(app_main.cli, ["--shell", "bash", "createDiffTree", "--help"])
         assert result.exit_code == 0
 
-    ctx2 = click.Context(app_main.cli)
-    ctx2.invoked_subcommand = "x"
-    ctx2.obj = {"exit_code": 2}
-    with pytest.raises(SystemExit), ctx2.scope():
+    error_context = click.Context(app_main.cli)
+    error_context.invoked_subcommand = "x"
+    error_context.obj = {"exit_code": 2}
+    with pytest.raises(SystemExit), error_context.scope():
         app_main.post_command(None)
 
 

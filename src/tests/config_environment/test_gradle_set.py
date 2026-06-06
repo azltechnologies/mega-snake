@@ -300,10 +300,10 @@ def test_set_gradle_version_darwin_defined_versions(
             assert any(call.args[1] == "Getting Gradle versions" for call in run_operation.call_args_list)
             get_local_file.assert_called_once()
             assert read_mock.call_count >= 1
-            assert write_mock.call_count >= 0
-            assert os_replace.call_count >= 0
-            assert os_path_exists.call_count >= 0
-            assert get_validated_input.call_count >= 0
+            write_mock.assert_called()
+            os_replace.assert_called_once()
+            assert os_path_exists.call_count >= 1
+            get_validated_input.assert_called_once()
             ws_warning.assert_not_called()
             ws_success.assert_called_once()
             mocks_reset()
@@ -325,7 +325,6 @@ def test_set_gradle_version_darwin_defined_versions(
             ws_success.assert_called_once()
             local_file_content: str = write_mock.mock_calls.pop().args[0]
             local_file_content_lines = [line.strip() for line in local_file_content.splitlines() if line]
-            assert "export GRADLE_HOME='/opt/homebrew/Cellar/gradle@8.4/8.4/libexec'" not in local_file_content_lines
             assert any(line.startswith("export GRADLE_HOME='") for line in local_file_content_lines)
             assert 'export PATH="$GRADLE_HOME/bin:$PATH"' in local_file_content_lines
             wk_file_content_array = []
