@@ -44,7 +44,7 @@ def get_os_list() -> list[Tuple[str, str, str]]:
     result: list[Tuple[str, str, str]] = []
     for os_s in OS_MAP:
         for shell in SHELL_OPT:
-            if shell.lower() == "powershell":
+            if shell.lower() in ["powershell", "pwsh"]:
                 result.append((os_s, shell, windows_formater(os_s, POWERSHELL_LOCAL_CONFIG_FILE)))
             else:
                 result.append((os_s, shell, windows_formater(os_s, BASH_LOCAL_CONFIG_FILE)))
@@ -244,12 +244,12 @@ def test_set_version_local_config(mk_os: MagicMock, mk_open: MagicMock, ws_advic
                 read_mock.return_value = output
                 set_version_local_config(version, path, shell, TOOL_TEST_VARIABLE)
                 result = write_mock.call_args_list[0][0][0]
-                eq_str = r"\s=\s" if shell.lower() == "powershell" else "="
-                quo_str = '"' if shell.lower() == "powershell" else "'"
+                eq_str = r"\s=\s" if shell.lower() in ["powershell", "pwsh"] else "="
+                quo_str = '"' if shell.lower() in ["powershell", "pwsh"] else "'"
                 pattern = rf"{TOOL_TEST_VARIABLE}{eq_str}{quo_str}{version.path}{quo_str}"
                 matches = re.findall(pattern, result)
                 assert len(matches) == 1
-                env_str = r"env\:" if shell.lower() == "powershell" else ""
+                env_str = r"env\:" if shell.lower() in ["powershell", "pwsh"] else ""
                 pattern = rf'PATH{eq_str}"\${env_str}{TOOL_TEST_VARIABLE}'
                 matches = re.findall(pattern, result)
                 assert len(matches) == 1

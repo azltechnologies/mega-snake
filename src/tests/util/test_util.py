@@ -102,16 +102,18 @@ def test_run_operation(mk_ws_warning: MagicMock, mk_subprocess_run: MagicMock) -
 
     # Test when command runs successfully
     mk_subprocess_run.return_value = valid_value
-    result = run_operation(command, description)
+    with patch("codename_snake.util.util.get_property", return_value="bash"):
+        result = run_operation(command, description)
     mk_ws_warning.assert_not_called()
-    mk_subprocess_run.assert_called_once_with(command, shell=True, check=True, capture_output=True, text=True)
+    mk_subprocess_run.assert_called_once_with(["bash", "-c", command], shell=False, check=True, capture_output=True, text=True)
     assert result.stdout == "Hello, World!"
     mk_subprocess_run.reset_mock()
     mk_ws_warning.reset_mock()
 
     # Test when command fails once and succeeds on retry
     mk_subprocess_run.side_effect = [error_value, valid_value]
-    result = run_operation(command, description)
+    with patch("codename_snake.util.util.get_property", return_value="bash"):
+        result = run_operation(command, description)
     assert mk_ws_warning.call_count == 3
     assert mk_subprocess_run.call_count == 2
     assert result.stdout == "Hello, World!"
@@ -121,7 +123,8 @@ def test_run_operation(mk_ws_warning: MagicMock, mk_subprocess_run: MagicMock) -
     # Test when command fails all retries
     mk_subprocess_run.side_effect = [error_value] * 3
     with pytest.raises(subprocess.SubprocessError):
-        run_operation(command, description)
+        with patch("codename_snake.util.util.get_property", return_value="bash"):
+            run_operation(command, description)
     assert mk_ws_warning.call_count == 8
     assert mk_subprocess_run.call_count == 3
 

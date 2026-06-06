@@ -14,6 +14,13 @@ from codename_snake.constants import SHELL_OPT, LOGGING_NAME_TO_LEVEL, LOGGING_L
 SOURCE_FOLDER: str = "/src"
 
 
+def get_validated_input(p_prompt: str, valid_values: list[str]) -> str:
+    """Proxy to avoid circular imports while keeping this symbol patchable in tests."""
+    from codename_snake.util.util import get_validated_input as util_get_validated_input
+
+    return util_get_validated_input(p_prompt, valid_values)
+
+
 def _get_package_root() -> str:
     """Get the root of the package"""
     python_path: Optional[str] = os.getenv("PYTHONPATH")
@@ -300,7 +307,6 @@ def _find_code_workspace_files(directory: str) -> str:
     """
     Find the .code-workspace file in the specified directory
     """
-    from codename_snake.util.util import get_validated_input
 
     directory = os.path.abspath(directory)
     # Find all .code-workspace files in the specified directory

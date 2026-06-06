@@ -167,13 +167,15 @@ def get_remote_url() -> Optional[str]:
     return re.sub(r"\.git$", "", run_operation(f"git remote get-url {remote}", "Getting remote URL").stdout.strip())
 
 
-def get_main_branch(remote: Optional[str]) -> str:
+def get_main_branch(remote: Optional[str] = None) -> str:
     """
     Gets the main branch of the repository.
 
     Returns:
         str
     """
+    if remote is None:
+        remote = get_remote()
     if not remote:
         return run_operation("git symbolic-ref --short HEAD", "Getting current local branch").stdout.strip()
     result = run_operation(f"git remote show {remote}", "Getting main branch").stdout.strip()
