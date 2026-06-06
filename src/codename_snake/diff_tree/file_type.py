@@ -36,6 +36,7 @@ class FileType(Enum):
     files: list[str]
 
     def __init__(self, symbol: str, id_type: str, description: str) -> None:
+        """Initialize a FileType with a diff symbol, type identifier, and human-readable description."""
         self.symbol = symbol
         self.id_type = id_type
         self.description = description

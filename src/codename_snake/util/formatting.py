@@ -48,6 +48,7 @@ class ErrorFilter(logging.Filter):
     """Allows only ERROR and CRITICAL levels."""
 
     def filter(self, record) -> bool:
+        """Return True only for ERROR and CRITICAL log records."""
         return record.levelno >= logging.ERROR
 
 
@@ -55,6 +56,7 @@ class DefaultFilter(logging.Filter):
     """Allows only DEBUG, INFO, WARNING levels."""
 
     def filter(self, record) -> bool:
+        """Return True only for DEBUG, INFO, and WARNING log records."""
         return record.levelno < logging.ERROR
 
 
@@ -202,6 +204,7 @@ class WorkspaceError(Exception):
     """Custom exception for workspace operations"""
 
     def __init__(self, message: str, parent_exception: BaseException, error_code: int = 100) -> None:
+        """Initialize a WorkspaceError with a message, the causing exception, and an optional error code."""
         sys.excepthook = _on_crash
         self.message = message
         self.parent_exception = parent_exception
@@ -224,6 +227,7 @@ class WorkspaceError(Exception):
         _ws_error(parent_exception, str(self))
 
     def __str__(self) -> str:
+        """Return a structured string representation including the message, error code, and cause."""
         return (
             f"[ WorkspaceError: {self.message} ] —— [ code: {self.error_code} ] —— "
             f"[ type: {self.parent_exception.__class__.__name__} ] —— [ Message: {str(self.parent_exception)} ]"

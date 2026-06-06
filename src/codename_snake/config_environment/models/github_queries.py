@@ -12,7 +12,8 @@ GH_ISSUES_QUERY = '.settings.["githubIssues.queries"]'
 class BaseQueries:
     """Enum for the different PR queries."""
 
-    def __init__(self, label: str, query: str):
+    def __init__(self, label: str, query: str) -> None:
+        """Initialize with a display label and the query string."""
         self.label = label
         self.query = query
 
@@ -60,7 +61,8 @@ class IssuesQueries(BaseQueries, Enum):
     CREATED_ISSUES = ("Created Issues", "author:${user} state:open repo:${owner}/${repository} sort:created-desc")
     RECENT_ISSUES = ("Recent Issues", "state:open repo:${owner}/${repository} sort:updated-desc")
 
-    def __init__(self, label: str, query: str, group_by: Optional[list[str]] = None):
+    def __init__(self, label: str, query: str, group_by: Optional[list[str]] = None) -> None:
+        """Initialize with a display label, query string, and an optional list of grouping keys."""
         super().__init__(label, query)
         self.group_by = group_by
 

@@ -32,12 +32,14 @@ class Release:
     published_at: datetime
     commit: str
 
-    def __new__(cls, input_string: str):
+    def __new__(cls, input_string: str) -> "Release | None":
+        """Return None when the input string is empty; otherwise create a new Release instance."""
         if input_string is None or not bool(input_string):
             return None
         return super().__new__(cls)
 
-    def __init__(self, input_string: str):
+    def __init__(self, input_string: str) -> None:
+        """Parse a tab-separated release record and populate the instance attributes."""
         if input_string is not None and bool(input_string):
             result = input_string.split("\t")
             self.title = result[0]

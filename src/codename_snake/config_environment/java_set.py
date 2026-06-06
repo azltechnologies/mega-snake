@@ -85,10 +85,12 @@ class JavaVersion(ToolVersion):
     _id_counter: int = 0
 
     def __init__(self, version: str, path: str, description: str) -> None:
+        """Initialize a JavaVersion with the given version string, installation path, and description."""
         super().__init__(version, path)
         self.description = description
 
     def __str__(self) -> str:
+        """Return a human-readable string representation of the JavaVersion."""
         return (
             f"Id: {self.id}\n\tJava Version: {self.version}\n\tpath: {self.path}\n\tDescription: {self.description}\n"
         )
@@ -227,15 +229,20 @@ def _get_versions() -> list[JavaVersion]:
     """
     version_list: list[JavaVersion] = []
     pattern: str = r"\"([0-9\._]+)\".*\t(.+?)\t.+\t([^\t]+)/bin/.+$"
-    command_details: Callable[[str], str] = lambda path: f'{path} -version 2>&1'
+
+    def command_details(path: str) -> str:
+        """Build the shell command to retrieve the Java version for a given executable path."""
+        return f'{path} -version 2>&1'
+
     if OS == "Windows":
         command_paths = (
             'scoop list 6>&1 | Where-Object { $_.Source -eq "java" } '
             '| ForEach-Object { "$(scoop prefix $_.Name)/bin/java.exe" }'
         )
-        command_details = (
-            lambda path: f'$(& \'{path}\' -version 2>&1  | ForEach-Object {{ $_ -replace "\\n", "\\n\\n" }} | Out-String)'
-        )
+
+        def command_details(path: str) -> str:  # noqa: F811
+            """Build the PowerShell command to retrieve the Java version for a given executable path."""
+            return f'$(& \'{path}\' -version 2>&1  | ForEach-Object {{ $_ -replace "\\n", "\\n\\n" }} | Out-String)'
     elif OS == "Linux":
         command_paths ="update-alternatives --list java"
     elif OS == "Darwin":

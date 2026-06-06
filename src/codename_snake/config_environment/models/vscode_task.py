@@ -136,7 +136,8 @@ class VscodeTask(Enum):
         watcher: Optional[LogWatcher],
         problem_matcher: Optional[Any],
         extra_args: Optional[dict[str, Any]],
-    ):
+    ) -> None:
+        """Initialize a VscodeTask enum member with all required VS Code task configuration fields."""
         self.label = label
         self.hidden = hidden
         self.task_type = task_type

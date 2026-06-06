@@ -212,6 +212,7 @@ class AppProperties:
         self.__post_init__()
 
     def __post_init__(self) -> None:
+        """Raise ValueError if any attribute is still None after initialisation."""
         for attr_name, attr_value in vars(self).items():
             if attr_value is None:
                 raise ValueError(f"{attr_name} has not been set")
@@ -229,6 +230,7 @@ class AppProperties:
         return AppProperties._instance
 
     def __new__(cls, log_level: str, shell: str, properties: dict[str, str]) -> "AppProperties":
+        """Create and return the singleton AppProperties instance; raise if already initialized."""
         _check_forbidden_execution("init_app_properties", "AppProperties class instantiation")
         if not cls._instance:
             cls._instance = super().__new__(cls)

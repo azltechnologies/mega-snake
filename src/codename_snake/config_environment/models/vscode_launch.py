@@ -79,7 +79,8 @@ class VscodeLaunch(Enum):
         watcher: Optional[LogWatcher],
         depends_on: Optional[list[VscodeTask]],
         extra_args: Optional[dict[str, Any]],
-    ):
+    ) -> None:
+        """Initialize a VscodeLaunch enum member with all required VS Code launch configuration fields."""
         self.task_name = task_name
         self.task_type = task_type
         self.request = request

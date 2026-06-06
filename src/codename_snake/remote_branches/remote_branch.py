@@ -18,7 +18,8 @@ class Commit:
     dt: datetime
     message: str
 
-    def __init__(self, commit_hash: str, dt: datetime, date_str: str, message: str):
+    def __init__(self, commit_hash: str, dt: datetime, date_str: str, message: str) -> None:
+        """Initialize a Commit with its hash, timestamp, formatted date string, and commit message."""
         self.commit_hash = commit_hash
         self.dt = dt
         self.date_str = date_str
@@ -62,7 +63,8 @@ class RemoteBranch:
 
     def __init__(
         self: "RemoteBranch", branch: str, merged_on_main: bool, commit: Commit, mail: str, main_common_ancestor: str
-    ):
+    ) -> None:
+        """Initialize a RemoteBranch with its branch name, merge status, commit info, mail, and common ancestor."""
         self.merged_on_main = merged_on_main
         self.branch = branch
         self.commit = commit
@@ -139,6 +141,7 @@ class RemoteBranch:
         return cls(local_branch, merged_on_main, commit, mail, main_common_ancestor)
 
     def __lt__(self: "RemoteBranch", other: "RemoteBranch") -> bool:
+        """Compare two RemoteBranch instances by their commit timestamp."""
         return self.commit.dt < other.commit.dt
 
     def printing_remote_branches_details(self) -> str:

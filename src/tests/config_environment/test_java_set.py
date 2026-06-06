@@ -240,6 +240,26 @@ def test_set_java_version_darwin_empty_files(
     m_open: MagicMock = mock_open()
     local_file = EMPTY_SH_FILE
 
+    # Realistic paths returned by "Getting Java versions" (3 entries; get_validated_input returns "3")
+    java_paths_stdout = "\n".join([
+        "/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home/bin/java",
+        "/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home/bin/java",
+        "/Users/user/Library/Java/JavaVirtualMachines/temurin-11.0.22/Contents/Home/bin/java",
+    ])
+    java_detail_stdout = (
+        'openjdk version "21.0.5" 2024-10-15\n'
+        'OpenJDK Runtime Environment (build 21.0.5)\n'
+        'OpenJDK 64-Bit Server VM (build 21.0.5, mixed mode)'
+    )
+
+    def run_op_side_effect(cmd: str, msg: str) -> MagicMock:
+        """Side effect for run_operation: returns paths on first call, version details on rest."""
+        result: MagicMock = MagicMock()
+        result.stdout = java_paths_stdout if msg == "Getting Java versions" else java_detail_stdout
+        return result
+
+    run_operation.side_effect = run_op_side_effect
+
     def read_side_effect() -> str:
         """Read side effect"""
         with real_open(local_file, "r", encoding="utf-8") as file:
@@ -251,7 +271,9 @@ def test_set_java_version_darwin_empty_files(
         read_mock: MagicMock = file_mock.read
         read_mock.side_effect = read_side_effect
 
-        # Test when no parameters are passed, workspace file is empty and local file is empty
+        # Test when no parameters are passed, workspace file is empty and local file is empty.
+        # With a proper run_operation mock, _get_versions() returns real versions, so the full
+        # configuration flow executes (version selection, workspace + local config updates, ws_success).
         with patch(
             "codename_snake.config_environment.java_set.load_json_with_comments",
             return_value=empty_wk_file_content,
@@ -262,18 +284,17 @@ def test_set_java_version_darwin_empty_files(
             add_java_formatter.assert_called_once()
             assert any(call.args[1] == "Getting Java versions" for call in run_operation.call_args_list)
             get_local_file.assert_called_once()
-            read_mock.assert_not_called()
-            write_mock.assert_not_called()
-            os_replace.assert_not_called()
-            os_path_exists.assert_not_called()
-            get_validated_input.assert_not_called()
-            ws_warning.assert_called_once()
-            ws_success.assert_not_called()
-            if write_mock.mock_calls:
-                local_file_content: str = write_mock.mock_calls.pop().args[0]
-                local_file_content_lines = [line.strip() for line in local_file_content.splitlines() if line]
-                assert any(line.startswith("export JAVA_HOME='") for line in local_file_content_lines)
-                assert 'export PATH="$JAVA_HOME/bin:$PATH"' in local_file_content_lines
+            read_mock.assert_called()
+            write_mock.assert_called()
+            os_replace.assert_called()
+            os_path_exists.assert_called()
+            get_validated_input.assert_called()
+            ws_warning.assert_not_called()
+            ws_success.assert_called()
+            local_file_content: str = write_mock.mock_calls[-1].args[0]
+            local_file_content_lines = [line.strip() for line in local_file_content.splitlines() if line]
+            assert any(line.startswith("export JAVA_HOME='") for line in local_file_content_lines)
+            assert 'export PATH="$JAVA_HOME/bin:$PATH"' in local_file_content_lines
 
 
 def test_set_java_version_darwin_defined_versions(
@@ -293,6 +314,29 @@ def test_set_java_version_darwin_defined_versions(
     wk_file_content = load_json_with_comments(DARWIN_FILES["wk_file"])
     m_open: MagicMock = mock_open()
     local_file = DARWIN_FILES["local_file"]
+
+    # 5 realistic paths (including temurin-19.0.2 which matches the workspace/local file);
+    # get_validated_input returns "5" for the override scenario so we need exactly 5 entries.
+    java_paths_stdout = "\n".join([
+        "/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home/bin/java",
+        "/Users/carlosmorales/Library/Java/JavaVirtualMachines/openjdk-21.0.2/Contents/Home/bin/java",
+        "/Users/carlosmorales/Library/Java/JavaVirtualMachines/temurin-19.0.2/Contents/Home/bin/java",
+        "/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home/bin/java",
+        "/Library/Java/JavaVirtualMachines/jdk-17.jdk/Contents/Home/bin/java",
+    ])
+    java_detail_stdout = (
+        'openjdk version "21.0.5" 2024-10-15\n'
+        'OpenJDK Runtime Environment (build 21.0.5)\n'
+        'OpenJDK 64-Bit Server VM (build 21.0.5, mixed mode)'
+    )
+
+    def run_op_side_effect(cmd: str, msg: str) -> MagicMock:
+        """Side effect for run_operation: returns paths on first call, version details on rest."""
+        result: MagicMock = MagicMock()
+        result.stdout = java_paths_stdout if msg == "Getting Java versions" else java_detail_stdout
+        return result
+
+    run_operation.side_effect = run_op_side_effect
 
     def read_side_effect() -> str:
         """Read side effect"""
@@ -324,7 +368,9 @@ def test_set_java_version_darwin_defined_versions(
                 add_java_formatter,
             )
 
-        # Test when no parameters are passed, workspace file and local file have versions
+        # Test when no parameters are passed, workspace file and local file have versions.
+        # The workspace and local file both point to temurin-19.0.2; determine_tool_version
+        # should identify it automatically without requiring user selection.
         with patch(
             "codename_snake.config_environment.java_set.load_json_with_comments",
             return_value=wk_file_content,
@@ -336,14 +382,15 @@ def test_set_java_version_darwin_defined_versions(
             add_java_formatter.assert_called_once()
             assert any(call.args[1] == "Getting Java versions" for call in run_operation.call_args_list)
             get_local_file.assert_called_once()
-            read_mock.assert_not_called()
-            write_mock.assert_not_called()
-            os_replace.assert_not_called()
-            os_path_exists.assert_not_called()
+            read_mock.assert_called()
+            write_mock.assert_called()
+            os_replace.assert_called()
+            os_path_exists.assert_called()
             get_validated_input.assert_not_called()
-            ws_warning.assert_called_once()
-            ws_success.assert_not_called()
+            ws_warning.assert_not_called()
+            ws_success.assert_called()
             mocks_reset()
+            run_operation.side_effect = run_op_side_effect  # restore after reset
 
             # Test when override and workspace file and local file have versions
             get_validated_input.return_value = "5"  # Return the first version 8.5
@@ -354,18 +401,17 @@ def test_set_java_version_darwin_defined_versions(
             add_java_formatter.assert_called_once()
             assert any(call.args[1] == "Getting Java versions" for call in run_operation.call_args_list)
             get_local_file.assert_called_once()
-            read_mock.assert_not_called()
-            write_mock.assert_not_called()
-            os_replace.assert_not_called()
-            os_path_exists.assert_not_called()
-            get_validated_input.assert_not_called()
-            ws_warning.assert_called_once()
-            ws_success.assert_not_called()
-            if write_mock.mock_calls:
-                local_file_content: str = write_mock.mock_calls.pop().args[0]
-                local_file_content_lines = [line.strip() for line in local_file_content.splitlines() if line]
-                assert any(line.startswith("export JAVA_HOME='") for line in local_file_content_lines)
-                assert 'export PATH="$JAVA_HOME/bin:$PATH"' in local_file_content_lines
+            read_mock.assert_called()
+            write_mock.assert_called()
+            os_replace.assert_called()
+            os_path_exists.assert_called()
+            get_validated_input.assert_called_once()
+            ws_warning.assert_not_called()
+            ws_success.assert_called()
+            local_file_content: str = write_mock.mock_calls[-1].args[0]
+            local_file_content_lines = [line.strip() for line in local_file_content.splitlines() if line]
+            assert any(line.startswith("export JAVA_HOME='") for line in local_file_content_lines)
+            assert 'export PATH="$JAVA_HOME/bin:$PATH"' in local_file_content_lines
 
 
 def test_set_java_version_failing_scenarios(

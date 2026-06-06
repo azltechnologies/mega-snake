@@ -52,6 +52,7 @@ class ToolVersion:
     _id_counter: int = 0  # Class variable to keep track of the count
 
     def __post_init__(self) -> None:
+        """Assign the next sequential ID to this instance."""
         type(self)._id_counter += 1
         self.id = type(self)._id_counter
 

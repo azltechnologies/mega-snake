@@ -59,7 +59,8 @@ class VscodeInput(Enum):
         input_args: Optional[dict[str, str]],
         input_description: str,
         enum_type: InputType,
-    ):
+    ) -> None:
+        """Initialize a VscodeInput enum member with all required VS Code input configuration fields."""
         self.input_id = input_id
         self.input_type = input_type
         self.input_command = input_command

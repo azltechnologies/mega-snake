@@ -21,7 +21,8 @@ class LogWatcher(Enum):
     JAVA_DEBUG = ("JAVA DEBUG LOG", f"logs/java_debug{SUBSTITUTE_LOG_DATE_TAG}")
     PYTHON_SNAKE = ("PYTHON SNAKE LOG", f"logs/python_snake{SUBSTITUTE_LOG_DATE_TAG}")
 
-    def __init__(self, title: str, pattern: str):
+    def __init__(self, title: str, pattern: str) -> None:
+        """Initialize with a display title and glob pattern for the log file."""
         self.title = title
         self.pattern = pattern
 

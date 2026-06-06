@@ -75,6 +75,7 @@ class GradleVersion(ToolVersion):
     _id_counter: int = 0  # Class variable to keep track of the count
 
     def __str__(self) -> str:
+        """Return a human-readable string representation of the GradleVersion."""
         return f"Id: {self.id}\n\tGradle Version: {self.version}\n\tpath: {self.path}\n"
 
 
@@ -181,13 +182,20 @@ def _get_versions() -> list[GradleVersion]:
     """
     version_list: list[GradleVersion] = []
     pattern: str = r"^(.+)\t(.+)$"
-    command_details: Callable[[str], str] = lambda path: f'echo "{path}/lib" | xargs ls | grep -oE "^gradle-core-[0-9\\.]+\\.jar" | sed "s:gradle-core-::" | sed "s:\\.jar::"'
+
+    def command_details(path: str) -> str:
+        """Build the shell command to extract the Gradle version for a given installation path."""
+        return f'echo "{path}/lib" | xargs ls | grep -oE "^gradle-core-[0-9\\.]+\\.jar" | sed "s:gradle-core-::" | sed "s:\\.jar::"'
+
     if OS == "Windows":
         command_paths = (
             'scoop list 6>&1 | Where-Object { $_.Name -like "gradle*" } '
             '| ForEach-Object { "$(scoop prefix $_.Name)" } '
         )
-        command_details = lambda path: f"(Get-ChildItem \"{path}\\lib\\\" 6>&1 | Where-Object {{ $_.Name -match '^gradle-core-[0-9\\.]+\\.jar' }}).Name -replace 'gradle-core-', '' -replace '\\.jar', ''"
+
+        def command_details(path: str) -> str:  # noqa: F811
+            """Build the PowerShell command to extract the Gradle version for a given path."""
+            return f"(Get-ChildItem \"{path}\\lib\\\" 6>&1 | Where-Object {{ $_.Name -match '^gradle-core-[0-9\\.]+\\.jar' }}).Name -replace 'gradle-core-', '' -replace '\\.jar', ''"
     if OS == "Linux":
         command_paths = "update-alternatives --list gradle | sed 's:/bin/gradle$::'"
     if OS == "Darwin":
