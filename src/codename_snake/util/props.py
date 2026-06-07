@@ -21,11 +21,24 @@ def get_validated_input(p_prompt: str, valid_values: list[str]) -> str:
 
 
 def _get_package_root() -> str:
-    """Get the root of the package"""
-    python_path: Optional[str] = str(files(MODULE_NAME))
-    if not python_path:
-        raise EnvironmentError("PYTHONPATH environment variable not set")
-    return python_path
+    """Get the root of the package.
+
+    Returns:
+        str: The absolute path to the package resources directory.
+
+    Raises:
+        ModuleNotFoundError: If the package module cannot be found or accessed.
+    """
+    try:
+        python_path: str = str(files(MODULE_NAME))
+        if not python_path:
+            raise ValueError("Package root path is empty")
+        return python_path
+    except (ModuleNotFoundError, TypeError, ValueError) as e:
+        raise ModuleNotFoundError(
+            f"Cannot access package resources for module '{MODULE_NAME}'. "
+            "Ensure the package is properly installed with all required dependencies."
+        ) from e
 
 
 def _check_forbidden_execution(
