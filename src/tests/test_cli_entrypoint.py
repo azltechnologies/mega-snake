@@ -2,6 +2,7 @@
 
 import os
 import runpy
+import sys
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -85,5 +86,12 @@ def test_cli_requires_a_supported_shell_env(shell_value: str | None, expected_me
 def test_running_main_module_wraps_cli_errors() -> None:
     """The __main__ block should wrap unexpected cli.main errors as WorkspaceError."""
     with patch("codename_snake.util.cli_group.CliGroup.main", side_effect=RuntimeError("boom")):
-        with pytest.raises(WorkspaceError, match="Error during cli execution"):
-            runpy.run_module("codename_snake.__main__", run_name="__main__")
+        # Remove the module from sys.modules to allow runpy.run_module to execute it cleanly
+        modules_to_remove = [key for key in sys.modules if key.startswith("codename_snake.__main__")]
+        removed_modules = {key: sys.modules.pop(key) for key in modules_to_remove}
+        try:
+            with pytest.raises(WorkspaceError, match="Error during cli execution"):
+                runpy.run_module("codename_snake.__main__", run_name="__main__")
+        finally:
+            # Restore the modules
+            sys.modules.update(removed_modules)
