@@ -8,7 +8,7 @@ from typing import Generator, Any
 import jq
 from click.testing import CliRunner
 import pytest
-from codename_snake.config_environment.create_working_env import (
+from mega_snake.config_environment.create_working_env import (
     create_working_env,
     _get_workspace_file as get_workspace_file,
     _get_working_path as get_working_path,
@@ -21,28 +21,28 @@ from codename_snake.config_environment.create_working_env import (
     FILE_ASSOCIATIONS,
     FILE_ASSOCIATION_QUERY,
 )
-from codename_snake.config_environment.models.github_queries import (
+from mega_snake.config_environment.models.github_queries import (
     PrQueries,
     IssuesQueries,
     GH_PR_QUERY,
     GH_ISSUES_QUERY,
 )
-from codename_snake.config_environment.models.log_viewer_watcher import LogWatcher, LOG_WATCHER_QUERY
-from codename_snake.config_environment.models.vscode_task import (
+from mega_snake.config_environment.models.log_viewer_watcher import LogWatcher, LOG_WATCHER_QUERY
+from mega_snake.config_environment.models.vscode_task import (
     VscodeTask,
     TASKS_INPUT_QUERY,
     TASKS_TASKS_QUERY,
     TASKS_VERSION_QUERY,
 )
-from codename_snake.config_environment.models.vscode_launch import (
+from mega_snake.config_environment.models.vscode_launch import (
     VscodeLaunch,
     LAUNCH_CONFIG_QUERY,
     LAUNCH_VERSION_QUERY,
     LAUNCH_INPUT_QUERY,
 )
-from codename_snake.config_environment.models.vscode_input import VscodeInput, InputType
-from codename_snake.constants import WORKSPACE_EXTENSIONS
-from codename_snake.util.util import load_json_with_comments
+from mega_snake.config_environment.models.vscode_input import VscodeInput, InputType
+from mega_snake.constants import WORKSPACE_EXTENSIONS
+from mega_snake.util.util import load_json_with_comments
 
 
 GRADLE_CMD_NAME = "gradle_command"
@@ -63,98 +63,98 @@ real_open = builtins.open
 @pytest.fixture(name="shutil_which")
 def fixture_shutil_copyfile() -> Generator[MagicMock]:
     """Mock shutil.which"""
-    with patch("codename_snake.config_environment.create_working_env.shutil") as mock:
+    with patch("mega_snake.config_environment.create_working_env.shutil") as mock:
         yield mock.which
 
 
 @pytest.fixture(name="get_validated_input")
 def fixture_get_validated_input() -> Generator[MagicMock]:
     """Mock get_validated_input"""
-    with patch("codename_snake.config_environment.create_working_env.get_validated_input") as mock:
+    with patch("mega_snake.config_environment.create_working_env.get_validated_input") as mock:
         yield mock
 
 
 @pytest.fixture(name="ws_warning")
 def fixture_ws_warning() -> Generator[MagicMock]:
     """Mock ws_warning"""
-    with patch("codename_snake.config_environment.create_working_env.ws_warning") as mock:
+    with patch("mega_snake.config_environment.create_working_env.ws_warning") as mock:
         yield mock
 
 
 @pytest.fixture(name="ws_success")
 def fixture_ws_success() -> Generator[MagicMock]:
     """Mock ws_success"""
-    with patch("codename_snake.config_environment.create_working_env.ws_success") as mock:
+    with patch("mega_snake.config_environment.create_working_env.ws_success") as mock:
         yield mock
 
 
 @pytest.fixture(name="ws_advice")
 def fixture_ws_advice() -> Generator[MagicMock]:
     """Mock ws_advice"""
-    with patch("codename_snake.config_environment.create_working_env.ws_advice") as mock:
+    with patch("mega_snake.config_environment.create_working_env.ws_advice") as mock:
         yield mock
 
 
 @pytest.fixture(name="get_command_return_code")
 def fixture_get_command_return_code() -> Generator[MagicMock]:
     """Mock get_command_return_code"""
-    with patch("codename_snake.config_environment.create_working_env.get_command_return_code") as mock:
+    with patch("mega_snake.config_environment.create_working_env.get_command_return_code") as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_get_workspace_file")
 def fixture_mk_get_workspace_file() -> Generator[MagicMock]:
     """Mock _get_workspace_file"""
-    with patch("codename_snake.config_environment.create_working_env._get_workspace_file") as mock:
+    with patch("mega_snake.config_environment.create_working_env._get_workspace_file") as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_get_working_path")
 def fixture_get_working_path() -> Generator[MagicMock]:
     """Mock _get_working_path"""
-    with patch("codename_snake.config_environment.create_working_env._get_working_path") as mock:
+    with patch("mega_snake.config_environment.create_working_env._get_working_path") as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_git_exclude")
 def fixture_git_exclude() -> Generator[MagicMock]:
     """Mock _git_exclude"""
-    with patch("codename_snake.config_environment.create_working_env._git_exclude") as mock:
+    with patch("mega_snake.config_environment.create_working_env._git_exclude") as mock:
         yield mock
 
 
 @pytest.fixture(name="initial_load")
 def fixture_initial_load() -> Generator[MagicMock]:
     """Mock initial_load"""
-    with patch("codename_snake.config_environment.create_working_env.initial_load") as mock:
+    with patch("mega_snake.config_environment.create_working_env.initial_load") as mock:
         yield mock
 
 
 @pytest.fixture(name="set_java")
 def fixture_set_java() -> Generator[MagicMock]:
     """Mock set_java"""
-    with patch("codename_snake.config_environment.create_working_env.set_java") as mock:
+    with patch("mega_snake.config_environment.create_working_env.set_java") as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_os")
 def fixture_mk_os() -> Generator[MagicMock]:
     """Mock os"""
-    with patch("codename_snake.config_environment.create_working_env.os") as mock:
+    with patch("mega_snake.config_environment.create_working_env.os") as mock:
         yield mock
 
 
 @pytest.fixture(name="set_gradle")
 def fixture_set_gradle() -> Generator[MagicMock]:
     """Mock set_gradle"""
-    with patch("codename_snake.config_environment.create_working_env.set_gradle") as mock:
+    with patch("mega_snake.config_environment.create_working_env.set_gradle") as mock:
         yield mock
 
 
 @pytest.fixture(name="_gradle_command")
 def fixture_gradle_command() -> Generator[MagicMock]:
     """Mock gradle_command"""
-    with patch("codename_snake.config_environment.create_working_env.gradle_command") as mock:
+    with patch("mega_snake.config_environment.create_working_env.gradle_command") as mock:
         mock.name = GRADLE_CMD_NAME
         yield mock
 
@@ -162,21 +162,21 @@ def fixture_gradle_command() -> Generator[MagicMock]:
 @pytest.fixture(name="mk_add_recommended_extensions")
 def fixture_add_recommended_extensions() -> Generator[MagicMock]:
     """Mock _add_recommended_extensions"""
-    with patch("codename_snake.config_environment.create_working_env._add_recommended_extensions") as mock:
+    with patch("mega_snake.config_environment.create_working_env._add_recommended_extensions") as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_add_default_settings")
 def fixture_mk_add_default_settings() -> Generator[MagicMock]:
     """Mock _add_default_settings"""
-    with patch("codename_snake.config_environment.create_working_env._add_default_settings") as mock:
+    with patch("mega_snake.config_environment.create_working_env._add_default_settings") as mock:
         yield mock
 
 
 @pytest.fixture(name="execute")
 def fixture_execute() -> Generator[MagicMock]:
     """Mock execute"""
-    with patch("codename_snake.config_environment.create_working_env._execute") as mock:
+    with patch("mega_snake.config_environment.create_working_env._execute") as mock:
         yield mock
 
 
@@ -193,21 +193,21 @@ def fixture_get_property() -> Generator[MagicMock]:
         elif prop == "shell":
             return OS
 
-    with patch("codename_snake.config_environment.create_working_env.get_property", side_effect=f_side_effect) as mock:
+    with patch("mega_snake.config_environment.create_working_env.get_property", side_effect=f_side_effect) as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_json")
 def fixture_mk_json() -> Generator[MagicMock]:
     """Mock json"""
-    with patch("codename_snake.config_environment.create_working_env.json") as mock:
+    with patch("mega_snake.config_environment.create_working_env.json") as mock:
         yield mock
 
 
 @pytest.fixture(name="_mk_folder_const")
 def fixture_mk_folder_const() -> Generator[MagicMock]:
     """Mock FOLDER constant"""
-    with patch("codename_snake.config_environment.create_working_env.FOLDER", FOLDER) as mock:
+    with patch("mega_snake.config_environment.create_working_env.FOLDER", FOLDER) as mock:
         yield mock
 
 
@@ -215,7 +215,7 @@ def fixture_mk_folder_const() -> Generator[MagicMock]:
 def fixture_mk_new_wk_contents() -> Generator[MagicMock]:
     """Mock NEW_WORKSPACE_CONTENTS constant"""
     with patch(
-        "codename_snake.config_environment.create_working_env.NEW_WORKSPACE_CONTENTS", NEW_WORKSPACE_CONTENTS
+        "mega_snake.config_environment.create_working_env.NEW_WORKSPACE_CONTENTS", NEW_WORKSPACE_CONTENTS
     ) as mock:
         yield mock
 
@@ -223,7 +223,7 @@ def fixture_mk_new_wk_contents() -> Generator[MagicMock]:
 @pytest.fixture(name="mk_path")
 def fixture_mk_path() -> Generator[MagicMock]:
     """Mock path"""
-    with patch("codename_snake.config_environment.create_working_env.Path") as mock:
+    with patch("mega_snake.config_environment.create_working_env.Path") as mock:
         yield mock
 
 
@@ -237,14 +237,14 @@ def fixture_mk_input() -> Generator[MagicMock]:
 @pytest.fixture(name="os_replace")
 def fixture_os_replace() -> Generator[MagicMock]:
     """Mock os_replace"""
-    with patch("codename_snake.config_environment.util.os") as mock:
+    with patch("mega_snake.config_environment.util.os") as mock:
         yield mock.replace
 
 
 @pytest.fixture(name="get_remote_url")
 def fixture_get_remote_url() -> Generator[MagicMock]:
     """Mock get_remote_url"""
-    with patch("codename_snake.config_environment.create_working_env.get_remote_url") as mock:
+    with patch("mega_snake.config_environment.create_working_env.get_remote_url") as mock:
         yield mock
 
 
@@ -834,7 +834,7 @@ def test_add_default_settings(
     json_query = f"{EXTENSIONS_QUERY} = {json.dumps(list_ext)}"
     data = load_json_with_comments(EMPTY_WK_FILE)
     data = jq.compile(json_query).input(data).first()
-    with patch("codename_snake.config_environment.create_working_env.load_json_with_comments", return_value=data):
+    with patch("mega_snake.config_environment.create_working_env.load_json_with_comments", return_value=data):
         evaluate_happy_path(EMPTY_WK_FILE, "")
 
     # test file when get_remote_url starts with git@
@@ -850,7 +850,7 @@ def test_launch_substituter(
     # test project sample data
     project_sample_data = (
         '{"name": "JAVA DEBUG (Attach)", "type": "java", "request": "attach",'
-        ' "port": "${config:snake.java.remoteDebug.port}", "hostName": "localhost", "projectName": "[SUBS_PROJECT]"}'
+        ' "port": "${config:mgsnake.java.remoteDebug.port}", "hostName": "localhost", "projectName": "[SUBS_PROJECT]"}'
     )
     result = launch_substituter(project_sample_data)
     assert f'"projectName": "{FOLDER}"' in result

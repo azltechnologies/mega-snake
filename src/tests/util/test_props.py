@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 from tests.test_util.util_test import param_injector, get_mock
 from tests.test_util.side_effect_wrapper import SideEffectWrapper
-from codename_snake.util.props import (
+from mega_snake.util.props import (
     init_app_properties,
     get_property,
     AppProperties,
@@ -16,7 +16,7 @@ from codename_snake.util.props import (
     _check_property as check_property,
     _check_forbidden_execution as check_forbidden_execution,
 )
-from codename_snake.constants import LOGGING_NAME_TO_LEVEL
+from mega_snake.constants import LOGGING_NAME_TO_LEVEL
 
 ROOT = "src/tests"
 RESOURCE_FOLDER = "/resources"
@@ -31,7 +31,7 @@ real_os_path_exists = os.path.exists
 @pytest.fixture(name="get_validated_input")
 def fixture_get_validated_input() -> Generator[MagicMock]:
     """Mock get_validated_input"""
-    with patch("codename_snake.util.props.get_validated_input") as mock:
+    with patch("mega_snake.util.props.get_validated_input") as mock:
         yield mock
 
 
@@ -39,35 +39,35 @@ def fixture_get_validated_input() -> Generator[MagicMock]:
 @pytest.fixture(name="mk_importlib_resources_files")
 def fixture_mk_importlib_resources_files() -> Generator[MagicMock]:
     """Mock importlib.resources.files"""
-    with patch("codename_snake.util.props.files", return_value=ROOT) as mock:
+    with patch("mega_snake.util.props.files", return_value=ROOT) as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_os")
 def fixture_mk_os() -> Generator[MagicMock]:
     """Mock os.path.exists"""
-    with patch("codename_snake.util.props.os", wraps=os) as mock:
+    with patch("mega_snake.util.props.os", wraps=os) as mock:
         yield mock
 
 
 @pytest.fixture(name="formatting")
 def fixture_formatting() -> Generator[MagicMock]:
     """Mock formatting"""
-    with patch("codename_snake.util.props.formatting") as mock:
+    with patch("mega_snake.util.props.formatting") as mock:
         yield mock
 
 
 @pytest.fixture(name="get_package_root")
 def fixture_get_package_root() -> Generator[MagicMock]:
     """Mock get_package_root"""
-    with patch("codename_snake.util.props._get_package_root", return_value=ROOT) as mock:
+    with patch("mega_snake.util.props._get_package_root", return_value=ROOT) as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_read_properties")
 def fixture_mk_read_properties() -> Generator[MagicMock]:
     """Mock read_properties"""
-    with patch("codename_snake.util.props._read_properties", wraps=read_properties) as mock:
+    with patch("mega_snake.util.props._read_properties", wraps=read_properties) as mock:
         yield mock
 
 
@@ -129,7 +129,7 @@ def test_init_app_properties(
     mk_read_properties.wraps = None
     mk_read_properties.side_effect = read_props_side_effect
     mock_instance = MagicMock()
-    with patch("codename_snake.util.props.AppProperties", return_value=mock_instance) as mock_class:
+    with patch("mega_snake.util.props.AppProperties", return_value=mock_instance) as mock_class:
         mock_class.get_instance.return_value = mock_instance
         mocks.append(mock_class)
         log_level = "DEBUG"
@@ -257,7 +257,7 @@ def test_resources_path_validator(request) -> None:
 
         # Test when the resources location exists and is a directory but has no access
         get_package_root.return_value = ROOT
-        with patch("codename_snake.util.props.os.access", return_value=False):
+        with patch("mega_snake.util.props.os.access", return_value=False):
             with pytest.raises(PermissionError):
                 init_app_properties(log_level, shell, light_weight)
         reset_mocks(*mocks.values())
@@ -455,19 +455,19 @@ def test_fail_scenarios(request) -> None:
         reset_mocks(*mocks.values())
 
         # Test when log level string is none
-        with patch("codename_snake.util.props.LOGGING_NAME_TO_LEVEL", {"DEBUG": None}):
+        with patch("mega_snake.util.props.LOGGING_NAME_TO_LEVEL", {"DEBUG": None}):
             with pytest.raises(ValueError):
                 init_app_properties(log_level, shell, light_weight)
         reset_mocks(*mocks.values())
 
         # Test when log level is none
-        with patch("codename_snake.util.props.LOGGING_LEVEL_TO_NANE", {10: None}):
+        with patch("mega_snake.util.props.LOGGING_LEVEL_TO_NANE", {10: None}):
             with pytest.raises(ValueError):
                 init_app_properties(log_level, shell, light_weight)
         reset_mocks(*mocks.values())
 
         # Test when log level is not found
-        with patch("codename_snake.util.props.LOGGING_LEVEL_TO_NANE", {}):
+        with patch("mega_snake.util.props.LOGGING_LEVEL_TO_NANE", {}):
             with pytest.raises(KeyError):
                 init_app_properties(log_level, shell, light_weight)
         reset_mocks(*mocks.values())
@@ -487,7 +487,7 @@ def test_fail_scenarios(request) -> None:
         # Test when empty props are passed
         init_app_properties(log_level, shell, light_weight)
         with patch(
-            "codename_snake.util.props._check_forbidden_execution",
+            "mega_snake.util.props._check_forbidden_execution",
             side_effect=lambda method, message, reload, props: check_forbidden_execution(
                 method, message, reload, None
             ),
@@ -504,7 +504,7 @@ def test_fail_scenarios(request) -> None:
             return result
 
         # Test when property is not found at check_property
-        with patch("codename_snake.util.props._check_property", side_effect=check_property_side_effect):
+        with patch("mega_snake.util.props._check_property", side_effect=check_property_side_effect):
             with pytest.raises(KeyError):
                 init_app_properties(log_level, shell, light_weight)
             reset_mocks(*mocks.values())
@@ -521,7 +521,7 @@ def test_fail_scenarios(request) -> None:
 
         # Test when property is not found at adding_prop_validator
         with patch(
-            "codename_snake.util.props.AppProperties._AppProperties__adding_prop_validator",
+            "mega_snake.util.props.AppProperties._AppProperties__adding_prop_validator",
             side_effect=adding_prop_validator_side_effect,
         ):
             with pytest.raises(ValueError):
@@ -538,7 +538,7 @@ def test_fail_scenarios(request) -> None:
 
         # Test when property is not found at __post_init__
         with patch(
-            "codename_snake.util.props.AppProperties.__post_init__",
+            "mega_snake.util.props.AppProperties.__post_init__",
             side_effect=post_init_side_effect,
         ):
             with pytest.raises(ValueError):

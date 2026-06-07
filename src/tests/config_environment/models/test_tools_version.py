@@ -4,7 +4,7 @@ import re
 from typing import Generator, Tuple
 from unittest.mock import patch, MagicMock, mock_open
 import pytest
-from codename_snake.config_environment.models.tools_version import (
+from mega_snake.config_environment.models.tools_version import (
     ToolVersion,
     verify_os,
     select_version,
@@ -15,7 +15,7 @@ from codename_snake.config_environment.models.tools_version import (
     OS_MAP,
     VersionSetException,
 )
-from codename_snake.constants import SHELL_OPT
+from mega_snake.constants import SHELL_OPT
 
 VERSIONS = ["1.2.3", "1.2.4", "1.2.5"]
 PATHS = ["path/to/tool3", "path/to/tool4", "path/to/tool5"]
@@ -66,28 +66,28 @@ def get_data() -> dict[str, str]:
 @pytest.fixture(name="ws_advice")
 def fixture_ws_advice() -> Generator[MagicMock]:
     """Mock ws_advice"""
-    with patch("codename_snake.config_environment.models.tools_version.ws_advice") as mock:
+    with patch("mega_snake.config_environment.models.tools_version.ws_advice") as mock:
         yield mock
 
 
 @pytest.fixture(name="ws_info")
 def fixture_ws_info() -> Generator[MagicMock]:
     """Mock ws_info"""
-    with patch("codename_snake.config_environment.models.tools_version.ws_info") as mock:
+    with patch("mega_snake.config_environment.models.tools_version.ws_info") as mock:
         yield mock
 
 
 @pytest.fixture(name="ws_warning")
 def fixture_ws_warning() -> Generator[MagicMock]:
     """Mock ws_warning"""
-    with patch("codename_snake.config_environment.models.tools_version.ws_warning") as mock:
+    with patch("mega_snake.config_environment.models.tools_version.ws_warning") as mock:
         yield mock
 
 
 @pytest.fixture(name="_platform")
 def fixture_platform() -> Generator[MagicMock]:
     """Mock platform"""
-    with patch("codename_snake.config_environment.models.tools_version.OS", "dummy") as mock:
+    with patch("mega_snake.config_environment.models.tools_version.OS", "dummy") as mock:
         yield mock
 
 
@@ -103,7 +103,7 @@ def fixture_mk_open() -> Generator[MagicMock]:
 def fixture_get_validated_input() -> Generator[MagicMock]:
     """Mock get_validated_input"""
     with patch(
-        "codename_snake.config_environment.models.tools_version.get_validated_input",
+        "mega_snake.config_environment.models.tools_version.get_validated_input",
         side_effect=lambda pronmpt, list: list[1],
     ) as mock:
         yield mock
@@ -112,7 +112,7 @@ def fixture_get_validated_input() -> Generator[MagicMock]:
 @pytest.fixture(name="mk_os")
 def fixture_mk_os() -> Generator[MagicMock]:
     """Mock os"""
-    with patch("codename_snake.config_environment.models.tools_version.os") as mock:
+    with patch("mega_snake.config_environment.models.tools_version.os") as mock:
         mock.path.exists.return_value = True
         yield mock
 
@@ -240,7 +240,7 @@ def test_set_version_local_config(mk_os: MagicMock, mk_open: MagicMock, ws_advic
     # Test when path and pattern is found
     for version in get_tool_list():
         for osys, shell, output in get_os_list():
-            with patch("codename_snake.config_environment.models.tools_version.OS", osys):
+            with patch("mega_snake.config_environment.models.tools_version.OS", osys):
                 read_mock.return_value = output
                 set_version_local_config(version, path, shell, TOOL_TEST_VARIABLE)
                 result = write_mock.call_args_list[0][0][0]
@@ -264,7 +264,7 @@ def test_set_version_local_config(mk_os: MagicMock, mk_open: MagicMock, ws_advic
     for version in get_tool_list():
         for osys, shell, output in get_os_list():
             shell = "dummy"
-            with patch("codename_snake.config_environment.models.tools_version.OS", osys):
+            with patch("mega_snake.config_environment.models.tools_version.OS", osys):
                 read_mock.return_value = output
                 with pytest.raises(NotImplementedError):
                     set_version_local_config(version, path, shell, TOOL_TEST_VARIABLE)
@@ -281,7 +281,7 @@ def test_set_version_local_config(mk_os: MagicMock, mk_open: MagicMock, ws_advic
     mk_os.path.exists.return_value = False
     for version in get_tool_list():
         for osys, shell, output in get_os_list():
-            with patch("codename_snake.config_environment.models.tools_version.OS", osys):
+            with patch("mega_snake.config_environment.models.tools_version.OS", osys):
                 read_mock.return_value = output
                 set_version_local_config(version, path, shell, TOOL_TEST_VARIABLE)
                 read_mock.assert_not_called()

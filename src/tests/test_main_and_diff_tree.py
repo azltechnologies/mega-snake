@@ -7,16 +7,16 @@ import click
 import pytest
 from click.testing import CliRunner
 
-from codename_snake import __main__ as app_main
-from codename_snake.diff_tree.file_type import FileType
-from codename_snake.diff_tree import module as diff_module
+from mega_snake import __main__ as app_main
+from mega_snake.diff_tree.file_type import FileType
+from mega_snake.diff_tree import module as diff_module
 
 
 def test_main_cli_and_post_command() -> None:
     """Cover cli init, error path, and post-command."""
     runner = CliRunner()
-    with patch.dict(os.environ, {"CODENAME_SNAKE_SHELL": "bash"}):
-        with patch("codename_snake.__main__.init_app_properties"):
+    with patch.dict(os.environ, {"MEGA_SNAKE_SHELL": "bash"}):
+        with patch("mega_snake.__main__.init_app_properties"):
             result = runner.invoke(app_main.cli, ["createDiffTree", "--help"])
             assert result.exit_code == 0
 
@@ -39,42 +39,42 @@ def test_file_type_and_diff_tree_helpers() -> None:
     for ft in FileType:
         ft.files_added = 0
         ft.files.clear()
-    with patch("codename_snake.diff_tree.module.run_operation") as run_operation, patch(
+    with patch("mega_snake.diff_tree.module.run_operation") as run_operation, patch(
         "builtins.open", mock_open()
-    ), patch("codename_snake.diff_tree.module.os.makedirs"), patch(
-        "codename_snake.diff_tree.module.os.path.dirname", return_value="/tmp"
+    ), patch("mega_snake.diff_tree.module.os.makedirs"), patch(
+        "mega_snake.diff_tree.module.os.path.dirname", return_value="/tmp"
     ):
         run_operation.return_value.stdout = "content"
         diff_module._create_files("/tmp/root", "main", True)
 
-    with patch("codename_snake.diff_tree.module.DisplayTree", return_value="root\na"), patch(
+    with patch("mega_snake.diff_tree.module.DisplayTree", return_value="root\na"), patch(
         "builtins.open", mock_open()
-    ), patch("codename_snake.diff_tree.module.run_operation"), patch(
-        "codename_snake.diff_tree.module.os.walk", return_value=[("/tmp", [], ["a 🅐"])]
-    ), patch("codename_snake.diff_tree.module.os.rename"):
+    ), patch("mega_snake.diff_tree.module.run_operation"), patch(
+        "mega_snake.diff_tree.module.os.walk", return_value=[("/tmp", [], ["a 🅐"])]
+    ), patch("mega_snake.diff_tree.module.os.rename"):
         diff_module._display_inner_tree("/tmp", "/tmp/out.txt", True)
 
 
 def test_diff_tree_main_paths() -> None:
     """Cover diff_tree main with empty and non-empty diffs."""
-    with patch("codename_snake.diff_tree.module.get_property", return_value="/tmp"), patch(
-        "codename_snake.diff_tree.module.os.path.exists", return_value=False
-    ), patch("codename_snake.diff_tree.module.get_current_commit", return_value="head"), patch(
-        "codename_snake.diff_tree.module.get_remote", return_value="origin"
-    ), patch("codename_snake.diff_tree.module.get_main_branch", return_value="main"), patch(
-        "codename_snake.diff_tree.module.run_operation"
+    with patch("mega_snake.diff_tree.module.get_property", return_value="/tmp"), patch(
+        "mega_snake.diff_tree.module.os.path.exists", return_value=False
+    ), patch("mega_snake.diff_tree.module.get_current_commit", return_value="head"), patch(
+        "mega_snake.diff_tree.module.get_remote", return_value="origin"
+    ), patch("mega_snake.diff_tree.module.get_main_branch", return_value="main"), patch(
+        "mega_snake.diff_tree.module.run_operation"
     ) as run_operation:
         run_operation.return_value.stdout = ""
         diff_module.main.callback(None, False)
 
-    with patch("codename_snake.diff_tree.module.get_property", return_value="/tmp"), patch(
-        "codename_snake.diff_tree.module.os.path.exists", return_value=True
-    ), patch("codename_snake.diff_tree.module.get_current_commit", return_value="head"), patch(
-        "codename_snake.diff_tree.module.run_operation"
+    with patch("mega_snake.diff_tree.module.get_property", return_value="/tmp"), patch(
+        "mega_snake.diff_tree.module.os.path.exists", return_value=True
+    ), patch("mega_snake.diff_tree.module.get_current_commit", return_value="head"), patch(
+        "mega_snake.diff_tree.module.run_operation"
     ) as run_operation, patch(
-        "codename_snake.diff_tree.module._create_files"
-    ), patch("codename_snake.diff_tree.module._display_inner_tree"), patch(
-        "codename_snake.diff_tree.module.shutil.rmtree"
+        "mega_snake.diff_tree.module._create_files"
+    ), patch("mega_snake.diff_tree.module._display_inner_tree"), patch(
+        "mega_snake.diff_tree.module.shutil.rmtree"
     ), patch(
         "builtins.open", mock_open()
     ):

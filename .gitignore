@@ -1,9 +1,9 @@
 .DS_Store
-codename_snake/**/__pycache__
+mega_snake/**/__pycache__
 tests/**/__pycache__
-codename_snake/lib
-codename_snake/bin
-codename_snake/include
+mega_snake/lib
+mega_snake/bin
+mega_snake/include
 pyvenv.cfg
 poetry.lock
 .gradle

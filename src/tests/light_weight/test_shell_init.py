@@ -6,7 +6,7 @@ from unittest.mock import patch
 from click.testing import CliRunner
 import pytest
 
-from codename_snake.light_weight import shell_init
+from mega_snake.light_weight import shell_init
 
 
 @pytest.mark.parametrize(
@@ -29,7 +29,7 @@ def test_shell_path_requires_existing_script(tmp_path: Path) -> None:
     """shell-path should fail clearly when the packaged script is missing."""
     runner = CliRunner()
 
-    with patch("codename_snake.light_weight.shell_init.files", return_value=tmp_path):
+    with patch("mega_snake.light_weight.shell_init.files", return_value=tmp_path):
         result = runner.invoke(shell_init.shell_path, ["bash"])
 
     assert result.exit_code != 0
@@ -47,7 +47,7 @@ def test_get_local_config_path_prints_helper_value() -> None:
     """get-local-config-path should print the resolved config file path."""
     runner = CliRunner()
 
-    with patch("codename_snake.light_weight.shell_init.get_local_file", return_value="/tmp/local-config.sh"):
+    with patch("mega_snake.light_weight.shell_init.get_local_file", return_value="/tmp/local-config.sh"):
         result = runner.invoke(shell_init.get_local_config_path)
 
     assert result.exit_code == 0

@@ -1,5 +1,5 @@
 {
-  "name": "Snake CLI - Java 21 + Python 3.13",
+  "name": "MegaSnake CLI - Java 21 + Python 3.13",
   "image": "mcr.microsoft.com/devcontainers/java:21-bullseye",
   "features": {
     "ghcr.io/devcontainers/features/java:1": {

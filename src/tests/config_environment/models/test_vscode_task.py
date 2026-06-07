@@ -3,7 +3,7 @@
 from typing import Generator
 from unittest.mock import patch, MagicMock
 import pytest
-from codename_snake.config_environment.models.vscode_task import VscodeTask, TASKS_VERSION_QUERY
+from mega_snake.config_environment.models.vscode_task import VscodeTask, TASKS_VERSION_QUERY
 
 VERSION_TEST = "1.2.3"
 
@@ -11,7 +11,7 @@ VERSION_TEST = "1.2.3"
 @pytest.fixture(name="jq")
 def fixture_jq() -> Generator[MagicMock]:
     """Mock jq"""
-    with patch("codename_snake.config_environment.models.vscode_task.jq") as mock:
+    with patch("mega_snake.config_environment.models.vscode_task.jq") as mock:
 
         yield mock
 
@@ -19,7 +19,7 @@ def fixture_jq() -> Generator[MagicMock]:
 @pytest.fixture(name="json")
 def fixture_json() -> Generator[MagicMock]:
     """Mock json"""
-    with patch("codename_snake.config_environment.models.vscode_task.json") as mock:
+    with patch("mega_snake.config_environment.models.vscode_task.json") as mock:
         yield mock
 
 

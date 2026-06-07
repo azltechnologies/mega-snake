@@ -1,10 +1,10 @@
-""" Tests for the gcloud sign module """
+"""Tests for the gcloud sign module"""
 
 from typing import Generator
 from unittest.mock import patch, MagicMock
 from click.testing import CliRunner
 import pytest
-from codename_snake.gcloud.sign import gcloud_login_env, gcloud_logout
+from mega_snake.gcloud.sign import gcloud_login_env, gcloud_logout
 
 PROJECT = "test-project"
 
@@ -12,7 +12,7 @@ PROJECT = "test-project"
 @pytest.fixture(name="formatting_ws_info")
 def fixture_formatting_ws_info() -> Generator[MagicMock]:
     """Mock ws_info"""
-    with patch("codename_snake.gcloud.sign.ws_info") as mock:
+    with patch("mega_snake.gcloud.sign.ws_info") as mock:
         mock.return_value = None
         yield mock
 
@@ -20,7 +20,7 @@ def fixture_formatting_ws_info() -> Generator[MagicMock]:
 @pytest.fixture(name="formatting_ws_success")
 def fixture_formatting_ws_success() -> Generator[MagicMock]:
     """Mock ws_success"""
-    with patch("codename_snake.gcloud.sign.ws_success") as mock:
+    with patch("mega_snake.gcloud.sign.ws_success") as mock:
         mock.return_value = None
         yield mock
 
@@ -28,7 +28,7 @@ def fixture_formatting_ws_success() -> Generator[MagicMock]:
 @pytest.fixture(name="run_operation")
 def fixture_run_operation() -> Generator[MagicMock]:
     """Mock run_operation"""
-    with patch("codename_snake.gcloud.sign.run_operation") as mock:
+    with patch("mega_snake.gcloud.sign.run_operation") as mock:
         yield mock
 
 
@@ -43,7 +43,7 @@ def fixture_os_system() -> Generator[MagicMock]:
 @pytest.fixture(name="user_login")
 def fixture_user_login() -> Generator[MagicMock]:
     """Mock _user_login"""
-    with patch("codename_snake.gcloud.sign._user_login") as mock:
+    with patch("mega_snake.gcloud.sign._user_login") as mock:
         mock.return_value = None
         yield mock
 
@@ -51,7 +51,7 @@ def fixture_user_login() -> Generator[MagicMock]:
 @pytest.fixture(name="app_login")
 def fixture_app_login() -> Generator[MagicMock]:
     """Mock _app_login"""
-    with patch("codename_snake.gcloud.sign._app_login") as mock:
+    with patch("mega_snake.gcloud.sign._app_login") as mock:
         mock.return_value = None
         yield mock
 
@@ -59,7 +59,7 @@ def fixture_app_login() -> Generator[MagicMock]:
 @pytest.fixture(name="project_set")
 def fixture_project_set() -> Generator[MagicMock]:
     """Mock _project_set"""
-    with patch("codename_snake.gcloud.sign._project_set") as mock:
+    with patch("mega_snake.gcloud.sign._project_set") as mock:
         mock.return_value = None
         yield mock
 
@@ -67,7 +67,7 @@ def fixture_project_set() -> Generator[MagicMock]:
 @pytest.fixture(name="get_command_return_code")
 def fixture_get_command_return_code() -> Generator[MagicMock]:
     """Mock get_command_return_code"""
-    with patch("codename_snake.gcloud.sign.get_command_return_code") as mock:
+    with patch("mega_snake.gcloud.sign.get_command_return_code") as mock:
         mock.return_value = 0
         yield mock
 

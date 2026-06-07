@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 from typing import Generator, Callable
 from types import SimpleNamespace
 import pytest
-from codename_snake.util.formatting import (
+from mega_snake.util.formatting import (
     ErrorFilter,
     DefaultFilter,
     config_log,
@@ -33,28 +33,28 @@ def fixture_mk_file_handler() -> Generator[Callable]:
 @pytest.fixture(name="mk_logger")
 def fixture_mk_logger() -> Generator[Callable]:
     """Mock logger"""
-    with patch("codename_snake.util.formatting.logger") as mk_logger:
+    with patch("mega_snake.util.formatting.logger") as mk_logger:
         yield mk_logger
 
 
 @pytest.fixture(name="mk_error")
 def fixture_mk_error() -> Generator[Callable]:
     """Mock logger"""
-    with patch("codename_snake.util.formatting.logger.error") as mk_error:
+    with patch("mega_snake.util.formatting.logger.error") as mk_error:
         yield mk_error
 
 
 @pytest.fixture(name="mk_old_hook")
 def fixture_mk_old_hook() -> Generator[Callable]:
     """Mock old exception hook"""
-    with patch("codename_snake.util.formatting.old_hook") as old_hook:
+    with patch("mega_snake.util.formatting.old_hook") as old_hook:
         yield old_hook
 
 
 @pytest.fixture(name="mk_sys_exit")
 def fixture_mk_sys_exit() -> Generator[Callable]:
     """Mock sys.exit"""
-    with patch("codename_snake.util.formatting.sys.exit") as mock_exit:
+    with patch("mega_snake.util.formatting.sys.exit") as mock_exit:
         yield mock_exit
 
 
@@ -254,7 +254,7 @@ def test_workspace_error(mk_error: MagicMock) -> None:
     mk_error.reset_mock()
 
     # Test when logs are set up
-    # with patch("codename_snake.util.formatting.logging") as mock_file_handler:
+    # with patch("mega_snake.util.formatting.logging") as mock_file_handler:
     config_log("workspace_error_file.log", logging.INFO)
     try:
         raise ValueError(value_error_message)

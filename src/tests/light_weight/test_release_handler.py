@@ -3,13 +3,13 @@
 from typing import Generator
 from unittest.mock import patch, MagicMock
 import pytest
-from codename_snake.light_weight.release_handler import git_fetch, get_release_list, publish_release, set_release_to_latest, get_commit_from_release
+from mega_snake.light_weight.release_handler import git_fetch, get_release_list, publish_release, set_release_to_latest, get_commit_from_release
 
 
 @pytest.fixture(name="run_operation")
 def fixture_run_operation() -> Generator[MagicMock]:
     """Mock run_operation"""
-    with patch("codename_snake.light_weight.release_handler.run_operation") as mock:
+    with patch("mega_snake.light_weight.release_handler.run_operation") as mock:
         yield mock
 
 

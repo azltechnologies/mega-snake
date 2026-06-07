@@ -4,7 +4,7 @@ from typing import Generator
 from unittest.mock import patch, MagicMock
 import inspect
 import pytest
-from codename_snake.config_environment.models.log_viewer_watcher import LogWatcher, SUBSTITUTE_LOG_DATE_TAG
+from mega_snake.config_environment.models.log_viewer_watcher import LogWatcher, SUBSTITUTE_LOG_DATE_TAG
 
 DATE_PATTERN = "_YYYY-MM-DD"
 LOG_TEST_SETTING = "logViewer.tests"
@@ -26,7 +26,7 @@ def dict_side_effect(instance: LogWatcher, _wk: str) -> dict[str, str]:
 def fixture_bget_input_call() -> Generator[MagicMock]:
     """Mock get_input_call"""
     with patch(
-        "codename_snake.config_environment.models.log_viewer_watcher.VscodeInput.TODAY_TIMESTAMP.get_input_call"
+        "mega_snake.config_environment.models.log_viewer_watcher.VscodeInput.TODAY_TIMESTAMP.get_input_call"
     ) as mock:
         mock.return_value = DATE_PATTERN
         yield mock
@@ -36,7 +36,7 @@ def fixture_bget_input_call() -> Generator[MagicMock]:
 def fixture_log_watcher_query() -> Generator[MagicMock]:
     """Mock log_watcher_query"""
     with patch(
-        "codename_snake.config_environment.models.log_viewer_watcher.LOG_WATCHER_QUERY", LOG_TEST_QUERY
+        "mega_snake.config_environment.models.log_viewer_watcher.LOG_WATCHER_QUERY", LOG_TEST_QUERY
     ) as mock:
         yield mock
 

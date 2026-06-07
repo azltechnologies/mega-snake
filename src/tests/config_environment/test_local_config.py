@@ -4,41 +4,41 @@ from unittest.mock import patch, MagicMock, mock_open
 from typing import Generator
 from click.testing import CliRunner
 import pytest
-from codename_snake.config_environment.local_config import execute, initial_load
+from mega_snake.config_environment.local_config import execute, initial_load
 
 
 @pytest.fixture(name="ws_success")
 def fixture_ws_success() -> Generator[MagicMock]:
     """Mock ws_success"""
-    with patch("codename_snake.config_environment.local_config.ws_success") as mock:
+    with patch("mega_snake.config_environment.local_config.ws_success") as mock:
         yield mock
 
 
 @pytest.fixture(name="m_execute")
 def fixture_m_execute() -> Generator[MagicMock]:
     """Mock execute"""
-    with patch("codename_snake.config_environment.local_config.execute") as mock:
+    with patch("mega_snake.config_environment.local_config.execute") as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_os")
 def fixture_mk_os() -> Generator[MagicMock]:
     """Mock os"""
-    with patch("codename_snake.config_environment.local_config.os") as mock:
+    with patch("mega_snake.config_environment.local_config.os") as mock:
         yield mock
 
 
 @pytest.fixture(name="get_local_file")
 def fixture_get_local_file() -> Generator[MagicMock]:
     """Mock get_local_file"""
-    with patch("codename_snake.config_environment.local_config.get_local_file") as mock:
+    with patch("mega_snake.config_environment.local_config.get_local_file") as mock:
         yield mock
 
 
 @pytest.fixture(name="get_property")
 def fixture_get_property() -> Generator[MagicMock]:
     """Mock get_property"""
-    with patch("codename_snake.config_environment.local_config.get_property") as mock:
+    with patch("mega_snake.config_environment.local_config.get_property") as mock:
         yield mock
 
 

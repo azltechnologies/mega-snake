@@ -7,15 +7,15 @@ import subprocess
 
 import pytest
 
-from codename_snake.remote_branches.remote_branch import Commit, RemoteBranch
-from codename_snake.remote_branches.parse_remote_branches import define_branches, parsing_branches, delete_branches
-from codename_snake.remote_branches.details_remote_branches import execute
-from codename_snake.remote_branches.cleanup_remote_branches import remote_branches_cleanup
+from mega_snake.remote_branches.remote_branch import Commit, RemoteBranch
+from mega_snake.remote_branches.parse_remote_branches import define_branches, parsing_branches, delete_branches
+from mega_snake.remote_branches.details_remote_branches import execute
+from mega_snake.remote_branches.cleanup_remote_branches import remote_branches_cleanup
 
 
 def test_commit_and_remote_branch_builders() -> None:
     """Cover commit/branch builders and formatting."""
-    with patch("codename_snake.remote_branches.remote_branch.run_operation") as run_operation:
+    with patch("mega_snake.remote_branches.remote_branch.run_operation") as run_operation:
         run_operation.side_effect = [
             SimpleNamespace(stdout="abc123\n"),
             SimpleNamespace(stdout="msg\nline2"),
@@ -43,13 +43,13 @@ def test_parse_and_delete_helpers() -> None:
     """Cover parse/delete helper logic."""
     branch_main = RemoteBranch("main", True, Commit.from_strings("a", "2025-01-01T00:00:00Z", "m"), "a@b", "x")
     branch_feature = RemoteBranch("feature", True, Commit.from_strings("b", "2025-01-02T00:00:00Z", "m"), "a@b", "x")
-    with patch("codename_snake.remote_branches.parse_remote_branches.get_main_branch", return_value="main"), patch(
-        "codename_snake.remote_branches.parse_remote_branches.get_validated_input", return_value="y"
+    with patch("mega_snake.remote_branches.parse_remote_branches.get_main_branch", return_value="main"), patch(
+        "mega_snake.remote_branches.parse_remote_branches.get_validated_input", return_value="y"
     ):
         garbage = parsing_branches([branch_main, branch_feature], "origin")
         assert garbage == ["feature"]
 
-    with patch("codename_snake.remote_branches.parse_remote_branches.run_operation") as run_operation:
+    with patch("mega_snake.remote_branches.parse_remote_branches.run_operation") as run_operation:
         run_operation.return_value.stdout = "deleted"
         delete_branches(["f1"])
         run_operation.side_effect = subprocess.SubprocessError()
@@ -60,16 +60,16 @@ def test_details_and_cleanup_commands() -> None:
     """Cover details and cleanup command flows."""
     remote_branch = RemoteBranch("feature", True, Commit.from_strings("abc", "2025-01-01T00:00:00Z", "msg"), "a@b", "x")
 
-    with patch("codename_snake.remote_branches.details_remote_branches.get_remote", return_value="origin"), patch(
-        "codename_snake.remote_branches.details_remote_branches.get_main_branch", return_value="main"
+    with patch("mega_snake.remote_branches.details_remote_branches.get_remote", return_value="origin"), patch(
+        "mega_snake.remote_branches.details_remote_branches.get_main_branch", return_value="main"
     ), patch(
-        "codename_snake.remote_branches.details_remote_branches.get_property", return_value="/tmp"
+        "mega_snake.remote_branches.details_remote_branches.get_property", return_value="/tmp"
     ), patch(
-        "codename_snake.remote_branches.details_remote_branches.os.path.exists", return_value=False
+        "mega_snake.remote_branches.details_remote_branches.os.path.exists", return_value=False
     ), patch(
-        "codename_snake.remote_branches.details_remote_branches.RemoteBranch.from_branch", return_value=remote_branch
+        "mega_snake.remote_branches.details_remote_branches.RemoteBranch.from_branch", return_value=remote_branch
     ), patch(
-        "codename_snake.remote_branches.details_remote_branches.run_operation"
+        "mega_snake.remote_branches.details_remote_branches.run_operation"
     ) as run_operation, patch(
         "builtins.open", mock_open()
     ):
@@ -82,48 +82,48 @@ def test_details_and_cleanup_commands() -> None:
         with pytest.raises(ValueError):
             execute("X")
 
-    with patch("codename_snake.remote_branches.cleanup_remote_branches.get_remote", return_value="origin"), patch(
-        "codename_snake.remote_branches.cleanup_remote_branches.get_validated_input", side_effect=["n"]
+    with patch("mega_snake.remote_branches.cleanup_remote_branches.get_remote", return_value="origin"), patch(
+        "mega_snake.remote_branches.cleanup_remote_branches.get_validated_input", side_effect=["n"]
     ), patch(
-        "codename_snake.remote_branches.cleanup_remote_branches.get_output_file", return_value="/tmp/branches.txt"
+        "mega_snake.remote_branches.cleanup_remote_branches.get_output_file", return_value="/tmp/branches.txt"
     ), patch(
-        "codename_snake.remote_branches.cleanup_remote_branches.os.path.exists", return_value=True
+        "mega_snake.remote_branches.cleanup_remote_branches.os.path.exists", return_value=True
     ), patch(
-        "codename_snake.remote_branches.cleanup_remote_branches.open",
+        "mega_snake.remote_branches.cleanup_remote_branches.open",
         mock_open(read_data="1|abc|2025-01-01T00:00:00Z|a@b|feature|x|msg"),
     ), patch(
-        "codename_snake.remote_branches.cleanup_remote_branches.parsing_branches", return_value=["feature"]
+        "mega_snake.remote_branches.cleanup_remote_branches.parsing_branches", return_value=["feature"]
     ), patch(
-        "codename_snake.remote_branches.cleanup_remote_branches.delete_branches"
+        "mega_snake.remote_branches.cleanup_remote_branches.delete_branches"
     ), patch(
-        "codename_snake.remote_branches.cleanup_remote_branches.run_operation"
+        "mega_snake.remote_branches.cleanup_remote_branches.run_operation"
     ):
         remote_branches_cleanup.callback()
 
-    with patch("codename_snake.remote_branches.cleanup_remote_branches.get_remote", return_value=None):
+    with patch("mega_snake.remote_branches.cleanup_remote_branches.get_remote", return_value=None):
         with pytest.raises(LookupError):
             remote_branches_cleanup.callback()
 
-    with patch("codename_snake.remote_branches.cleanup_remote_branches.get_remote", return_value="origin"), patch(
-        "codename_snake.remote_branches.cleanup_remote_branches.get_validated_input", side_effect=["y", "m"]
+    with patch("mega_snake.remote_branches.cleanup_remote_branches.get_remote", return_value="origin"), patch(
+        "mega_snake.remote_branches.cleanup_remote_branches.get_validated_input", side_effect=["y", "m"]
     ), patch(
-        "codename_snake.remote_branches.cleanup_remote_branches.remote_branches_details"
+        "mega_snake.remote_branches.cleanup_remote_branches.remote_branches_details"
     ), patch(
-        "codename_snake.remote_branches.cleanup_remote_branches.get_output_file", return_value="/tmp/missing.txt"
+        "mega_snake.remote_branches.cleanup_remote_branches.get_output_file", return_value="/tmp/missing.txt"
     ), patch(
-        "codename_snake.remote_branches.cleanup_remote_branches.os.path.exists", return_value=False
+        "mega_snake.remote_branches.cleanup_remote_branches.os.path.exists", return_value=False
     ):
         with pytest.raises(FileNotFoundError):
             remote_branches_cleanup.callback()
 
-    with patch("codename_snake.remote_branches.cleanup_remote_branches.get_remote", return_value="origin"), patch(
-        "codename_snake.remote_branches.cleanup_remote_branches.get_validated_input", side_effect=["n"]
+    with patch("mega_snake.remote_branches.cleanup_remote_branches.get_remote", return_value="origin"), patch(
+        "mega_snake.remote_branches.cleanup_remote_branches.get_validated_input", side_effect=["n"]
     ), patch(
-        "codename_snake.remote_branches.cleanup_remote_branches.get_output_file", return_value="/tmp/branches.txt"
+        "mega_snake.remote_branches.cleanup_remote_branches.get_output_file", return_value="/tmp/branches.txt"
     ), patch(
-        "codename_snake.remote_branches.cleanup_remote_branches.os.path.exists", return_value=True
+        "mega_snake.remote_branches.cleanup_remote_branches.os.path.exists", return_value=True
     ), patch(
-        "codename_snake.remote_branches.cleanup_remote_branches.open", mock_open(read_data="")
+        "mega_snake.remote_branches.cleanup_remote_branches.open", mock_open(read_data="")
     ):
         with pytest.raises(IOError):
             remote_branches_cleanup.callback()

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 from click.testing import CliRunner
 import click
 import pytest
-from codename_snake.util.cli_group import CliGroup
+from mega_snake.util.cli_group import CliGroup
 
 ATTR_ALIAS = "aliases"
 TEST_PARAMS = [MagicMock(name="param1"), MagicMock(name="param2")]

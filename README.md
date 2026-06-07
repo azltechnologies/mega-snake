@@ -1,4 +1,4 @@
-# CodeName `Snake`
+# Mega `Snake`
 
 A CLI tool designed to standardize and automate the local development lifecycle. While its core focus is simplifying **Java/Gradle development in VS Code** ensuring consistent environments across teams, it also serves as a productivity swiss-army knife with utilities for **Git operations**, **GitHub release management**, and **Google Cloud Platform** observability.
 
@@ -6,18 +6,18 @@ A CLI tool designed to standardize and automate the local development lifecycle.
 
 ### Via PyPI (Recommended for End Users)
 
-Install `codename-snake` from PyPI using either `uv` or `pipx`:
+Install `mega-snake` from PyPI using either `uv` or `pipx`:
 
 **Using uv:**
 
 ```bash
-uv tool install codename-snake
+uv tool install mega-snake
 ```
 
 **Using pipx:**
 
 ```bash
-pipx install codename-snake
+pipx install mega-snake
 ```
 
 ### Post-Installation Setup
@@ -27,36 +27,36 @@ After installation, add the shell initialization script to your shell configurat
 **For bash/zsh**, add this line to `~/.bashrc` or `~/.zshrc`:
 
 ```bash
-. "$(snake shell-path bash)"
+. "$(mgsnake shell-path bash)"
 ```
 
 **For PowerShell**, add this line to your PowerShell profile (usually `$PROFILE`):
 
 ```powershell
-. (snake shell-path pwsh)
+. (mgsnake shell-path pwsh)
 ```
 
-Then restart your terminal or source the configuration file to activate the `snake` command.
+Then restart your terminal or source the configuration file to activate the `mgsnake` command.
 
 ## Usage
 
 ### Terminal Support
 
-   The `snake` CLI works on:
+   The `mgsnake` CLI works on:
 
 - Windows: PowerShell
 - macOS/Linux: bash or zsh
 
 ### Basic Usage
 
-   After installation and shell profile configuration, use the `snake` command:
+   After installation and shell profile configuration, use the `mgsnake` command:
 
       ```bash
       # Show help
-      snake --help
+      mgsnake --help
 
       # Execute commands with specific log level
-      snake --log-level DEBUG <command>
+      mgsnake --log-level DEBUG <command>
       ```
 
 ### Log Levels
@@ -73,22 +73,22 @@ Then restart your terminal or source the configuration file to activate the `sna
 
       ```bash
       # Create a working environment
-      snake createWorkingEnv
+      mgsnake createWorkingEnv
 
       # Check GraphQL schema
-      snake createGraphqlSchema
+      mgsnake createGraphqlSchema
 
       # Show branch details with debug info
-      snake --log-level DEBUG remoteBranchesDetails
+      mgsnake --log-level DEBUG remoteBranchesDetails
       ```
 
-   > **Note**: Each command has its own help. Use `snake <command> --help` for specific details.
+   > **Note**: Each command has its own help. Use `mgsnake <command> --help` for specific details.
 
 ### Available Commands
 
 #### Environment & Configuration
 
-##### `snake createWorkingEnv` (aliases: `cwe`, `env`)
+##### `mgsnake createWorkingEnv` (aliases: `cwe`, `env`)
 
 Sets up a complete VSCode workspace configuration for Java development:
 
@@ -100,7 +100,7 @@ Sets up a complete VSCode workspace configuration for Java development:
 - Sets up log watchers and GitHub queries
 - Creates task definitions for common operations
 
-##### `snake setJava` (alias: `java`)
+##### `mgsnake setJava` (alias: `java`)
 
 Configures Java for your workspace:
 
@@ -110,7 +110,7 @@ Configures Java for your workspace:
 - Configures both VSCode and shell environment
 - Sets up Java formatter settings
 
-##### `snake setGradle` (alias: `gradle`)
+##### `mgsnake setGradle` (alias: `gradle`)
 
 Manages Gradle configuration:
 
@@ -119,7 +119,7 @@ Manages Gradle configuration:
 - Updates workspace settings to use selected version
 - Configures both VSCode and shell environment
 
-##### `snake initLocalConfig` (alias: `iload`)
+##### `mgsnake initLocalConfig` (alias: `iload`)
 
 Sets up local development configurations:
 
@@ -129,26 +129,26 @@ Sets up local development configurations:
 
 #### Git & Release Management
 
-##### `snake createDiffTree` (aliases: `dt`, `tree`)
+##### `mgsnake createDiffTree` (aliases: `dt`, `tree`)
 
 Creates a visual diff tree of the current branch against master.
 
-- **Usage**: `snake createDiffTree [OPTIONS]`
+- **Usage**: `mgsnake createDiffTree [OPTIONS]`
 - **Options**:
   - `-c, --commit-hash <hash>`: Compare against a specific commit instead of master.
   - `-d, --delete-original-files`: Delete generated copy of original files in the tree.
 - **Output**: Generates a tree structure in `workspace_temp/diff_tree/` and opens it in VSCode.
 
-##### `snake remoteBranchesDetails`
+##### `mgsnake remoteBranchesDetails`
 
 Generates a detailed report of remote branches.
 
-- **Usage**: `snake remoteBranchesDetails [OPTIONS]`
+- **Usage**: `mgsnake remoteBranchesDetails [OPTIONS]`
 - **Options**:
   - `-f, --filter-by <A|M|U>`: Filter by (A)ll, (M)erged, or (U)nmerged status against master.
 - **Output**: Creates `workspace_temp/remote_branches.txt` with branch details (author, date, etc.).
 
-##### `snake remoteBranchesCleanUp`
+##### `mgsnake remoteBranchesCleanUp`
 
 Interactive tool to clean up merged remote branches.
 
@@ -156,11 +156,11 @@ Interactive tool to clean up merged remote branches.
 - Interactively asks which merged branches to delete from the remote
 - Prunes local references
 
-##### `snake createRelease`
+##### `mgsnake createRelease`
 
 Creates a GitHub release and tag for the project.
 
-- **Usage**: `snake createRelease <tag_suffix> <release_type> [notes] [branch]`
+- **Usage**: `mgsnake createRelease <tag_suffix> <release_type> [notes] [branch]`
 - **Arguments**:
   - `tag_suffix`: Suffix for the new tag.
   - `release_type`: `p` (Pre-release), `l` (Latest), `r` (Replace latest/Release).
@@ -169,23 +169,23 @@ Creates a GitHub release and tag for the project.
 
 #### Utilities
 
-##### `snake createGraphqlSchema` (aliases: `graphql`, `gql`)
+##### `mgsnake createGraphqlSchema` (aliases: `graphql`, `gql`)
 
 Compiles GraphQL schema files.
 
-- **Usage**: `snake createGraphqlSchema <schema_path>`
+- **Usage**: `mgsnake createGraphqlSchema <schema_path>`
 - Combines all schema files in the given directory into a single `.graphql` file and a `.json` introspection file.
 
-##### `snake expiredCertsJks`
+##### `mgsnake expiredCertsJks`
 
 Checks a Java KeyStore (JKS) for expired certificates.
 
-- **Usage**: `snake expiredCertsJks <jks_path> [-p password]`
+- **Usage**: `mgsnake expiredCertsJks <jks_path> [-p password]`
 - Lists aliases and valid dates, creating warnings for expired certs.
 
-##### `snake msg`
+##### `mgsnake msg`
 
 Internal utility to print and log formatted messages.
 
-- **Usage**: `snake msg <message> [-t type]`
+- **Usage**: `mgsnake msg <message> [-t type]`
 - **Types**: `S` (Success), `I` (Info), `W` (Warning), `E` (Error), `T` (Tip).

@@ -3,7 +3,7 @@
 from typing import Generator
 from unittest.mock import patch, MagicMock
 import pytest
-from codename_snake.config_environment.models.github_queries import (
+from mega_snake.config_environment.models.github_queries import (
     BaseQueries,
     PrQueries,
     IssuesQueries,
@@ -18,7 +18,7 @@ GH_TEST_QUERY = f'.settings.["{GH_TEST_SETTING}"]'
 @pytest.fixture(name="base_query_add_query_record")
 def fixture_base_query_add_query_record() -> Generator[MagicMock]:
     """Mock BaseQueries"""
-    with patch("codename_snake.config_environment.models.github_queries.BaseQueries.add_query_record") as mock:
+    with patch("mega_snake.config_environment.models.github_queries.BaseQueries.add_query_record") as mock:
         mock.return_value = {"result": "great"}
         yield mock
 

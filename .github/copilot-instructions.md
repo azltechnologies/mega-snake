@@ -1,11 +1,11 @@
-# GitHub Copilot Instructions for `unix-scripts` (CodeName Snake)
+# GitHub Copilot Instructions for `unix-scripts` (Mega Snake)
 
 ## 1. Project Overview & Philosophy
 
-`codename_snake` is a robust Python 3.13+ CLI tool designed to standardize the local development lifecycle. It acts as a "Swiss Army Knife" for developers, primarily automating the complex configuration of VS Code environments for Java/Gradle, but extending into Git management, Release orchestration context, and Google Cloud observability.
+`mega_snake` is a robust Python 3.13+ CLI tool designed to standardize the local development lifecycle. It acts as a "Swiss Army Knife" for developers, primarily automating the complex configuration of VS Code environments for Java/Gradle, but extending into Git management, Release orchestration context, and Google Cloud observability.
 
 **Core Philosophy:**
-- **Zero Config Start**: A developer should be able to run `snake createWorkingEnv` and have a fully functional IDE state immediately.
+- **Zero Config Start**: A developer should be able to run `mgsnake createWorkingEnv` and have a fully functional IDE state immediately.
 - **Idempotency**: Commands should be safe to run multiple times without destructive side effects unless explicitly requested.
 - **System Integration**: The tool deeply integrates with the OS shell (Bash/Zsh/PowerShell) and external tools (Git, Java, Gradle).
 
@@ -20,7 +20,7 @@
 
 ## 2. Architecture & Patterns
 
-### 2.1 Entry Point & CLI Orchestration (`src/codename_snake/__main__.py`)
+### 2.1 Entry Point & CLI Orchestration (`src/mega_snake/__main__.py`)
 
 The application uses a `click.Group` with a custom `CliGroup` class to support command aliases. The entry point `cli()` function initializes global application properties before any command runs.
 
@@ -28,7 +28,7 @@ The application uses a `click.Group` with a custom `CliGroup` class to support c
 The CLI checks for a `skip` flag in command metadata. If present, it bypasses heavy environment checks (like requiring a valid workspace folder), allowing "light-weight" commands (e.g., `createRelease`) to run anywhere.
 
 ```python
-# src/codename_snake/__main__.py
+# src/mega_snake/__main__.py
 @click.pass_context
 def cli(ctx: click.Context, log_level: str, shell: str) -> None:
     # ...
@@ -39,7 +39,7 @@ def cli(ctx: click.Context, log_level: str, shell: str) -> None:
         init_app_properties(log_level, shell, light_weight=True)
 ```
 
-### 2.2 Command Registration & Aliases (`src/codename_snake/util/cli_group.py`)
+### 2.2 Command Registration & Aliases (`src/mega_snake/util/cli_group.py`)
 
 We do not standard `click` alias implementation. We use `CliGroup` to register commands with multiple names.
 
@@ -55,7 +55,7 @@ cli.add_command_with_alias(diff_tree, ["dt", "tree"])
 
 Each functional module (e.g., `config_environment`) exposes an `add_wrapper` decorator. This allows module-specific checks to run before the command execution, keeping the core logic clean.
 
-**Example from `src/codename_snake/config_environment/module.py`:**
+**Example from `src/mega_snake/config_environment/module.py`:**
 ```python
 def wrapper(_ctx: click.Context, *_args, **_kwargs) -> None:
     # Pre-flight check: verify we're in a valid workspace
@@ -77,7 +77,7 @@ This implements the **Decorator Pattern**. Instead of repeating validation logic
 
 ## 3. Core Functional Modules
 
-### 3.1 Environment Configuration (`src/codename_snake/config_environment/`)
+### 3.1 Environment Configuration (`src/mega_snake/config_environment/`)
 
 This is the most complex module, responsible for generating `.code-workspace` files. It configures the "settings" section of the workspace file directly, avoiding reliance on `.vscode/settings.json`.
 
@@ -97,7 +97,7 @@ Manages the `java.configuration.runtimes` and `terminal.integrated.env` settings
 - It updates the `settings` structure inside the workspace file to point `JAVA_HOME` to the selected version.
 
 ```python
-# src/codename_snake/config_environment/java_set.py
+# src/mega_snake/config_environment/java_set.py
 ENV_VARIABLE = f"terminal.integrated.env.{OS_MAP[OS]}"
 JAVA_JQ_QUERY = f'.settings["{ENV_VARIABLE}"].JAVA_HOME'
 
@@ -122,7 +122,7 @@ Creates a local developer-specific configuration file that is **ignored by Git**
 **Why?**
 Developers often have machine-specific tokens, paths, or aliases that shouldn't be committed to the repo. `initLocalConfig` generates a shell-specific file (`.sh` or `.ps1` logic embedded) that is sourced by the main environment. This pattern allows the tool to support "Convention over Configuration" while still allowing for "Configuration" when necessary.
 
-### 3.2 Git Utilities (`src/codename_snake/diff_tree/`)
+### 3.2 Git Utilities (`src/mega_snake/diff_tree/`)
 
 #### `createDiffTree` (`dt`)
 Generates a visual tree representation of changed files.
@@ -134,7 +134,7 @@ Generates a visual tree representation of changed files.
 - Uses `directory_tree` library to generating the visual text tree.
 
 ```python
-# src/codename_snake/diff_tree/module.py
+# src/mega_snake/diff_tree/module.py
 for diff in diff_str.split("\n"):
     columns: list[str] = diff.split("\t")
     symbol = columns[0].split(" ")[4] # M, A, D, etc.
@@ -142,7 +142,7 @@ for diff in diff_str.split("\n"):
     # builds tree structure...
 ```
 
-### 3.3 Remote Branch Management (`src/codename_snake/remote_branches/`)
+### 3.3 Remote Branch Management (`src/mega_snake/remote_branches/`)
 
 #### `remoteBranchesDetails`
 Analyzes remote branches to suggest cleanup candidates.
@@ -166,7 +166,7 @@ An interactive tool that consumes the output of `remoteBranchesDetails`.
 **Design Pattern: Pipeline via Files**
 Instead of passing complex objects between commands in memory, we use the filesystem (`remote_branches.txt`) as an intermediate buffer. This allows the user to inspect (and potentially edit) the list of candidates before running the destructive cleanup command.
 
-### 3.4 Release Management (`src/codename_snake/light_weight/create_release.py`)
+### 3.4 Release Management (`src/mega_snake/light_weight/create_release.py`)
 
 Automates GitHub releases, creating tags and proper GitHub Release entries.
 
@@ -184,7 +184,7 @@ It fetches the current tags, calculates the new tag based on the suffix, and rel
 We use the `gh` (GitHub CLI) tool because it leverages the user's existing authentication state, avoiding the need to manage complex API tokens within the Python code.
 
 ```python
-    # src/codename_snake/light_weight/release_handler.py
+    # src/mega_snake/light_weight/release_handler.py
     cwd: str = (
         f'gh release create {tag_name} {release_type} --target "{release_branch}" '
         f'--title "{tag_name}" {release_notes} --generate-notes'
@@ -215,7 +215,7 @@ Exposes the internal logging mechanism to the shell. Used by `config_setup.sh` t
 
 ## 4. Utilities & Helpers
 
-### 4.1 Output Formatting (`src/codename_snake/util/formatting.py`)
+### 4.1 Output Formatting (`src/mega_snake/util/formatting.py`)
 
 ** STRICT RULE**: NEVER use `print()`. Always use valid logging/formatting functions.
 
@@ -225,7 +225,7 @@ Exposes the internal logging mechanism to the shell. Used by `config_setup.sh` t
 - `ws_error(msg)`: ❌ Red error.
 - `ws_advice(msg)`: 💡 Helpful tip/advice.
 
-### 4.2 Property Management (`src/codename_snake/util/props.py`)
+### 4.2 Property Management (`src/mega_snake/util/props.py`)
 
 Configuration is layered:
 1. **Hardcoded Defaults**
@@ -234,7 +234,7 @@ Configuration is layered:
 
 Access properties via `get_property(key)`.
 
-### 4.3 Shell Execution (`src/codename_snake/util/util.py`)
+### 4.3 Shell Execution (`src/mega_snake/util/util.py`)
 
 Use `run_operation` for ALL shell commands. It handles logging, error capturing, and return codes.
 
@@ -253,21 +253,21 @@ if result.returncode != 0:
 
 ### User Installation Flow
 
-When end-users install `codename_snake` via `uv tool install` or `pipx install`:
+When end-users install `mega_snake` via `uv tool install` or `pipx install`:
 
 1. The package is installed in an isolated virtual environment.
-2. The `snake` command becomes available globally.
+2. The `mgsnake` command becomes available globally.
 3. Users add initialization code to their shell profile:
-   - **Bash/Zsh**: `. "$(snake shell-path bash)"` → outputs the path to `config_setup.sh`
-   - **PowerShell**: `. (snake shell-path pwsh)` → outputs the path to `config_setup.ps1`
+   - **Bash/Zsh**: `. "$(mgsnake shell-path bash)"` → outputs the path to `config_setup.sh`
+   - **PowerShell**: `. (mgsnake shell-path pwsh)` → outputs the path to `config_setup.ps1`
 4. The initialization script (`config_setup.sh` or `config_setup.ps1`) is sourced, which:
-   - Sets `CODENAME_SNAKE_SHELL` environment variable
-   - Defines `snake_reload` to (re)load the local config file (if present)
-   - Calls `snake_reload` once so the local config is applied immediately
+   - Sets `MEGA_SNAKE_SHELL` environment variable
+   - Defines `mgsnake_reload` to (re)load the local config file (if present)
+   - Calls `mgsnake_reload` once so the local config is applied immediately
 **Why this approach?**
 - Allows the tool to run anywhere without polluting the user's active Python environment
 - Users don't need to manually activate/deactivate virtual environments
-- The `snake` function transparently manages venv switching
+- The `mgsnake` function transparently manages venv switching
 - Multiple concurrent shells can each have their own active venv state
 
 ### Local Development Setup
@@ -300,12 +300,12 @@ When end-users install `codename_snake` via `uv tool install` or `pipx install`:
    ```
 
 5. Add the initialization script to your shell profile (same as end-users do):
-   - **Bash/Zsh**: Add `. "$(snake shell-path bash)"` to `~/.bashrc` or `~/.zshrc`
-   - **PowerShell**: Add `. (snake shell-path pwsh)` to your PowerShell profile
+   - **Bash/Zsh**: Add `. "$(mgsnake shell-path bash)"` to `~/.bashrc` or `~/.zshrc`
+   - **PowerShell**: Add `. (mgsnake shell-path pwsh)` to your PowerShell profile
 
 6. Restart your terminal and verify:
    ```bash
-   snake --help
+   mgsnake --help
    ```
 
 ---

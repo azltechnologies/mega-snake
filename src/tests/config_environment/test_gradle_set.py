@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, patch, mock_open, call
 from typing import Generator, Any
 from click.testing import CliRunner
 import pytest
-from codename_snake.config_environment.gradle_set import set_gradle_version, execute, GradleVersion
-from codename_snake.util.util import load_json_with_comments
+from mega_snake.config_environment.gradle_set import set_gradle_version, execute, GradleVersion
+from mega_snake.util.util import load_json_with_comments
 
 FILE_WK = "wk_file"
 PATH_WK = "wk_path"
@@ -41,21 +41,21 @@ def run_after_each_test() -> Generator[None, None, None]:
 @pytest.fixture(name="_mk_os_darwin")
 def fixture_mk_os_darwin() -> Generator[MagicMock]:
     """Mock _mk_os_darwin"""
-    with patch("codename_snake.config_environment.gradle_set.OS", "Darwin") as mock:
+    with patch("mega_snake.config_environment.gradle_set.OS", "Darwin") as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_execute")
 def fixture_execute() -> Generator[MagicMock]:
     """Mock mk_execute"""
-    with patch("codename_snake.config_environment.gradle_set.execute", wraps=execute) as mock:
+    with patch("mega_snake.config_environment.gradle_set.execute", wraps=execute) as mock:
         yield mock
 
 
 @pytest.fixture(name="gradle_set")
 def fixture__gradle_set() -> Generator[MagicMock]:
     """Mock gradle_set"""
-    with patch("codename_snake.config_environment.gradle_set._gradle_set") as mock:
+    with patch("mega_snake.config_environment.gradle_set._gradle_set") as mock:
         yield mock
 
 
@@ -73,14 +73,14 @@ def fixture_get_property() -> Generator[MagicMock]:
         else:
             raise ValueError("Invalid property")
 
-    with patch("codename_snake.config_environment.gradle_set.get_property", side_effect=prop_side_effect) as mock:
+    with patch("mega_snake.config_environment.gradle_set.get_property", side_effect=prop_side_effect) as mock:
         yield mock
 
 
 @pytest.fixture(name="get_local_file")
 def fixture_get_local_file() -> Generator[MagicMock]:
     """Mock get_local_file"""
-    with patch("codename_snake.config_environment.gradle_set.get_local_file") as mock:
+    with patch("mega_snake.config_environment.gradle_set.get_local_file") as mock:
         mock.return_value = LOCAL_FILE
         yield mock
 
@@ -100,7 +100,7 @@ def fixture_run_operation() -> Generator[MagicMock]:
 /opt/homebrew/Cellar/gradle@8.9/8.9\n
 /opt/homebrew/Cellar/gradle@7.6.1/7.6.1\n
     """
-    with patch("codename_snake.config_environment.gradle_set.run_operation") as mock:
+    with patch("mega_snake.config_environment.gradle_set.run_operation") as mock:
         mock.return_value.stdout = return_value
         yield mock
 
@@ -108,21 +108,21 @@ def fixture_run_operation() -> Generator[MagicMock]:
 @pytest.fixture(name="ws_warning")
 def fixture_ws_warning() -> Generator[MagicMock]:
     """Mock ws_warning"""
-    with patch("codename_snake.config_environment.gradle_set.ws_warning") as mock:
+    with patch("mega_snake.config_environment.gradle_set.ws_warning") as mock:
         yield mock
 
 
 @pytest.fixture(name="ws_success")
 def fixture_ws_success() -> Generator[MagicMock]:
     """Mock ws_success"""
-    with patch("codename_snake.config_environment.gradle_set.ws_success") as mock:
+    with patch("mega_snake.config_environment.gradle_set.ws_success") as mock:
         yield mock
 
 
 @pytest.fixture(name="get_validated_input")
 def fixture_get_validated_input() -> Generator[MagicMock]:
     """Mock get_validated_input"""
-    with patch("codename_snake.config_environment.models.tools_version.get_validated_input") as mock:
+    with patch("mega_snake.config_environment.models.tools_version.get_validated_input") as mock:
         mock.return_value = "6"  # Return the third version 8.4
         yield mock
 
@@ -130,14 +130,14 @@ def fixture_get_validated_input() -> Generator[MagicMock]:
 @pytest.fixture(name="mk_os")
 def fixture_mk_os() -> Generator[MagicMock]:
     """Mock os"""
-    with patch("codename_snake.config_environment.models.tools_version.os") as mock:
+    with patch("mega_snake.config_environment.models.tools_version.os") as mock:
         yield mock
 
 
 @pytest.fixture(name="os_replace")
 def fixture_os_replace() -> Generator[MagicMock]:
     """Mock os_replace"""
-    with patch("codename_snake.config_environment.util.os") as mock:
+    with patch("mega_snake.config_environment.util.os") as mock:
         yield mock.replace
 
 
@@ -210,7 +210,7 @@ def test_set_gradle_version_darwin_empty_files(
 
         # Test when no parameters are passed, workspace file is empty and local file is empty
         with patch(
-            "codename_snake.config_environment.gradle_set.load_json_with_comments",
+            "mega_snake.config_environment.gradle_set.load_json_with_comments",
             return_value=empty_wk_file_content,
         ):
             runner = CliRunner()
@@ -290,7 +290,7 @@ def test_set_gradle_version_darwin_defined_versions(
 
         # Test when no parameters are passed, workspace file and local file have versions
         with patch(
-            "codename_snake.config_environment.gradle_set.load_json_with_comments",
+            "mega_snake.config_environment.gradle_set.load_json_with_comments",
             return_value=wk_file_content,
         ):
             runner = CliRunner()
@@ -385,11 +385,11 @@ def test_set_gradle_version_failing_scenarios(
                 read_mock,
             )
 
-        with patch("codename_snake.config_environment.gradle_set.OS", "Darwin"):
+        with patch("mega_snake.config_environment.gradle_set.OS", "Darwin"):
             # Test when no versions are found
             run_operation.return_value.stdout = ""
             with patch(
-                "codename_snake.config_environment.gradle_set.load_json_with_comments",
+                "mega_snake.config_environment.gradle_set.load_json_with_comments",
                 return_value=wk_file_content,
             ):
                 result = runner.invoke(set_gradle_version, ["-o"])
@@ -406,11 +406,11 @@ def test_set_gradle_version_failing_scenarios(
                 ws_success.assert_not_called()
                 mocks_reset()
 
-        with patch("codename_snake.config_environment.gradle_set.OS", "Windows"):
+        with patch("mega_snake.config_environment.gradle_set.OS", "Windows"):
             # Test when no versions are found
             run_operation.return_value.stdout = ""
             with patch(
-                "codename_snake.config_environment.gradle_set.load_json_with_comments",
+                "mega_snake.config_environment.gradle_set.load_json_with_comments",
                 return_value=wk_file_content,
             ):
                 result = runner.invoke(set_gradle_version, ["-o"])
@@ -427,11 +427,11 @@ def test_set_gradle_version_failing_scenarios(
                 ws_success.assert_not_called()
                 mocks_reset()
 
-        with patch("codename_snake.config_environment.gradle_set.OS", "Linux"):
+        with patch("mega_snake.config_environment.gradle_set.OS", "Linux"):
             # Test when no versions are found
             run_operation.return_value.stdout = ""
             with patch(
-                "codename_snake.config_environment.gradle_set.load_json_with_comments",
+                "mega_snake.config_environment.gradle_set.load_json_with_comments",
                 return_value=wk_file_content,
             ):
                 result = runner.invoke(set_gradle_version, ["-o"])

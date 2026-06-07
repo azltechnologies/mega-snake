@@ -7,10 +7,10 @@ import subprocess
 
 import pytest
 
-from codename_snake.light_weight.create_release import _get_notes, create_release
-from codename_snake.light_weight.echo import echo
-from codename_snake.light_weight.jks_expired_certs import expired_certs
-from codename_snake.light_weight.release import Release, _create_release_list, get_latest_release
+from mega_snake.light_weight.create_release import _get_notes, create_release
+from mega_snake.light_weight.echo import echo
+from mega_snake.light_weight.jks_expired_certs import expired_certs
+from mega_snake.light_weight.release import Release, _create_release_list, get_latest_release
 
 
 def test_create_release_flows() -> None:
@@ -19,28 +19,28 @@ def test_create_release_flows() -> None:
     assert _get_notes("  release notes  ") == '--notes "release notes"'
 
     latest = SimpleNamespace(tag_name="v1.0.0", get_release_tag=lambda suffix: f"v1.0.0-{suffix}.0")
-    with patch("codename_snake.light_weight.create_release.handler.git_fetch"), patch(
-        "codename_snake.light_weight.create_release.get_latest_release", return_value=latest
-    ), patch("codename_snake.light_weight.create_release.handler.publish_release"), patch(
-        "codename_snake.light_weight.create_release.get_current_commit", return_value="abc"
+    with patch("mega_snake.light_weight.create_release.handler.git_fetch"), patch(
+        "mega_snake.light_weight.create_release.get_latest_release", return_value=latest
+    ), patch("mega_snake.light_weight.create_release.handler.publish_release"), patch(
+        "mega_snake.light_weight.create_release.get_current_commit", return_value="abc"
     ), patch(
-        "codename_snake.light_weight.create_release.get_validated_input", return_value="n"
+        "mega_snake.light_weight.create_release.get_validated_input", return_value="n"
     ):
         create_release.callback("foo", "l", None, None)
 
-    with patch("codename_snake.light_weight.create_release.handler.git_fetch"), patch(
-        "codename_snake.light_weight.create_release.get_latest_release", side_effect=[latest, latest]
-    ), patch("codename_snake.light_weight.create_release.handler.publish_release"), patch(
-        "codename_snake.light_weight.create_release.handler.set_release_to_latest"
+    with patch("mega_snake.light_weight.create_release.handler.git_fetch"), patch(
+        "mega_snake.light_weight.create_release.get_latest_release", side_effect=[latest, latest]
+    ), patch("mega_snake.light_weight.create_release.handler.publish_release"), patch(
+        "mega_snake.light_weight.create_release.handler.set_release_to_latest"
     ) as set_latest:
         create_release.callback("foo", "r", "notes ok", "branch")
         set_latest.assert_not_called()
 
     newer = SimpleNamespace(tag_name="v2.0.0", get_release_tag=lambda suffix: f"v2.0.0-{suffix}.0")
-    with patch("codename_snake.light_weight.create_release.handler.git_fetch"), patch(
-        "codename_snake.light_weight.create_release.get_latest_release", side_effect=[latest, newer]
-    ), patch("codename_snake.light_weight.create_release.handler.publish_release"), patch(
-        "codename_snake.light_weight.create_release.handler.set_release_to_latest"
+    with patch("mega_snake.light_weight.create_release.handler.git_fetch"), patch(
+        "mega_snake.light_weight.create_release.get_latest_release", side_effect=[latest, newer]
+    ), patch("mega_snake.light_weight.create_release.handler.publish_release"), patch(
+        "mega_snake.light_weight.create_release.handler.set_release_to_latest"
     ) as set_latest:
         create_release.callback("foo", "r", "notes ok", "branch")
         set_latest.assert_called_once_with(latest.tag_name)
@@ -51,21 +51,21 @@ def test_create_release_flows() -> None:
 
 def test_release_model_and_lookup() -> None:
     """Cover Release model parsing and lookup logic."""
-    with patch("codename_snake.light_weight.release.handler.get_commit_from_release", return_value="abc"):
+    with patch("mega_snake.light_weight.release.handler.get_commit_from_release", return_value="abc"):
         rel = Release("Title\tLatest\tv1.0.0\t2025-01-01T00:00:00Z")
         assert rel and rel.commit == "abc"
 
     with pytest.raises(ValueError):
         Release(None)
-    with patch("codename_snake.light_weight.release.handler.get_commit_from_release", return_value="abc"):
+    with patch("mega_snake.light_weight.release.handler.get_commit_from_release", return_value="abc"):
         releases = _create_release_list("A\tLatest\tv1.0.0\t2025-01-01T00:00:00Z\nB\tDraft\tv0.9.0\t2024-01-01T00:00:00Z")
         assert len(releases) == 2
 
     with patch("subprocess.run", side_effect=[subprocess.CalledProcessError(1, "x")]):
         assert rel.get_release_tag("x").startswith("v1.0.0-x.")
 
-    with patch("codename_snake.light_weight.release.handler.get_release_list") as get_release_list, patch(
-        "codename_snake.light_weight.release.handler.get_commit_from_release", return_value="abc"
+    with patch("mega_snake.light_weight.release.handler.get_release_list") as get_release_list, patch(
+        "mega_snake.light_weight.release.handler.get_commit_from_release", return_value="abc"
     ):
         get_release_list.side_effect = [
             SimpleNamespace(stdout="A\tDraft\tv1.0.0\t2025-01-01T00:00:00Z"),
@@ -77,35 +77,35 @@ def test_release_model_and_lookup() -> None:
 
 def test_echo_and_expired_certs() -> None:
     """Cover echo command branches and expired certs command."""
-    with patch("codename_snake.light_weight.echo.MSG_OPT", {"I": MagicMock(), "A": MagicMock(), "T": MagicMock()}):
+    with patch("mega_snake.light_weight.echo.MSG_OPT", {"I": MagicMock(), "A": MagicMock(), "T": MagicMock()}):
         echo.callback("msg", "pro", "epi", "I")
         echo.callback("msg", None, None, "A")
         echo.callback("msg", "pro", "epi", "T")
-    with patch("codename_snake.light_weight.echo.MSG_OPT", {"I": MagicMock()}):
+    with patch("mega_snake.light_weight.echo.MSG_OPT", {"I": MagicMock()}):
         with pytest.raises(ValueError):
             echo.callback("msg", None, None, "X")
 
-    with patch("codename_snake.light_weight.jks_expired_certs.shutil.which", return_value=None):
+    with patch("mega_snake.light_weight.jks_expired_certs.shutil.which", return_value=None):
         with pytest.raises(RuntimeError):
             expired_certs.callback("/tmp/a.jks", "p", False)
 
     valid_cert = "Alias name: a\nValid from: Mon Jan 01 00:00:00 UTC 2024 until: Mon Jan 01 00:00:00 UTC 2099"
-    with patch("codename_snake.light_weight.jks_expired_certs.shutil.which", return_value="/bin/keytool"), patch(
-        "codename_snake.light_weight.jks_expired_certs.get_command_return_code", return_value=0
-    ), patch("codename_snake.light_weight.jks_expired_certs.run_operation") as run_operation:
+    with patch("mega_snake.light_weight.jks_expired_certs.shutil.which", return_value="/bin/keytool"), patch(
+        "mega_snake.light_weight.jks_expired_certs.get_command_return_code", return_value=0
+    ), patch("mega_snake.light_weight.jks_expired_certs.run_operation") as run_operation:
         run_operation.side_effect = [SimpleNamespace(stdout="Alias name: a"), SimpleNamespace(stdout=valid_cert)]
         expired_certs.callback("/tmp/a.jks", "p", False)
 
-    with patch("codename_snake.light_weight.jks_expired_certs.shutil.which", return_value="/bin/keytool"), patch(
-        "codename_snake.light_weight.jks_expired_certs.get_command_return_code", return_value=1
+    with patch("mega_snake.light_weight.jks_expired_certs.shutil.which", return_value="/bin/keytool"), patch(
+        "mega_snake.light_weight.jks_expired_certs.get_command_return_code", return_value=1
     ):
         with pytest.raises(RuntimeError):
             expired_certs.callback("/tmp/a.jks", "p", False)
 
     expired_cert = "Alias name: a\nValid from: Mon Jan 01 00:00:00 UTC 2020 until: Mon Jan 01 00:00:00 UTC 2021"
-    with patch("codename_snake.light_weight.jks_expired_certs.shutil.which", return_value="/bin/keytool"), patch(
-        "codename_snake.light_weight.jks_expired_certs.get_command_return_code", return_value=0
-    ), patch("codename_snake.light_weight.jks_expired_certs.run_operation") as run_operation:
+    with patch("mega_snake.light_weight.jks_expired_certs.shutil.which", return_value="/bin/keytool"), patch(
+        "mega_snake.light_weight.jks_expired_certs.get_command_return_code", return_value=0
+    ), patch("mega_snake.light_weight.jks_expired_certs.run_operation") as run_operation:
         run_operation.side_effect = [
             SimpleNamespace(stdout="Alias name: a"),
             SimpleNamespace(stdout=expired_cert),

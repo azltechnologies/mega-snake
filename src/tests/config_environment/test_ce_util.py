@@ -3,13 +3,13 @@
 from unittest.mock import patch, MagicMock, call, mock_open
 from typing import Generator
 import pytest
-from codename_snake.config_environment.util import get_local_file, update_workspace, get_version_number
+from mega_snake.config_environment.util import get_local_file, update_workspace, get_version_number
 
 
 @pytest.fixture(name="get_property")
 def fixture_get_property() -> Generator[MagicMock]:
     """Mock get_property"""
-    with patch("codename_snake.config_environment.util.get_property") as mock:
+    with patch("mega_snake.config_environment.util.get_property") as mock:
         yield mock
 
 

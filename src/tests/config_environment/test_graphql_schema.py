@@ -6,7 +6,7 @@ from typing import Generator, Any
 from graphql import build_schema
 from click.testing import CliRunner
 import pytest
-from codename_snake.config_environment.graphql_schema import create_graphql_schema
+from mega_snake.config_environment.graphql_schema import create_graphql_schema
 
 
 # Save the real open function
@@ -42,63 +42,63 @@ def fixture_mk_open() -> Generator[MagicMock]:
 @pytest.fixture(name="mk_build_schema")
 def fixture_mk_build_schema() -> Generator[MagicMock]:
     """Mock mk_build_schema"""
-    with patch("codename_snake.config_environment.graphql_schema.build_schema", wraps=build_schema) as mock:
+    with patch("mega_snake.config_environment.graphql_schema.build_schema", wraps=build_schema) as mock:
         yield mock
 
 
 @pytest.fixture(name="graphql_schema")
 def fixture_graphql_schema() -> Generator[MagicMock]:
     """Mock GraphQLSchema"""
-    with patch("codename_snake.config_environment.graphql_schema.GraphQLSchema") as mock:
+    with patch("mega_snake.config_environment.graphql_schema.GraphQLSchema") as mock:
         yield mock
 
 
 @pytest.fixture(name="print_schema")
 def fixture_print_schema() -> Generator[MagicMock]:
     """Mock print_schema"""
-    with patch("codename_snake.config_environment.graphql_schema.print_schema") as mock:
+    with patch("mega_snake.config_environment.graphql_schema.print_schema") as mock:
         yield mock
 
 
 @pytest.fixture(name="introspection_from_schema")
 def fixture_introspection_from_schema() -> Generator[MagicMock]:
     """Mock introspection_from_schema"""
-    with patch("codename_snake.config_environment.graphql_schema.introspection_from_schema") as mock:
+    with patch("mega_snake.config_environment.graphql_schema.introspection_from_schema") as mock:
         yield mock
 
 
 @pytest.fixture(name="ws_success")
 def fixture_ws_success() -> Generator[MagicMock]:
     """Mock ws_success"""
-    with patch("codename_snake.config_environment.graphql_schema.ws_success") as mock:
+    with patch("mega_snake.config_environment.graphql_schema.ws_success") as mock:
         yield mock
 
 
 @pytest.fixture(name="run_operation")
 def fixture_run_operation() -> Generator[MagicMock]:
     """Mock run_operation"""
-    with patch("codename_snake.config_environment.graphql_schema.run_operation") as mock:
+    with patch("mega_snake.config_environment.graphql_schema.run_operation") as mock:
         yield mock
 
 
 @pytest.fixture(name="get_property")
 def fixture_get_property() -> Generator[MagicMock]:
     """Mock get_property"""
-    with patch("codename_snake.config_environment.graphql_schema.get_property") as mock:
+    with patch("mega_snake.config_environment.graphql_schema.get_property") as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_os")
 def fixture_mk_os() -> Generator[MagicMock]:
     """Mock os"""
-    with patch("codename_snake.config_environment.graphql_schema.os") as mock:
+    with patch("mega_snake.config_environment.graphql_schema.os") as mock:
         yield mock
 
 
 @pytest.fixture(name="_create_schema")
 def fixture_create_schema() -> Generator[MagicMock]:
     """Mock _create_schema"""
-    with patch("codename_snake.config_environment.graphql_schema._create_schema") as mock:
+    with patch("mega_snake.config_environment.graphql_schema._create_schema") as mock:
         yield mock
 
 

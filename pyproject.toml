@@ -1,5 +1,5 @@
 [project]
-name = "codename_snake"
+name = "mega_snake"
 version = "0.1.0"
 description = "CLI for setting environment for VSCode coding"
 authors = [
@@ -35,14 +35,14 @@ dev = [
 ]
 
 [project.scripts]
-snake = "codename_snake.__main__:cli"  # Asumiendo que 'cli' es tu función Grupo de click
+mgsnake = "mega_snake.__main__:cli"  # Asumiendo que 'cli' es tu función Grupo de click
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/codename_snake"]
+packages = ["src/mega_snake"]
 
 [tool.mypy]
 python_version = "3.13"
@@ -62,7 +62,7 @@ testpaths = ["src/tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --cov=codename_snake --cov-report=term-missing --cov-report=html:coverage_html --cov-fail-under=95 --html=report.html"
+addopts = "-v --cov=mega_snake --cov-report=term-missing --cov-report=html:coverage_html --cov-fail-under=95 --html=report.html"
 
 [tool.coverage.run]
 omit = [
@@ -70,7 +70,7 @@ omit = [
     "*/__init__.py",
     "*/site-packages/*",
     # Add specific files to exclude
-    "codename_snake/pylint/custom_checkers.py",
+    "mega_snake/pylint/custom_checkers.py",
 ]
 
 [tool.coverage.report]

@@ -5,7 +5,7 @@ from types import SimpleNamespace, MethodType
 import inspect
 from unittest.mock import patch, MagicMock
 import pytest
-from codename_snake.config_environment.models.vscode_launch import VscodeLaunch, LAUNCH_VERSION_QUERY
+from mega_snake.config_environment.models.vscode_launch import VscodeLaunch, LAUNCH_VERSION_QUERY
 
 VERSION_TEST = "1.2.3"
 LAUNCH_TEST_SETTING = "configtests"
@@ -25,7 +25,7 @@ def dict_side_effect(instance: VscodeLaunch, _wk: str) -> dict[str, str]:
 def fixture_launch_config_query() -> Generator[MagicMock]:
     """Mock launch_config_query"""
     with patch(
-        "codename_snake.config_environment.models.vscode_launch.LAUNCH_CONFIG_QUERY", LAUNCH_TEST_QUERY
+        "mega_snake.config_environment.models.vscode_launch.LAUNCH_CONFIG_QUERY", LAUNCH_TEST_QUERY
     ) as mock:
         yield mock
 

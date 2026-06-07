@@ -70,9 +70,9 @@
                 "autoScroll": true
             }
         ],
-        "snake.java.remoteDebug.port": 5005,
-        "snake.java.remoteDebug.profile": "dev",
-        "snake.java.remoteDebug.jar": "build/libs/*.jar",
+        "mgsnake.java.remoteDebug.port": 5005,
+        "mgsnake.java.remoteDebug.profile": "dev",
+        "mgsnake.java.remoteDebug.jar": "build/libs/*.jar",
         "terminal.integrated.scrollback": 9000,
         "editor.largeFileOptimizations": false,
         "editor.maxTokenizationLineLength": 2000000,
@@ -250,10 +250,10 @@
                 "type": "shell",
                 "command": "java",
                 "args": [
-                    "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=${config:snake.java.remoteDebug.port}",
-                    "-Dspring.profiles.active=${config:snake.java.remoteDebug.profile}",
+                    "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=${config:mgsnake.java.remoteDebug.port}",
+                    "-Dspring.profiles.active=${config:mgsnake.java.remoteDebug.profile}",
                     "-jar",
-                    "${config:snake.java.remoteDebug.jar}",
+                    "${config:mgsnake.java.remoteDebug.jar}",
                     ">",
                     "'/root/parent_folder/some_path/logs/java_debug_${input:todayTimestamp}.log'",
                     "2>&1"
@@ -321,7 +321,7 @@
                 "name": "JAVA DEBUG (Attach)",
                 "type": "java",
                 "request": "attach",
-                "port": "${config:snake.java.remoteDebug.port}",
+                "port": "${config:mgsnake.java.remoteDebug.port}",
                 "hostName": "localhost",
                 "projectName": "stuff"
             },

@@ -30,8 +30,8 @@ jobs:
 
     - name: Run ruff check
       run: |
-        uv run ruff check src/codename_snake --output-format=concise
+        uv run ruff check src/mega_snake --output-format=concise
 
     - name: Run mypy
       run: |
-        uv run mypy --show-column-numbers --no-error-summary src/codename_snake
+        uv run mypy --show-column-numbers --no-error-summary src/mega_snake

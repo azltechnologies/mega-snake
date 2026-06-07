@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 from click.testing import CliRunner
-from codename_snake.config_environment import module
+from mega_snake.config_environment import module
 
 
 def test_main_group() -> None:

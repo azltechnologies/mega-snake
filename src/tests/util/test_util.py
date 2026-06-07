@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 import click
 from click.testing import CliRunner
-from codename_snake.util.util import (
+from mega_snake.util.util import (
     load_json_with_comments,
     run_operation,
     get_command_return_code,
@@ -25,21 +25,21 @@ from codename_snake.util.util import (
 @pytest.fixture(name="mk_ws_advice")
 def fixture_mk_ws_advice() -> Generator[MagicMock]:
     """Fixture for ws_advice."""
-    with patch("codename_snake.util.util.ws_advice") as mock:
+    with patch("mega_snake.util.util.ws_advice") as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_ws_warning")
 def fixture_mk_ws_warning() -> Generator[MagicMock]:
     """Fixture for ws_warning."""
-    with patch("codename_snake.util.util.ws_warning") as mock:
+    with patch("mega_snake.util.util.ws_warning") as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_subprocess_run")
 def fixture_mk_subprocess_run() -> Generator[MagicMock]:
     """Fixture for subprocess.run."""
-    with patch("codename_snake.util.util.subprocess.run") as mock:
+    with patch("mega_snake.util.util.subprocess.run") as mock:
         yield mock
 
 
@@ -53,21 +53,21 @@ def fixture_mk_input() -> Generator[MagicMock]:
 @pytest.fixture(name="mk_run_operation")
 def fixture_mk_run_operation() -> Generator[MagicMock]:
     """Fixture for run_operation."""
-    with patch("codename_snake.util.util.run_operation") as mock:
+    with patch("mega_snake.util.util.run_operation") as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_get_validated_input")
 def fixture_mk_get_validated_input() -> Generator[Callable]:
     """Fixture for get_validated_input."""
-    with patch("codename_snake.util.util.get_validated_input") as mock:
+    with patch("mega_snake.util.util.get_validated_input") as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_get_remote")
 def fixture_mk_get_remote() -> Generator[Callable]:
     """Fixture for get_remote."""
-    with patch("codename_snake.util.util.get_remote") as mock:
+    with patch("mega_snake.util.util.get_remote") as mock:
         yield mock
 
 
@@ -102,7 +102,7 @@ def test_run_operation(mk_ws_warning: MagicMock, mk_subprocess_run: MagicMock) -
 
     # Test when command runs successfully
     mk_subprocess_run.return_value = valid_value
-    with patch("codename_snake.util.util.get_property", return_value="bash"):
+    with patch("mega_snake.util.util.get_property", return_value="bash"):
         result = run_operation(command, description)
     mk_ws_warning.assert_not_called()
     mk_subprocess_run.assert_called_once_with(["bash", "-c", command], shell=False, check=True, capture_output=True, text=True)
@@ -112,7 +112,7 @@ def test_run_operation(mk_ws_warning: MagicMock, mk_subprocess_run: MagicMock) -
 
     # Test when command fails once and succeeds on retry
     mk_subprocess_run.side_effect = [error_value, valid_value]
-    with patch("codename_snake.util.util.get_property", return_value="bash"):
+    with patch("mega_snake.util.util.get_property", return_value="bash"):
         result = run_operation(command, description)
     assert mk_ws_warning.call_count == 3
     assert mk_subprocess_run.call_count == 2
@@ -123,7 +123,7 @@ def test_run_operation(mk_ws_warning: MagicMock, mk_subprocess_run: MagicMock) -
     # Test when command fails all retries
     mk_subprocess_run.side_effect = [error_value] * 3
     with pytest.raises(subprocess.SubprocessError):
-        with patch("codename_snake.util.util.get_property", return_value="bash"):
+        with patch("mega_snake.util.util.get_property", return_value="bash"):
             run_operation(command, description)
     assert mk_ws_warning.call_count == 8
     assert mk_subprocess_run.call_count == 3

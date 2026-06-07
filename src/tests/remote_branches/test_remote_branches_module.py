@@ -1,7 +1,7 @@
 """ Tests for the remote_branches module. """
 
 from click.testing import CliRunner
-from codename_snake.remote_branches import module
+from mega_snake.remote_branches import module
 
 def test_main_group() -> None:
     """Test the main command group"""

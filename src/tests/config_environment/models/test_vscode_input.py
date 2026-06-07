@@ -5,7 +5,7 @@ from types import SimpleNamespace, MethodType
 import inspect
 from unittest.mock import patch, MagicMock
 import pytest
-from codename_snake.config_environment.models.vscode_input import VscodeInput
+from mega_snake.config_environment.models.vscode_input import VscodeInput
 
 INPUT_TEST_SETTING = "inputTests"
 INPUT_TEST_QUERY = f'.launch.["{INPUT_TEST_SETTING}"]'
@@ -23,7 +23,7 @@ def dict_side_effect(instance: VscodeInput) -> dict[str, str]:
 @pytest.fixture(name="vscode_task")
 def fixture_vscode_task() -> Generator[MagicMock]:
     """Mock VscodeTask"""
-    with patch("codename_snake.config_environment.models.vscode_input.VscodeTask") as mock:
+    with patch("mega_snake.config_environment.models.vscode_input.VscodeTask") as mock:
         yield mock
 
 

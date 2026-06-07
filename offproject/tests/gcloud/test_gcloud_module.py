@@ -1,24 +1,27 @@
-""" Test the gcloud module """
+"""Test the gcloud module"""
 
 from types import SimpleNamespace
 from typing import Generator
 from unittest.mock import patch, MagicMock
 from click.testing import CliRunner
 import pytest
-from codename_snake.gcloud import module
+from mega_snake.gcloud import module
+
 
 @pytest.fixture(name="get_command_return_code")
 def fixture_get_command_return_code() -> Generator[MagicMock]:
     """Mock get_command_return_code"""
-    with patch("codename_snake.gcloud.module.get_command_return_code") as mock:
+    with patch("mega_snake.gcloud.module.get_command_return_code") as mock:
         mock.return_value = 0
         yield mock
+
 
 @pytest.fixture(name="ws_advice")
 def fixture_ws_advice() -> Generator[MagicMock]:
     """Mock ws_advice"""
-    with patch("codename_snake.gcloud.module.ws_advice") as mock:
+    with patch("mega_snake.gcloud.module.ws_advice") as mock:
         yield mock
+
 
 def test_main_group() -> None:
     """Test the main command group"""
