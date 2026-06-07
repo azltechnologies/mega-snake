@@ -262,10 +262,8 @@ When end-users install `codename_snake` via `uv tool install` or `pipx install`:
    - **PowerShell**: `. (snake shell-path pwsh)` → outputs the path to `config_setup.ps1`
 4. The initialization script (`config_setup.sh` or `config_setup.ps1`) is sourced, which:
    - Sets `CODENAME_SNAKE_SHELL` environment variable
-   - Defines the `snake()` wrapper function
-   - Activates the tool's virtual environment before each command
-   - Restores the previous environment after execution
-
+   - Defines `l_reload` to (re)load the local config file (if present)
+   - Calls `l_reload` once so the local config is applied immediately
 **Why this approach?**
 - Allows the tool to run anywhere without polluting the user's active Python environment
 - Users don't need to manually activate/deactivate virtual environments

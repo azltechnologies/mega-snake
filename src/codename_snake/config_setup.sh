@@ -1,6 +1,6 @@
-# Detects if  the script is being run in bash or zsh and sets the appropriate configuration directory and shell type.
-# It also defines a function `l_reload` to reload the local configuration file and a function `snake` to execute
-# a Python module with the correct environment. Finally, it provides some user messages about how to use these functions.
+# Sets CODENAME_SNAKE_SHELL for the current shell session.
+# Defines `l_reload` to source the local configuration file (if present).
+# Prints basic usage hints for `snake` and `l_reload`.
 
 if [ -n "${BASH_VERSION:-}" ]; then
     # Para bash

@@ -1,6 +1,7 @@
 """
-This module contains the echo function that prints messages to the console and
-logs them into the workspace configuration log file.
+Light-weight commands for shell initialization.
+
+Provides commands to print the packaged shell init script path and the resolved local config file path.
 """
 
 from importlib.resources import files
