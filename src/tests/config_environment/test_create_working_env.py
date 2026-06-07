@@ -53,8 +53,8 @@ WK_PATH = f"{WK_PARENTH_PATH}/{WK_BASENAME_PATH}"
 CURRENT_PATH = "my_path"
 FOLDER = "folder_name"
 NEW_WORKSPACE_CONTENTS = {"prop": "value", "another_prop": 2}
-EMPTY_WK_FILE: str = "src/tests/resources/gradle/empty.code-workspace"
-DARWIN_WK_FILE: str = "src/tests/resources/gradle/darwin.code-workspace"
+EMPTY_WK_FILE: str = "src/tests/gradle/empty.code-workspace"
+DARWIN_WK_FILE: str = "src/tests/gradle/darwin.code-workspace"
 OS = "Windows"
 
 real_open = builtins.open

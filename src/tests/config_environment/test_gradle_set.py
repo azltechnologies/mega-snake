@@ -13,12 +13,12 @@ PATH_WK = "wk_path"
 LOCAL_FILE = "local_file"
 SHELL = "bash"
 
-EMPTY_WK_FILE: str = "src/tests/resources/gradle/empty.code-workspace"
-EMPTY_SH_FILE: str = "src/tests/resources/gradle/empty_local_file.sh"
+EMPTY_WK_FILE: str = "src/tests/gradle/empty.code-workspace"
+EMPTY_SH_FILE: str = "src/tests/gradle/empty_local_file.sh"
 
 DARWIN_FILES: dict[str, str] = {
-    "wk_file": "src/tests/resources/gradle/darwin.code-workspace",
-    "local_file": "src/tests/resources/gradle/bash_local_file.sh",
+    "wk_file": "src/tests/gradle/darwin.code-workspace",
+    "local_file": "src/tests/gradle/bash_local_file.sh",
 }
 
 real_open = builtins.open

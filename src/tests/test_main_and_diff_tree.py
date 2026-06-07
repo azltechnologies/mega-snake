@@ -1,5 +1,6 @@
 """Additional tests for main CLI and diff_tree helpers."""
 
+import os
 from types import SimpleNamespace
 from unittest.mock import mock_open, patch
 import click
@@ -14,9 +15,10 @@ from codename_snake.diff_tree import module as diff_module
 def test_main_cli_and_post_command() -> None:
     """Cover cli init, error path, and post-command."""
     runner = CliRunner()
-    with patch("codename_snake.__main__.init_app_properties"):
-        result = runner.invoke(app_main.cli, ["--shell", "bash", "createDiffTree", "--help"])
-        assert result.exit_code == 0
+    with patch.dict(os.environ, {"CODENAME_SNAKE_SHELL": "bash"}):
+        with patch("codename_snake.__main__.init_app_properties"):
+            result = runner.invoke(app_main.cli, ["createDiffTree", "--help"])
+            assert result.exit_code == 0
 
     error_context = click.Context(app_main.cli)
     error_context.invoked_subcommand = "x"

@@ -21,7 +21,7 @@ from codename_snake.constants import LOGGING_NAME_TO_LEVEL
 ROOT = "src/tests"
 RESOURCE_FOLDER = "/resources"
 RESOURCE_PATH = f"{ROOT}{RESOURCE_FOLDER}"
-PROP_FILE = f"{RESOURCE_PATH}/config.properties"
+PROP_FILE = f"{ROOT}/config.properties"
 
 
 real_open = builtins.open
@@ -35,17 +35,11 @@ def fixture_get_validated_input() -> Generator[MagicMock]:
         yield mock
 
 
-@pytest.fixture(name="_constant_source_folder")
-def fixture_constant_source_folder() -> Generator[MagicMock]:
-    """Mock SOURCE_FOLDER constant"""
-    with patch("codename_snake.util.props.SOURCE_FOLDER", RESOURCE_FOLDER) as mock:
-        yield mock
 
-
-@pytest.fixture(name="mk_os_getenv")
-def fixture_mk_os_getenv() -> Generator[MagicMock]:
-    """Mock os.getenv"""
-    with patch("codename_snake.util.props.os.getenv", return_value=ROOT) as mock:
+@pytest.fixture(name="mk_importlib_resources_files")
+def fixture_mk_importlib_resources_files() -> Generator[MagicMock]:
+    """Mock importlib.resources.files"""
+    with patch("codename_snake.util.props.files", return_value=ROOT) as mock:
         yield mock
 
 
@@ -100,10 +94,9 @@ def test_get_instance_when_instance_is_none() -> None:
 
 
 def test_init_app_properties(
-    _constant_source_folder: MagicMock,
     mk_read_properties: MagicMock,
     formatting: MagicMock,
-    mk_os_getenv: MagicMock,
+    mk_importlib_resources_files: MagicMock,
     mk_os: MagicMock,
 ) -> None:
     """Test init_app_properties method"""
@@ -123,7 +116,7 @@ def test_init_app_properties(
         formatting,
         ws_advice,
         config_log,
-        mk_os_getenv,
+        mk_importlib_resources_files,
         mk_os,
     ]
 
@@ -150,7 +143,7 @@ def test_init_app_properties(
 
         # Test when AppProperties is successfully initialized
         init_app_properties(log_level, shell, True)
-        mk_os_getenv.assert_called_once()
+        mk_importlib_resources_files.assert_called_once()
         mk_read_properties.assert_called_once_with(PROP_FILE)
         mock_class.assert_called_once_with(log_level, shell, output_read_props)
         formatting.assert_not_called()
@@ -161,7 +154,7 @@ def test_init_app_properties(
         # Test when AppProperties throws a FileNotFoundError and light_weight is True
         mock_class.side_effect = FileNotFoundError("File not found")
         init_app_properties(log_level, shell, True)
-        mk_os_getenv.assert_called_once()
+        mk_importlib_resources_files.assert_called_once()
         mk_read_properties.assert_called_once_with(PROP_FILE)
         mock_class.assert_called_once_with(log_level, shell, output_read_props)
         formatting.assert_not_called()
@@ -174,7 +167,7 @@ def test_init_app_properties(
         mock_class.side_effect = FileNotFoundError("File not found")
         with pytest.raises(FileNotFoundError):
             init_app_properties(log_level, shell, light_weight)
-        mk_os_getenv.assert_called_once()
+        mk_importlib_resources_files.assert_called_once()
         mk_read_properties.assert_called_once_with(PROP_FILE)
         mock_class.assert_called_once_with(log_level, shell, output_read_props)
         formatting.assert_not_called()
@@ -186,7 +179,7 @@ def test_init_app_properties(
         # Test when shell parameter is not provided
         with pytest.raises(EnvironmentError):
             init_app_properties(log_level, None, light_weight)
-        mk_os_getenv.assert_called_once()
+        mk_importlib_resources_files.assert_called_once()
         mk_read_properties.assert_called_once_with(PROP_FILE)
         mock_class.assert_not_called()
         formatting.assert_not_called()
@@ -200,7 +193,7 @@ def test_init_app_properties(
             read_mock.return_value = ""
             with pytest.raises(ValueError):
                 init_app_properties(log_level, shell, light_weight)
-            mk_os_getenv.assert_called_once()
+            mk_importlib_resources_files.assert_called_once()
             mk_read_properties.assert_called_once_with(PROP_FILE)
             mock_class.assert_not_called()
             formatting.assert_not_called()
@@ -215,7 +208,7 @@ def test_init_app_properties(
             mk_os.return_value = False
             with pytest.raises(FileNotFoundError):
                 init_app_properties(log_level, shell, light_weight)
-            mk_os_getenv.assert_called_once()
+            mk_importlib_resources_files.assert_called_once()
             mk_os.assert_called_once_with(PROP_FILE)
             mk_read_properties.assert_not_called()
             mock_class.assert_not_called()
@@ -226,10 +219,10 @@ def test_init_app_properties(
             reset_mocks(*mocks)
 
         # Test when PYTHONPATH is not set
-        mk_os_getenv.return_value = None
+        mk_importlib_resources_files.return_value = None
         with pytest.raises(EnvironmentError):
             init_app_properties(log_level, shell, light_weight)
-        mk_os_getenv.assert_called_once()
+        mk_importlib_resources_files.assert_called_once()
         mk_read_properties.assert_not_called()
         mock_class.assert_not_called()
         formatting.assert_not_called()
@@ -259,11 +252,11 @@ def test_resources_path_validator(request) -> None:
     def my_function(log_level: str, shell: str, light_weight: bool, mocks: dict[str, MagicMock]) -> None:
         """Test function"""
         non_existent_resource_folder = "src/tests/non_existent"
-        path_to_test_a_file = f"{ROOT}{RESOURCE_FOLDER}/test_resources"
+        path_to_test_a_file = f"{ROOT}/test_resources"
         get_package_root = mocks["get_package_root"]
 
         # Test when the resources location exists and is a directory but has no access
-        get_package_root.return_value = RESOURCE_PATH
+        get_package_root.return_value = ROOT
         with patch("codename_snake.util.props.os.access", return_value=False):
             with pytest.raises(PermissionError):
                 init_app_properties(log_level, shell, light_weight)
@@ -271,13 +264,13 @@ def test_resources_path_validator(request) -> None:
 
         # Test when the resources location exists but is a file
         get_package_root.return_value = None
-        get_package_root.side_effect = [RESOURCE_PATH, path_to_test_a_file]
+        get_package_root.side_effect = [ROOT, path_to_test_a_file]
         with pytest.raises(NotADirectoryError):
             init_app_properties(log_level, shell, light_weight)
         reset_mocks(*mocks.values())
 
         # Test when the resources location doesn't exist
-        get_package_root.side_effect = [RESOURCE_PATH, non_existent_resource_folder]
+        get_package_root.side_effect = [ROOT, non_existent_resource_folder]
         with pytest.raises(AssertionError):
             init_app_properties(log_level, shell, light_weight)
         reset_mocks(*mocks.values())
@@ -303,7 +296,7 @@ def _find_code_workspace_files__after_failure_injector(request: pytest.FixtureRe
 def _find_code_workspace_files__on_success_injector(request: pytest.FixtureRequest) -> Callable:
     """Specialized decorator for _find_code_workspace_files__after_failure tests with predefined parameters."""
     get_package_root: MagicMock = get_mock(request, "get_package_root")
-    get_package_root.return_value = RESOURCE_PATH
+    get_package_root.return_value = ROOT
     parent = _find_code_workspace_files__after_failure_injector(request)
     return parent(param_injector)(request, "formatting")
 
@@ -320,15 +313,15 @@ def test__find_code_workspace_files(request) -> None:
 
         # Test when parent of working exists with one unique file
         result = "test.code-workspace"
-        get_package_root.return_value = RESOURCE_PATH
-        mk_os_path_abspath.side_effect.set_values([non_existent_working_dir, f"{RESOURCE_PATH}/test_resources/"])
+        get_package_root.return_value = ROOT
+        mk_os_path_abspath.side_effect.set_values([non_existent_working_dir, f"{ROOT}/"])
         init_app_properties(log_level, shell, True)
         assert get_property("workspace_file").endswith(result)
         reset_mocks(*mocks.values())
 
         # Test when parent of working exists with multiple files
         result = ".code-workspace"
-        mk_os_path_abspath.side_effect.set_values([non_existent_working_dir, f"{RESOURCE_PATH}/gradle"])
+        mk_os_path_abspath.side_effect.set_values([non_existent_working_dir, f"{ROOT}/gradle"])
         init_app_properties(log_level, shell, True)
         assert get_property("workspace_file").endswith(result)
 
@@ -350,9 +343,11 @@ def test__find_code_workspace_files(request) -> None:
     def on_succes(log_level: str, shell: str, light_weight: bool, mocks: dict[str, MagicMock]) -> None:
         """Test function on success"""
         mk_os_path_abspath: MagicMock = mocks["mk_os_path_abspath"]
+        get_package_root: MagicMock = mocks["get_package_root"]
+        get_package_root.return_value = ROOT
 
         # Test when workspace file is not found
-        mk_os_path_abspath.side_effect.set_values([f"{RESOURCE_PATH}/test_resources/"])
+        mk_os_path_abspath.side_effect.set_values([f"{ROOT}/"])
         init_app_properties(log_level, shell, True)
         assert get_property("workspace_file") == ""
         reset_mocks(*mocks.values())
@@ -360,7 +355,7 @@ def test__find_code_workspace_files(request) -> None:
         # Test when workspace file is found
         result = "test.code-workspace"
         mk_os_path_abspath.side_effect.set_values(
-            [f"{RESOURCE_PATH}/test_resources/", f"{RESOURCE_PATH}/test_resources/"]
+            [f"{ROOT}/test_resources/", f"{ROOT}/"]
         )
         init_app_properties(log_level, shell, light_weight)
         assert get_property("workspace_file").endswith(result)
@@ -375,7 +370,7 @@ def __log_level_from_str_injector(request: pytest.FixtureRequest) -> Callable:
     mk_os_path_abspath: MagicMock = get_mock(request, "mk_os_path_abspath")
     rm = mk_os_path_abspath.reset_mock
     mk_os_path_abspath.reset_mock = lambda *args, **kwargs: mk_os_path_abspath.side_effect.reset(rm, *args, **kwargs)
-    mk_os_path_abspath.side_effect.set_values([f"{RESOURCE_PATH}/test_resources/", f"{RESOURCE_PATH}/test_resources/"])
+    mk_os_path_abspath.side_effect.set_values([f"{ROOT}/", f"{ROOT}/"])
     return parent(param_injector)(request)
 
 
