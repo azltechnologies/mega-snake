@@ -2,7 +2,9 @@
 name = "codename_snake"
 version = "0.1.0"
 description = "CLI for setting environment for VSCode coding"
-authors = [{name = "Morales Ortega, Carlos Alberto", email = "carlos.mor.ort@gmail.com"}]
+authors = [
+    { name = "Morales Ortega, Carlos Alberto", email = "carlos.mor.ort@gmail.com" },
+]
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -32,6 +34,9 @@ dev = [
     "ruff>=0.1.0",
 ]
 
+[project.scripts]
+snake = "codename_snake.__main__:cli"  # Asumiendo que 'cli' es tu función Grupo de click
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -49,7 +54,7 @@ exclude = [
     '/opt/.*',
     '.*/site-packages/.*',
     'workspace_temp/.*',
-    'src/tests/.*'
+    'src/tests/.*',
 ]
 
 [tool.pytest.ini_options]
@@ -65,11 +70,11 @@ omit = [
     "*/__init__.py",
     "*/site-packages/*",
     # Add specific files to exclude
-    "codename_snake/pylint/custom_checkers.py"
+    "codename_snake/pylint/custom_checkers.py",
 ]
 
 [tool.coverage.report]
-exclude_also=["\\s*TYPE_CHECKING:\\s*\\n\\s*from.*"]
+exclude_also = ["\\s*TYPE_CHECKING:\\s*\\n\\s*from.*"]
 
 [tool.ruff]
 # Preserved the more permissive line length you had in pylint

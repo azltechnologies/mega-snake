@@ -249,21 +249,66 @@ if result.returncode != 0:
 
 ---
 
-## 5. Shell Integration (`config_setup.sh`)
+## 5. Shell Integration & Deployment
 
-The CLI is designed to run inside a specific virtual environment managed by the shell wrapper function `snake`.
+### User Installation Flow
 
-**How it works:**
-1. User sources `config_setup.sh`.
-2. `WS_CONFIG_HOME` env var is set to the repo root.
-3. `snake` function is defined:
-    - It saves the *current* virtual env state.
-    - It activates the repository's `.venv` (defined in `python_virtual_bash`).
-    - It runs the python module `python3 -m codename_snake`.
-    - It captures the exit code.
-    - It *deactivates* the repo venv and restores the previous one.
-    
-**Why?** This allows the tool to run anywhere in the terminal without polluting the user's active Python environment or requiring the user to manually switch venvs.
+When end-users install `codename_snake` via `uv tool install` or `pipx install`:
+
+1. The package is installed in an isolated virtual environment.
+2. The `snake` command becomes available globally.
+3. Users add initialization code to their shell profile:
+   - **Bash/Zsh**: `. "$(snake shell-path bash)"` → outputs the path to `config_setup.sh`
+   - **PowerShell**: `. (snake shell-path pwsh)` → outputs the path to `config_setup.ps1`
+4. The initialization script (`config_setup.sh` or `config_setup.ps1`) is sourced, which:
+   - Sets `CODENAME_SNAKE_SHELL` environment variable
+   - Defines the `snake()` wrapper function
+   - Activates the tool's virtual environment before each command
+   - Restores the previous environment after execution
+
+**Why this approach?**
+- Allows the tool to run anywhere without polluting the user's active Python environment
+- Users don't need to manually activate/deactivate virtual environments
+- The `snake` function transparently manages venv switching
+- Multiple concurrent shells can each have their own active venv state
+
+### Local Development Setup
+
+**Prerequisites:**
+- Python 3.13+
+- `uv` package manager
+
+**Setup Steps:**
+
+1. Clone the repository and navigate to the root:
+   ```bash
+   git clone <repo-url>
+   cd unix-scripts
+   ```
+
+2. Install dependencies (including dev dependencies):
+   ```bash
+   uv sync --all-extras
+   ```
+
+3. Build the wheel:
+   ```bash
+   uv build
+   ```
+
+4. Install locally for testing:
+   ```bash
+   uv tool install dist/*.whl --force-reinstall
+   ```
+
+5. Add the initialization script to your shell profile (same as end-users do):
+   - **Bash/Zsh**: Add `. "$(snake shell-path bash)"` to `~/.bashrc` or `~/.zshrc`
+   - **PowerShell**: Add `. (snake shell-path pwsh)` to your PowerShell profile
+
+6. Restart your terminal and verify:
+   ```bash
+   snake --help
+   ```
 
 ---
 

@@ -1,4 +1,4 @@
-""" Constants for the package. """
+"""Constants for the package."""
 
 from typing import Callable
 from logging import WARNING, INFO, DEBUG, NOTSET, ERROR
@@ -7,7 +7,7 @@ from codename_snake.util import formatting
 # Constants
 
 APP_NAME: str = "snake"
-MODULE_NAME: str = "py"
+MODULE_NAME: str = "codename_snake"
 INTERPRETER_PATH: str = ".venv/bin/python3.13"
 
 REMOTE_BRANCHES_OPT: list[str] = ["M", "U", "A"]

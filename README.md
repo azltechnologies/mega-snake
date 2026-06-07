@@ -2,51 +2,41 @@
 
 A CLI tool designed to standardize and automate the local development lifecycle. While its core focus is simplifying **Java/Gradle development in VS Code** ensuring consistent environments across teams, it also serves as a productivity swiss-army knife with utilities for **Git operations**, **GitHub release management**, and **Google Cloud Platform** observability.
 
-## Project Setup
+## Installation
 
-### Verify your Python version (3.13)
+### Via PyPI (Recommended for End Users)
 
-     ```bash
-        python --version
-     ```
+Install `codename-snake` from PyPI using either `uv` or `pipx`:
 
-     If don't have the right one, you can [download it from here](https://www.python.org/downloads/)
+**Using uv:**
 
-### Install uv
+```bash
+uv tool install codename-snake
+```
 
-     ```bash
-        pip install uv
-     ```
+**Using pipx:**
 
-     Or follow the [installation guide](https://docs.astral.sh/uv/getting-started/installation/).
+```bash
+pipx install codename-snake
+```
 
-### While being in the root path of this repository, install dependencies
+### Post-Installation Setup
 
-     ```sh
-           uv sync --all-extras
-     ```
+After installation, add the shell initialization script to your shell configuration:
 
-     This installs both the main dependencies and development dependencies (testing, linting, type checking).
+**For bash/zsh**, add this line to `~/.bashrc` or `~/.zshrc`:
 
-### Create (or update) `.vscode/settings.json` file by adding the properties _`python.binPath`_ and _`python.defaultInterpreterPath`_
+```bash
+. "$(snake shell-path bash)"
+```
 
-for windows:
+**For PowerShell**, add this line to your PowerShell profile (usually `$PROFILE`):
 
-     ```json
-           {
-              "python.binPath": ".venv/Scripts",
-              "python.defaultInterpreterPath": ".venv/Scripts/python.exe"
-           }
-     ```
+```powershell
+. (snake shell-path pwsh)
+```
 
-for mac & linux:
-
-     ```json
-           {
-              "python.binPath": ".venv/bin",
-              "python.defaultInterpreterPath": ".venv/bin/python3.13"
-           }
-     ```
+Then restart your terminal or source the configuration file to activate the `snake` command.
 
 ## Usage
 
@@ -57,19 +47,9 @@ for mac & linux:
 - Windows: PowerShell
 - macOS/Linux: bash or zsh
 
-### Initialize Environment
-
-   According to your terminal:
-
-   ```bash
-   # For bash/zsh
-   source config_setup.sh
-
-   # For PowerShell
-   . .\config_setup.ps1
-   ```
-
 ### Basic Usage
+
+   After installation and shell profile configuration, use the `snake` command:
 
       ```bash
       # Show help

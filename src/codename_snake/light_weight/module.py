@@ -2,6 +2,7 @@
 
 import click
 from codename_snake.util.util import cli_metadata
+from codename_snake.light_weight.shell_init import shell_path, get_local_config_path
 from codename_snake.light_weight.echo import echo
 from codename_snake.light_weight.create_release import create_release
 from codename_snake.light_weight.jks_expired_certs import expired_certs
@@ -24,3 +25,5 @@ add_wrapper = wrapper_decorator(wrapper)
 main.add_command(echo)
 main.add_command(create_release)
 main.add_command(expired_certs)
+main.add_command(shell_path)
+main.add_command(get_local_config_path)

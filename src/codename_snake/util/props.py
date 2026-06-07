@@ -3,15 +3,14 @@
 from dataclasses import dataclass, field
 import glob
 from configparser import ConfigParser
+from importlib.resources import files
 import shutil
 from typing import Optional
 import inspect
 import os
 from datetime import datetime
 from codename_snake.util import formatting
-from codename_snake.constants import SHELL_OPT, LOGGING_NAME_TO_LEVEL, LOGGING_LEVEL_TO_NANE
-
-SOURCE_FOLDER: str = "/src"
+from codename_snake.constants import SHELL_OPT, LOGGING_NAME_TO_LEVEL, LOGGING_LEVEL_TO_NANE, MODULE_NAME
 
 
 def get_validated_input(p_prompt: str, valid_values: list[str]) -> str:
@@ -23,10 +22,10 @@ def get_validated_input(p_prompt: str, valid_values: list[str]) -> str:
 
 def _get_package_root() -> str:
     """Get the root of the package"""
-    python_path: Optional[str] = os.getenv("PYTHONPATH")
+    python_path: Optional[str] = str(files(MODULE_NAME))
     if not python_path:
         raise EnvironmentError("PYTHONPATH environment variable not set")
-    return f"{python_path}{SOURCE_FOLDER}"
+    return python_path
 
 
 def _check_forbidden_execution(
@@ -42,7 +41,8 @@ def _check_forbidden_execution(
         if not props:
             raise ValueError("properties must be set when reloading properties")
         formatting.config_log(
-            props._retrieve_property("local_config_file"), props.log_level  # pylint: disable=protected-access
+            props._retrieve_property("local_config_file"),
+            props.log_level,  # pylint: disable=protected-access
         )
         formatting.ws_advice(f"Properties reloaded by: {message}")
 
@@ -155,7 +155,7 @@ class AppProperties:
         _check_forbidden_execution("__init__", "log_file setter method execution")
         today = datetime.today()
         formatted_date: str = today.strftime("%Y-%m-%d")
-        log_path: str = f"{self.props["working_path"]}/logs"
+        log_path: str = f"{self.props['working_path']}/logs"
         if not os.path.exists(log_path):
             os.makedirs(log_path)
         self.props["log_file"] = f"{log_path}/{value}_{formatted_date}.log"
@@ -174,12 +174,42 @@ class AppProperties:
 
     def __init__(self, log_level: str, shell: str, properties: dict[str, str]) -> None:
         """
-        Initializes an instance of the AppProperties class
+        Initializes an instance of the AppProperties class.
+
+        This constructor follows a critical sequence to support both full initialization and
+        light-weight mode (used in createRelease and similar commands that don't need a workspace).
+
+        Initialization Flow:
+            1. Validates resources_path (must exist and be readable)
+            2. Attempts to validate working_path and locate workspace_file:
+               - If working_path exists: locates .code-workspace file in parent directory
+               - If working_path does NOT exist: enters exception handler (see below)
+            3. On FileNotFoundError (working_path missing):
+               - Sets local_config_file and shell as fallback properties
+               - Attempts workspace_file search one more time (best-effort)
+               - Sets workspace_file to empty string if not found
+               - Relays the exception to init_app_properties for handling
+            4. If no exceptions: completes full initialization with all remaining properties
+
+        Light-weight Mode Support:
+            When working_path doesn't exist, this class partially initializes and propagates
+            the FileNotFoundError. The init_app_properties function checks the light_weight flag:
+            - If light_weight=True: catches the error and returns (partial props are available)
+            - If light_weight=False: re-raises the error
+
+        This design allows createRelease commands to access local_config_file and shell
+            without requiring a valid workspace directory.
 
         Args:
-            log_level (str): The log level to use
-            shell (str): The shell in use by the user
-            props (dict[str, str]): The properties to use
+            log_level (str): The log level to use (e.g., 'DEBUG', 'INFO')
+            shell (str): The shell in use by the user ('bash', 'zsh', 'powershell', 'pwsh')
+            properties (dict[str, str]): The configuration dictionary from config.properties
+
+        Raises:
+            FileNotFoundError: If working_path does not exist (caught and handled by init_app_properties)
+            NotADirectoryError: If a required path exists but is not a directory
+            PermissionError: If a required path is not readable/writable
+            ValueError: If shell or other validation fails
         """
         self._props = {}
         # Check if the required properties are set
@@ -192,14 +222,14 @@ class AppProperties:
         try:
             self.__working_path_validator(working_path)
             self.__adding_prop_validator(
-                "workspace_file", _find_code_workspace_files(f"{self.props["working_path"]}/..")
+                "workspace_file", _find_code_workspace_files(f"{self.props['working_path']}/..")
             )
         except FileNotFoundError as e:
-            self.__adding_prop_validator("local_config_file", f"{self.props["working_path"]}/{local_config_file}")
+            self.__adding_prop_validator("local_config_file", f"{self.props['working_path']}/{local_config_file}")
             self.__shell_validator(shell)
             try:
                 self.__adding_prop_validator(
-                    "workspace_file", _find_code_workspace_files(f"{self.props["working_path"]}/..")
+                    "workspace_file", _find_code_workspace_files(f"{self.props['working_path']}/..")
                 )
             except FileNotFoundError:
                 self.props["workspace_file"] = ""
@@ -207,8 +237,8 @@ class AppProperties:
         self.log_level_from_str(log_level)
         self.__log_file_validator(log_file)
         self.__shell_validator(shell)
-        self.__adding_prop_validator("local_config_file", f"{self.props["working_path"]}/{local_config_file}")
-        self.__adding_prop_validator("graphql_schema_file", f"{self.props["working_path"]}/{graphql_schema_file}")
+        self.__adding_prop_validator("local_config_file", f"{self.props['working_path']}/{local_config_file}")
+        self.__adding_prop_validator("graphql_schema_file", f"{self.props['working_path']}/{graphql_schema_file}")
         self.__post_init__()
 
     def __post_init__(self) -> None:
@@ -279,7 +309,7 @@ def init_app_properties(log_level: str, shell: Optional[str], light_weight: bool
         raise ValueError("Properties file is empty")
 
     if not shell:
-        raise EnvironmentError("Environment variable 'WS_SHELL' is not set")
+        raise EnvironmentError("Environment variable 'CODENAME_SNAKE_SHELL' is not set")
     if not shutil.which(shell):
         if shell == "powershell" and shutil.which("pwsh"):
             shell = "pwsh"
@@ -298,10 +328,10 @@ def init_app_properties(log_level: str, shell: Optional[str], light_weight: bool
     level: int = app_props.log_level
     formatting.config_log(path, level)
     formatting.ws_advice(f"set log level: {app_props.log_level}")
-    formatting.ws_advice(f"Set working path: {app_props._retrieve_property("working_path")}")
-    formatting.ws_advice(f"Set log file: {app_props._retrieve_property("log_file")}")
-    formatting.ws_advice(f"Set shell: {app_props._retrieve_property("shell")}")
-    formatting.ws_advice(f"Set local config file: {app_props._retrieve_property("local_config_file")}")
+    formatting.ws_advice(f"Set working path: {app_props._retrieve_property('working_path')}")
+    formatting.ws_advice(f"Set log file: {app_props._retrieve_property('log_file')}")
+    formatting.ws_advice(f"Set shell: {app_props._retrieve_property('shell')}")
+    formatting.ws_advice(f"Set local config file: {app_props._retrieve_property('local_config_file')}")
 
 
 # pylint: disable=C0415

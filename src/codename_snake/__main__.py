@@ -1,5 +1,6 @@
 """Sets the environment configuration"""
 
+import os
 from typing import Optional
 import sys
 import click
@@ -46,15 +47,16 @@ For more details on specific commands, use: snake <command> --help""",
     no_args_is_help=True,
 )
 @click.option("--log-level", "-l", type=click.Choice(list(LOGGING_OPT), False), default="INFO", help="log level")
-@click.option("--shell", type=click.Choice(SHELL_OPT, False), required=True, hidden=True)
 @click.pass_context
-def cli(ctx: click.Context, log_level: str, shell: str) -> None:
+def cli(ctx: click.Context, log_level: str) -> None:
     """cli entry point"""
     ctx.ensure_object(dict)  # Ensures ctx.obj is a dictionary
     try:
         light_weight: bool = False
         cmd_name = ctx.invoked_subcommand
         if cmd_name:
+            if cmd_name == "shell-path":
+                return
             ws_advice(f"Invoking subcommand: {cmd_name}")
             # Access params
             cmd = cli.get_command(ctx, cmd_name)
@@ -66,6 +68,11 @@ def cli(ctx: click.Context, log_level: str, shell: str) -> None:
             if flags and "skip" in flags:
                 ws_advice("'skip' flag detected. Running in light-weight mode if local working directory is not found.")
                 light_weight = True
+        shell = os.environ.get("CODENAME_SNAKE_SHELL")
+        if not shell:
+            raise EnvironmentError("Environment variable 'CODENAME_SNAKE_SHELL' is not set")
+        if shell not in SHELL_OPT:
+            raise ValueError(f"Unsupported shell: {shell}. Supported shells are: {', '.join(SHELL_OPT)}")
         init_app_properties(log_level, shell, light_weight)
     except Exception as e:
         print(f"Error during initialization: {e}")
