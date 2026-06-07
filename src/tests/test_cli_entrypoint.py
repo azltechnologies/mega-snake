@@ -51,12 +51,12 @@ def test_cli_reports_missing_commands() -> None:
     with ctx.scope():
         with patch.object(app_main.cli, "get_command", return_value=None), patch(
             "mega_snake.__main__.get_traceback", return_value="TRACE"
-        ), patch("builtins.print") as print_mock:
+        ), patch("click.echo") as echo_mock:
             with pytest.raises(SystemExit, match="Command 'missing' not found"):
                 app_main.cli.callback("INFO")
 
-    print_mock.assert_any_call("Error during initialization: Command 'missing' not found")
-    print_mock.assert_any_call("TRACE")
+    echo_mock.assert_any_call("Error during initialization: Command 'missing' not found", err=True)
+    echo_mock.assert_any_call("TRACE", err=True)
 
 
 @pytest.mark.parametrize(
@@ -75,12 +75,12 @@ def test_cli_requires_a_supported_shell_env(shell_value: str | None, expected_me
     with ctx.scope():
         with patch.dict(os.environ, env_patch, clear=True), patch(
             "mega_snake.__main__.get_traceback", return_value="TRACE"
-        ), patch("builtins.print") as print_mock:
+        ), patch("click.echo") as echo_mock:
             with pytest.raises(SystemExit, match=expected_message):
                 app_main.cli.callback("INFO")
 
-    print_mock.assert_any_call(f"Error during initialization: {expected_message}")
-    print_mock.assert_any_call("TRACE")
+    echo_mock.assert_any_call(f"Error during initialization: {expected_message}", err=True)
+    echo_mock.assert_any_call("TRACE", err=True)
 
 
 def test_running_main_module_wraps_cli_errors() -> None:

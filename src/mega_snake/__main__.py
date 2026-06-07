@@ -75,8 +75,8 @@ def cli(ctx: click.Context, log_level: str) -> None:
             raise ValueError(f"Unsupported shell: {shell}. Supported shells are: {', '.join(SHELL_OPT)}")
         init_app_properties(log_level, shell, light_weight)
     except Exception as e:
-        print(f"Error during initialization: {e}")
-        print(get_traceback(e))
+        click.echo(f"Error during initialization: {e}", err=True)
+        click.echo(get_traceback(e), err=True)
         raise SystemExit(e) from e
 
 

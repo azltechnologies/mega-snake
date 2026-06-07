@@ -267,8 +267,8 @@ When end-users install `mega_snake` via `uv tool install` or `pipx install`:
 **Why this approach?**
 - Allows the tool to run anywhere without polluting the user's active Python environment
 - Users don't need to manually activate/deactivate virtual environments
-- The `mgsnake` function transparently manages venv switching
-- Multiple concurrent shells can each have their own active venv state
+- The `mgsnake` console script runs from its isolated `uv tool`/`pipx` environment
+- Sourcing the shell setup only configures shell integration (`MEGA_SNAKE_SHELL` and `mgsnake_reload`) per session
 
 ### Local Development Setup
 
