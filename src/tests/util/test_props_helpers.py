@@ -1,5 +1,6 @@
 """Focused coverage tests for props helper branches."""
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -22,8 +23,8 @@ def test_get_validated_input_proxy_delegates_to_util_module() -> None:
         ("", "Cannot access package resources for module 'codename_snake'"),
     ],
 )
-def test_get_package_root_wraps_resource_lookup_errors(files_side_effect: object, match: str) -> None:
-    """_get_package_root should raise a clear module error for invalid resource contexts."""
+def test_init_app_properties_wraps_package_root_errors(files_side_effect: object, match: str) -> None:
+    """init_app_properties should surface package resource lookup failures clearly."""
     with patch("codename_snake.util.props.files") as files_mock:
         if isinstance(files_side_effect, BaseException):
             files_mock.side_effect = files_side_effect
@@ -31,7 +32,7 @@ def test_get_package_root_wraps_resource_lookup_errors(files_side_effect: object
             files_mock.return_value = files_side_effect
 
         with pytest.raises(ModuleNotFoundError, match=match):
-            props_module._get_package_root()
+            props_module.init_app_properties("INFO", "bash", False)
 
 
 @pytest.mark.parametrize(
@@ -64,11 +65,28 @@ def test_init_app_properties_falls_back_between_powershell_variants(
     app_properties_class.assert_called_once_with("INFO", fallback_shell, properties)
 
 
-def test_shell_validator_rejects_invalid_shell_values() -> None:
-    """The private shell validator should still reject unsupported shell names."""
-    props = object.__new__(props_module.AppProperties)
-    props._props = {}  # pylint: disable=protected-access
+def test_init_app_properties_rejects_invalid_shell_values_during_validation(tmp_path: Path) -> None:
+    """init_app_properties should still reject shells outside SHELL_OPT during AppProperties validation."""
+    (tmp_path / "config.properties").write_text("", encoding="utf-8")
+    (tmp_path / "resources").mkdir()
+    properties = {
+        "resources_path": "resources",
+        "working_path": str(tmp_path),
+        "log_file_name": "snake",
+        "local_config_file_name": ".snake.sh",
+        "graphql_schema_file_name": "schema.graphql",
+    }
 
-    with patch("codename_snake.util.props._check_forbidden_execution"):
-        with pytest.raises(ValueError, match="Invalid shell: fish"):
-            props._AppProperties__shell_validator("fish")  # pylint: disable=protected-access
+    props_module.AppProperties._instance = None  # pylint: disable=protected-access
+    try:
+        with patch("codename_snake.util.props._get_package_root", return_value=str(tmp_path)), patch(
+            "codename_snake.util.props._read_properties", return_value=properties
+        ), patch("codename_snake.util.props.shutil.which", return_value="/bin/fish"), patch(
+            "codename_snake.util.props._find_code_workspace_files", return_value="workspace.code-workspace"
+        ), patch("codename_snake.util.props.formatting.config_log"), patch(
+            "codename_snake.util.props.formatting.ws_advice"
+        ):
+            with pytest.raises(ValueError, match="Invalid shell: fish"):
+                props_module.init_app_properties("INFO", "fish", False)
+    finally:
+        props_module.AppProperties._instance = None  # pylint: disable=protected-access
