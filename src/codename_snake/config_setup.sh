@@ -1,6 +1,6 @@
 # Sets CODENAME_SNAKE_SHELL for the current shell session.
-# Defines `l_reload` to source the local configuration file (if present).
-# Prints basic usage hints for `snake` and `l_reload`.
+# Defines `snake_reload` to source the local configuration file (if present).
+# Prints basic usage hints for `snake` and `snake_reload`.
 
 if [ -n "${BASH_VERSION:-}" ]; then
     # Para bash
@@ -10,7 +10,7 @@ else
     CODENAME_SNAKE_SHELL="zsh"
 fi
 export CODENAME_SNAKE_SHELL
-l_reload() {
+snake_reload() {
     local local_config_file
     local_config_file=$(snake get-local-config-path)
 
@@ -24,5 +24,5 @@ l_reload() {
 }
 
 snake msg -t t -p "snake" ": use this function to set the environment configuration"
-l_reload
-snake msg -t t -p "l_reload" ": use this function to reload the local config file"
+snake_reload
+snake msg -t t -p "snake_reload" ": use this function to reload the local config file"

@@ -1,10 +1,10 @@
 # Sets CODENAME_SNAKE_SHELL for the current PowerShell session.
-# Defines `l_reload` to dot-source the local configuration file (if present).
-# Prints basic usage hints for `snake` and `l_reload`.
+# Defines `snake_reload` to dot-source the local configuration file (if present).
+# Prints basic usage hints for `snake` and `snake_reload`.
 
 $env:CODENAME_SNAKE_SHELL = "powershell"
 
-function l_reload {
+function snake_reload {
 
     $local_config_file = snake get-local-config-path
     if (Test-Path $local_config_file) {
@@ -16,5 +16,5 @@ function l_reload {
     }
 }
 snake msg -t t -p "snake" ": use this function to set the environment configuration"
-l_reload
-snake msg -t t -p "l_reload" ": use this function to reload the local config file"
+snake_reload
+snake msg -t t -p "snake_reload" ": use this function to reload the local config file"
