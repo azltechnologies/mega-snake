@@ -4,7 +4,7 @@ import click
 from mega_snake.config_environment.graphql_schema import create_graphql_schema
 from mega_snake.config_environment.java_set import set_java_version
 from mega_snake.config_environment.gradle_set import set_gradle_version
-from mega_snake.config_environment.maven_setup import maven_project_setup, set_maven_version
+from mega_snake.config_environment.maven_set import maven_project_setup, set_maven_version
 from mega_snake.config_environment.local_config import initial_load
 from mega_snake.config_environment.create_working_env import create_working_env
 from mega_snake.util.util import wrapper_decorator

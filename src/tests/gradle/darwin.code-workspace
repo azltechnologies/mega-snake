@@ -68,6 +68,31 @@
                 "title": "PYTHON SNAKE LOG",
                 "pattern": "/root/parent_folder/some_path/logs/python_snake_*.log",
                 "autoScroll": true
+            },
+            {
+                "title": "MAVEN CLEAN INSTALL",
+                "pattern": "/root/parent_folder/some_path/logs/maven_clean_install_*.log",
+                "autoScroll": true
+            },
+            {
+                "title": "MAVEN TEST",
+                "pattern": "/root/parent_folder/some_path/logs/maven_test_*.log",
+                "autoScroll": true
+            },
+            {
+                "title": "MAVEN VERIFY",
+                "pattern": "/root/parent_folder/some_path/logs/maven_verify_*.log",
+                "autoScroll": true
+            },
+            {
+                "title": "MAVEN DEPENDENCY TREE",
+                "pattern": "/root/parent_folder/some_path/logs/maven_dependency_tree_*.log",
+                "autoScroll": true
+            },
+            {
+                "title": "MAVEN SPRING BOOT RUN",
+                "pattern": "/root/parent_folder/some_path/logs/maven_spring_boot_*.log",
+                "autoScroll": true
             }
         ],
         "mgsnake.java.remoteDebug.port": 5005,
@@ -300,6 +325,82 @@
                 "problemMatcher": [],
                 "type": "process",
                 "command": "${input:selectBuildTask}"
+            },
+            {
+                "label": "Maven Clean Install",
+                "hide": false,
+                "detail": "Run maven clean install",
+                "problemMatcher": [],
+                "type": "shell",
+                "command": "${config:maven.executable.path}",
+                "args": [
+                    "clean",
+                    "install",
+                    ">",
+                    "'/root/parent_folder/some_path/logs/maven_clean_install_${input:todayTimestamp}.log'",
+                    "2>&1"
+                ],
+                "group": "build"
+            },
+            {
+                "label": "Maven Test",
+                "hide": false,
+                "detail": "Run maven test",
+                "problemMatcher": [],
+                "type": "shell",
+                "command": "${config:maven.executable.path}",
+                "args": [
+                    "test",
+                    ">",
+                    "'/root/parent_folder/some_path/logs/maven_test_${input:todayTimestamp}.log'",
+                    "2>&1"
+                ],
+                "group": "build"
+            },
+            {
+                "label": "Maven Verify",
+                "hide": false,
+                "detail": "Run maven verify",
+                "problemMatcher": [],
+                "type": "shell",
+                "command": "${config:maven.executable.path}",
+                "args": [
+                    "verify",
+                    ">",
+                    "'/root/parent_folder/some_path/logs/maven_verify_${input:todayTimestamp}.log'",
+                    "2>&1"
+                ],
+                "group": "build"
+            },
+            {
+                "label": "Maven Dependency Tree",
+                "hide": false,
+                "detail": "Run maven dependency:tree",
+                "problemMatcher": [],
+                "type": "shell",
+                "command": "${config:maven.executable.path}",
+                "args": [
+                    "dependency:tree",
+                    ">",
+                    "'/root/parent_folder/some_path/logs/maven_dependency_tree_${input:todayTimestamp}.log'",
+                    "2>&1"
+                ],
+                "group": "build"
+            },
+            {
+                "label": "Maven Spring Boot Run",
+                "hide": false,
+                "detail": "Run maven spring-boot:run",
+                "problemMatcher": [],
+                "type": "shell",
+                "command": "${config:maven.executable.path}",
+                "args": [
+                    "spring-boot:run",
+                    ">",
+                    "'/root/parent_folder/some_path/logs/maven_spring_boot_${input:todayTimestamp}.log'",
+                    "2>&1"
+                ],
+                "group": "build"
             }
         ]
     },

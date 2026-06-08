@@ -25,6 +25,7 @@ from mega_snake.config_environment.models.vscode_launch import (
 )
 from mega_snake.config_environment.java_set import execute as set_java
 from mega_snake.config_environment.gradle_set import execute as set_gradle, set_gradle_version as gradle_command
+from mega_snake.config_environment.maven_set import execute as set_maven, set_maven_version as maven_command
 from mega_snake.config_environment.local_config import execute as initial_load
 from mega_snake.util.formatting import ws_advice, ws_info, ws_warning
 from mega_snake.util.util import (
@@ -110,6 +111,15 @@ def _execute(git_repo: bool) -> None:  # previously untrackGradleProps
         )
     else:
         set_gradle(False, workspace_file)
+    # verifying if pom.xml exists
+    pom_file: str = f"{os.getcwd()}/pom.xml"
+    if not os.path.exists(pom_file):
+        ws_warning(
+            f"pom.xml file not found in the current directory. "
+            f"Please run '{APP_NAME} {maven_command.name}' command if you want to set the Maven version anyway."
+        )
+    else:
+        set_maven(None, workspace_file)
     _add_default_settings(workspace_file, working_path)
 
 

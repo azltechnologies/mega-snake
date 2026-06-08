@@ -20,6 +20,11 @@ class LogWatcher(Enum):
     GENERIC = ("GENERIC LOG", f"logs/output{SUBSTITUTE_LOG_DATE_TAG}")
     JAVA_DEBUG = ("JAVA DEBUG LOG", f"logs/java_debug{SUBSTITUTE_LOG_DATE_TAG}")
     PYTHON_SNAKE = ("PYTHON SNAKE LOG", f"logs/python_snake{SUBSTITUTE_LOG_DATE_TAG}")
+    MAVEN_CLEAN_INSTALL = ("MAVEN CLEAN INSTALL", f"logs/maven_clean_install{SUBSTITUTE_LOG_DATE_TAG}")
+    MAVEN_TEST = ("MAVEN TEST", f"logs/maven_test{SUBSTITUTE_LOG_DATE_TAG}")
+    MAVEN_VERIFY = ("MAVEN VERIFY", f"logs/maven_verify{SUBSTITUTE_LOG_DATE_TAG}")
+    MAVEN_DEPENDENCY_TREE = ("MAVEN DEPENDENCY TREE", f"logs/maven_dependency_tree{SUBSTITUTE_LOG_DATE_TAG}")
+    MAVEN_SPRING_BOOT = ("MAVEN SPRING BOOT RUN", f"logs/maven_spring_boot{SUBSTITUTE_LOG_DATE_TAG}")
 
     def __init__(self, title: str, pattern: str) -> None:
         """Initialize with a display title and glob pattern for the log file."""

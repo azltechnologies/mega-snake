@@ -159,6 +159,21 @@ def fixture_gradle_command() -> Generator[MagicMock]:
         yield mock
 
 
+@pytest.fixture(name="set_maven")
+def fixture_set_maven() -> Generator[MagicMock]:
+    """Mock set_maven"""
+    with patch("mega_snake.config_environment.create_working_env.set_maven") as mock:
+        yield mock
+
+
+@pytest.fixture(name="_maven_command")
+def fixture_maven_command() -> Generator[MagicMock]:
+    """Mock maven_command"""
+    with patch("mega_snake.config_environment.create_working_env.maven_command") as mock:
+        mock.name = "set-maven"
+        yield mock
+
+
 @pytest.fixture(name="mk_add_recommended_extensions")
 def fixture_add_recommended_extensions() -> Generator[MagicMock]:
     """Mock _add_recommended_extensions"""
@@ -347,6 +362,8 @@ def test_execute(
     mk_os: MagicMock,
     set_gradle: MagicMock,
     _gradle_command: MagicMock,
+    set_maven: MagicMock,
+    _maven_command: MagicMock,
     mk_add_default_settings: MagicMock,
 ) -> None:
     """Test gradle command"""
@@ -376,10 +393,11 @@ def test_execute(
             os_getcwd,
             os_path_exists,
             set_gradle,
+            set_maven,
             mk_add_default_settings,
         )
 
-    # Test when git_repo is false and build.gradle exists
+    # Test when git_repo is false and build.gradle exists and pom.xml exists
     shutil_which.return_value = False
     get_validated_input.return_value = "y"
     os_path_exists.return_value = True
@@ -392,13 +410,13 @@ def test_execute(
     mk_git_exclude.assert_not_called()
     initial_load.assert_called_once()
     set_java.assert_called_once()
-    os_path_exists.assert_called_once_with(f"{CURRENT_PATH}/build.gradle")
     set_gradle.assert_called_once_with(False, WK_FILE)
+    set_maven.assert_called_once_with(None, WK_FILE)
     mk_add_default_settings.assert_called_once_with(WK_FILE, WK_PATH)
     ws_warning.assert_not_called()
     mocks_reset()
 
-    # Test when git_repo is True and build.gradle doesn't exist
+    # Test when git_repo is True and build.gradle doesn't exist and pom.xml doesn't exist
     shutil_which.return_value = True
     get_command_return_code.return_value = 0
     os_path_exists.return_value = False
@@ -412,8 +430,9 @@ def test_execute(
     initial_load.assert_called_once()
     set_java.assert_called_once()
     os_path_exists.assert_has_calls([call(f"{CURRENT_PATH}/build.gradle"), call(f"{CURRENT_PATH}/build.gradle.kts")])
-    ws_warning.assert_called_once()
+    assert ws_warning.call_count == 2  # one for gradle, one for maven
     set_gradle.assert_not_called()
+    set_maven.assert_not_called()
     mk_add_default_settings.assert_called_once_with(WK_FILE, WK_PATH)
     mocks_reset()
 

@@ -23,6 +23,17 @@ GRADLE_LOC = f"${{{GRADLE_CONFIG}}}/bin/gradle"
 GRADLE_WINDOWS_LOC = f"{GRADLE_LOC}.bat"
 GRADLE_BUILD_NO_TEST_ARGS = ["clean", "build", "-x", "test"]
 GRADLE_BUILD_ARGS = ["clean", "build"]
+MAVEN_LOC = "${config:maven.executable.path}"
+MAVEN_LABEL_CLEAN_INSTALL = "Maven Clean Install"
+MAVEN_LABEL_TEST = "Maven Test"
+MAVEN_LABEL_VERIFY = "Maven Verify"
+MAVEN_LABEL_DEPENDENCY_TREE = "Maven Dependency Tree"
+MAVEN_LABEL_SPRING_BOOT = "Maven Spring Boot Run"
+MAVEN_CLEAN_INSTALL_ARGS = ["clean", "install"]
+MAVEN_TEST_ARGS = ["test"]
+MAVEN_VERIFY_ARGS = ["verify"]
+MAVEN_DEPENDENCY_TREE_ARGS = ["dependency:tree"]
+MAVEN_SPRING_BOOT_ARGS = ["spring-boot:run"]
 
 
 class VscodeTask(Enum):
@@ -123,6 +134,61 @@ class VscodeTask(Enum):
         None,
         None,
         None,
+    )
+    MAVEN_CLEAN_INSTALL = (
+        MAVEN_LABEL_CLEAN_INSTALL,
+        False,
+        "shell",
+        MAVEN_LOC,
+        MAVEN_CLEAN_INSTALL_ARGS,
+        "Run maven clean install",
+        LogWatcher.MAVEN_CLEAN_INSTALL,
+        None,
+        {"group": "build"},
+    )
+    MAVEN_TEST = (
+        MAVEN_LABEL_TEST,
+        False,
+        "shell",
+        MAVEN_LOC,
+        MAVEN_TEST_ARGS,
+        "Run maven test",
+        LogWatcher.MAVEN_TEST,
+        None,
+        {"group": "build"},
+    )
+    MAVEN_VERIFY = (
+        MAVEN_LABEL_VERIFY,
+        False,
+        "shell",
+        MAVEN_LOC,
+        MAVEN_VERIFY_ARGS,
+        "Run maven verify",
+        LogWatcher.MAVEN_VERIFY,
+        None,
+        {"group": "build"},
+    )
+    MAVEN_DEPENDENCY_TREE = (
+        MAVEN_LABEL_DEPENDENCY_TREE,
+        False,
+        "shell",
+        MAVEN_LOC,
+        MAVEN_DEPENDENCY_TREE_ARGS,
+        "Run maven dependency:tree",
+        LogWatcher.MAVEN_DEPENDENCY_TREE,
+        None,
+        {"group": "build"},
+    )
+    MAVEN_SPRING_BOOT = (
+        MAVEN_LABEL_SPRING_BOOT,
+        False,
+        "shell",
+        MAVEN_LOC,
+        MAVEN_SPRING_BOOT_ARGS,
+        "Run maven spring-boot:run",
+        LogWatcher.MAVEN_SPRING_BOOT,
+        None,
+        {"group": "build"},
     )
 
     def __init__(

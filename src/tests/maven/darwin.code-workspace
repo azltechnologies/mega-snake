@@ -1,0 +1,150 @@
+{
+    "folders": [
+        {
+            "path": ".",
+            "name": "main"
+        }
+        //this has comments
+    ],
+    "settings": {
+        "git-blame.gitWebUrl": "https://github.com/kalin91/copi-snake/tree/$ID",
+        "logViewer.watch": [
+            {
+                "title": "MAVEN CLEAN INSTALL",
+                "pattern": "/root/parent_folder/some_path/logs/maven_clean_install_*.log",
+                "autoScroll": true
+            },
+            {
+                "title": "MAVEN TEST",
+                "pattern": "/root/parent_folder/some_path/logs/maven_test_*.log",
+                "autoScroll": true
+            },
+            {
+                "title": "MAVEN VERIFY",
+                "pattern": "/root/parent_folder/some_path/logs/maven_verify_*.log",
+                "autoScroll": true
+            },
+            {
+                "title": "MAVEN DEPENDENCY TREE",
+                "pattern": "/root/parent_folder/some_path/logs/maven_dependency_tree_*.log",
+                "autoScroll": true
+            },
+            {
+                "title": "MAVEN SPRING BOOT RUN",
+                "pattern": "/root/parent_folder/some_path/logs/maven_spring_boot_*.log",
+                "autoScroll": true
+            }
+        ],
+        "terminal.integrated.env.linux": {
+            "JAVA_HOME": "/usr/lib/jvm/java-17-openjdk",
+            "M2_HOME": "/opt/apache-maven-3.9.6"
+        },
+        "maven.executable.path": "/opt/apache-maven-3.9.6/bin/mvn",
+        "java.configuration.runtimes": [
+            {
+                "name": "JavaSE-17",
+                "path": "/usr/lib/jvm/java-17-openjdk",
+                "default": true
+            }
+        ]
+    },
+    "extensions": {
+        "recommendations": [
+            "augustocdias.tasks-shell-input",
+            "berublan.vscode-log-viewer",
+            "vscjava.vscode-java-pack"
+        ]
+    },
+    "tasks": {
+        "version": "2.0.0",
+        "inputs": [
+            {
+                "id": "todayTimestamp",
+                "type": "command",
+                "command": "shellCommand.execute",
+                "args": {
+                    "command": "python3 -c 'from datetime import datetime; print(datetime.now().strftime(\"%Y-%m-%d\"));'",
+                    "useSingleResult": true
+                }
+            }
+        ],
+        "tasks": [
+            {
+                "label": "Maven Clean Install",
+                "hide": false,
+                "detail": "Run maven clean install",
+                "problemMatcher": [],
+                "type": "shell",
+                "command": "${config:maven.executable.path}",
+                "args": [
+                    "clean",
+                    "install",
+                    ">",
+                    "'/root/parent_folder/some_path/logs/maven_clean_install_${input:todayTimestamp}.log'",
+                    "2>&1"
+                ],
+                "group": "build"
+            },
+            {
+                "label": "Maven Test",
+                "hide": false,
+                "detail": "Run maven test",
+                "problemMatcher": [],
+                "type": "shell",
+                "command": "${config:maven.executable.path}",
+                "args": [
+                    "test",
+                    ">",
+                    "'/root/parent_folder/some_path/logs/maven_test_${input:todayTimestamp}.log'",
+                    "2>&1"
+                ],
+                "group": "build"
+            },
+            {
+                "label": "Maven Verify",
+                "hide": false,
+                "detail": "Run maven verify",
+                "problemMatcher": [],
+                "type": "shell",
+                "command": "${config:maven.executable.path}",
+                "args": [
+                    "verify",
+                    ">",
+                    "'/root/parent_folder/some_path/logs/maven_verify_${input:todayTimestamp}.log'",
+                    "2>&1"
+                ],
+                "group": "build"
+            },
+            {
+                "label": "Maven Dependency Tree",
+                "hide": false,
+                "detail": "Run maven dependency:tree",
+                "problemMatcher": [],
+                "type": "shell",
+                "command": "${config:maven.executable.path}",
+                "args": [
+                    "dependency:tree",
+                    ">",
+                    "'/root/parent_folder/some_path/logs/maven_dependency_tree_${input:todayTimestamp}.log'",
+                    "2>&1"
+                ],
+                "group": "build"
+            },
+            {
+                "label": "Maven Spring Boot Run",
+                "hide": false,
+                "detail": "Run maven spring-boot:run",
+                "problemMatcher": [],
+                "type": "shell",
+                "command": "${config:maven.executable.path}",
+                "args": [
+                    "spring-boot:run",
+                    ">",
+                    "'/root/parent_folder/some_path/logs/maven_spring_boot_${input:todayTimestamp}.log'",
+                    "2>&1"
+                ],
+                "group": "build"
+            }
+        ]
+    }
+}
