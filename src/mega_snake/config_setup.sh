@@ -25,7 +25,7 @@ mgsnake_reload() {
 
 mgsnake_load_env() {
   local env_file="${1:-.env}"
-  [[ -f "$env_file" ]] || return 1
+  [[ -f "$env_file" ]] || return 0
 
   while IFS='=' read -r key value || [[ -n "$key" ]]; do
     # 1. Ignorar comentarios y líneas vacías

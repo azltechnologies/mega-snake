@@ -36,7 +36,7 @@ function mgsnake_load_env {
             [Environment]::SetEnvironmentVariable($key, $value, 'Process')
         }
     }
-    mgsnake msg -t t -p "mgsnake_load_env" ": Environment variables loaded from $env_file"
+    mgsnake msg -t t -p "mgsnake_load_env" ": Environment variables loaded from $Path"
 }
 
 mgsnake msg -t t -p "mgsnake" ": use this function to set the environment configuration"

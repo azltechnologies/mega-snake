@@ -42,7 +42,7 @@ from mega_snake.util.util import (
     name="working-env",
     short_help="Configures the VS Code workspace environment",
     help="Sets up the VS Code workspace with recommended extensions, default settings, tasks, launch configurations,"
-    " and git exclusions. Also configures Java and Gradle when applicable.",
+    " and git exclusions. Also configures Java, Gradle, and Maven when applicable.",
     epilog="""This command will:
     - Create/update VSCode workspace file
     - Configure git exclusions for workspace files
@@ -112,7 +112,7 @@ def _execute(git_repo: bool) -> None:  # previously untrackGradleProps
     else:
         set_gradle(False, workspace_file)
     # verifying if pom.xml exists
-    pom_file: str = f"{os.getcwd()}/pom.xml"
+    pom_file: str = os.path.join(os.getcwd(), "pom.xml")
     if not os.path.exists(pom_file):
         ws_warning(
             f"pom.xml file not found in the current directory. "
