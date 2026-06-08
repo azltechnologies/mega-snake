@@ -24,35 +24,35 @@ from mega_snake.util.formatting import (
 
 
 @pytest.fixture(name="mk_file_handler")
-def fixture_mk_file_handler() -> Generator[Callable]:
+def fixture_mk_file_handler() -> Generator[Callable, None, None]:
     """Mock FileHandler"""
     with patch("logging.FileHandler") as mock_file_handler:
         yield mock_file_handler
 
 
 @pytest.fixture(name="mk_logger")
-def fixture_mk_logger() -> Generator[Callable]:
+def fixture_mk_logger() -> Generator[Callable, None, None]:
     """Mock logger"""
     with patch("mega_snake.util.formatting.logger") as mk_logger:
         yield mk_logger
 
 
 @pytest.fixture(name="mk_error")
-def fixture_mk_error() -> Generator[Callable]:
+def fixture_mk_error() -> Generator[Callable, None, None]:
     """Mock logger"""
     with patch("mega_snake.util.formatting.logger.error") as mk_error:
         yield mk_error
 
 
 @pytest.fixture(name="mk_old_hook")
-def fixture_mk_old_hook() -> Generator[Callable]:
+def fixture_mk_old_hook() -> Generator[Callable, None, None]:
     """Mock old exception hook"""
     with patch("mega_snake.util.formatting.old_hook") as old_hook:
         yield old_hook
 
 
 @pytest.fixture(name="mk_sys_exit")
-def fixture_mk_sys_exit() -> Generator[Callable]:
+def fixture_mk_sys_exit() -> Generator[Callable, None, None]:
     """Mock sys.exit"""
     with patch("mega_snake.util.formatting.sys.exit") as mock_exit:
         yield mock_exit

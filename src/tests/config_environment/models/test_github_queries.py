@@ -16,7 +16,7 @@ GH_TEST_QUERY = f'.settings.["{GH_TEST_SETTING}"]'
 
 
 @pytest.fixture(name="base_query_add_query_record")
-def fixture_base_query_add_query_record() -> Generator[MagicMock]:
+def fixture_base_query_add_query_record() -> Generator[MagicMock, None, None]:
     """Mock BaseQueries"""
     with patch("mega_snake.config_environment.models.github_queries.BaseQueries.add_query_record") as mock:
         mock.return_value = {"result": "great"}

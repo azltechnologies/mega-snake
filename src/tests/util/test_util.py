@@ -23,49 +23,49 @@ from mega_snake.util.util import (
 
 
 @pytest.fixture(name="mk_ws_advice")
-def fixture_mk_ws_advice() -> Generator[MagicMock]:
+def fixture_mk_ws_advice() -> Generator[MagicMock, None, None]:
     """Fixture for ws_advice."""
     with patch("mega_snake.util.util.ws_advice") as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_ws_warning")
-def fixture_mk_ws_warning() -> Generator[MagicMock]:
+def fixture_mk_ws_warning() -> Generator[MagicMock, None, None]:
     """Fixture for ws_warning."""
     with patch("mega_snake.util.util.ws_warning") as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_subprocess_run")
-def fixture_mk_subprocess_run() -> Generator[MagicMock]:
+def fixture_mk_subprocess_run() -> Generator[MagicMock, None, None]:
     """Fixture for subprocess.run."""
     with patch("mega_snake.util.util.subprocess.run") as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_input")
-def fixture_mk_input() -> Generator[MagicMock]:
+def fixture_mk_input() -> Generator[MagicMock, None, None]:
     """Fixture for builtins.input."""
     with patch("builtins.input") as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_run_operation")
-def fixture_mk_run_operation() -> Generator[MagicMock]:
+def fixture_mk_run_operation() -> Generator[MagicMock, None, None]:
     """Fixture for run_operation."""
     with patch("mega_snake.util.util.run_operation") as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_get_validated_input")
-def fixture_mk_get_validated_input() -> Generator[Callable]:
+def fixture_mk_get_validated_input() -> Generator[Callable, None, None]:
     """Fixture for get_validated_input."""
     with patch("mega_snake.util.util.get_validated_input") as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_get_remote")
-def fixture_mk_get_remote() -> Generator[Callable]:
+def fixture_mk_get_remote() -> Generator[Callable, None, None]:
     """Fixture for get_remote."""
     with patch("mega_snake.util.util.get_remote") as mock:
         yield mock

@@ -22,7 +22,7 @@ def dict_side_effect(instance: VscodeLaunch, _wk: str) -> dict[str, str]:
 
 
 @pytest.fixture(name="_launch_config_query")
-def fixture_launch_config_query() -> Generator[MagicMock]:
+def fixture_launch_config_query() -> Generator[MagicMock, None, None]:
     """Mock launch_config_query"""
     with patch(
         "mega_snake.config_environment.models.vscode_launch.LAUNCH_CONFIG_QUERY", LAUNCH_TEST_QUERY

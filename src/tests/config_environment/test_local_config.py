@@ -8,42 +8,42 @@ from mega_snake.config_environment.local_config import execute, initial_load
 
 
 @pytest.fixture(name="ws_success")
-def fixture_ws_success() -> Generator[MagicMock]:
+def fixture_ws_success() -> Generator[MagicMock, None, None]:
     """Mock ws_success"""
     with patch("mega_snake.config_environment.local_config.ws_success") as mock:
         yield mock
 
 
 @pytest.fixture(name="m_execute")
-def fixture_m_execute() -> Generator[MagicMock]:
+def fixture_m_execute() -> Generator[MagicMock, None, None]:
     """Mock execute"""
     with patch("mega_snake.config_environment.local_config.execute") as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_os")
-def fixture_mk_os() -> Generator[MagicMock]:
+def fixture_mk_os() -> Generator[MagicMock, None, None]:
     """Mock os"""
     with patch("mega_snake.config_environment.local_config.os") as mock:
         yield mock
 
 
 @pytest.fixture(name="get_local_file")
-def fixture_get_local_file() -> Generator[MagicMock]:
+def fixture_get_local_file() -> Generator[MagicMock, None, None]:
     """Mock get_local_file"""
     with patch("mega_snake.config_environment.local_config.get_local_file") as mock:
         yield mock
 
 
 @pytest.fixture(name="get_property")
-def fixture_get_property() -> Generator[MagicMock]:
+def fixture_get_property() -> Generator[MagicMock, None, None]:
     """Mock get_property"""
     with patch("mega_snake.config_environment.local_config.get_property") as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_open")
-def fixture_mk_open() -> Generator[MagicMock]:
+def fixture_mk_open() -> Generator[MagicMock, None, None]:
     """Mock open"""
     m_open = mock_open(read_data="mocked file content")
     with patch("builtins.open", m_open):

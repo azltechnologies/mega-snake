@@ -7,7 +7,7 @@ from mega_snake.light_weight.release_handler import git_fetch, get_release_list,
 
 
 @pytest.fixture(name="run_operation")
-def fixture_run_operation() -> Generator[MagicMock]:
+def fixture_run_operation() -> Generator[MagicMock, None, None]:
     """Mock run_operation"""
     with patch("mega_snake.light_weight.release_handler.run_operation") as mock:
         yield mock

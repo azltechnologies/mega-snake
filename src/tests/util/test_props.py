@@ -29,7 +29,7 @@ real_os_path_exists = os.path.exists
 
 
 @pytest.fixture(name="get_validated_input")
-def fixture_get_validated_input() -> Generator[MagicMock]:
+def fixture_get_validated_input() -> Generator[MagicMock, None, None]:
     """Mock get_validated_input"""
     with patch("mega_snake.util.props.get_validated_input") as mock:
         yield mock
@@ -37,35 +37,35 @@ def fixture_get_validated_input() -> Generator[MagicMock]:
 
 
 @pytest.fixture(name="mk_importlib_resources_files")
-def fixture_mk_importlib_resources_files() -> Generator[MagicMock]:
+def fixture_mk_importlib_resources_files() -> Generator[MagicMock, None, None]:
     """Mock importlib.resources.files"""
     with patch("mega_snake.util.props.files", return_value=ROOT) as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_os")
-def fixture_mk_os() -> Generator[MagicMock]:
+def fixture_mk_os() -> Generator[MagicMock, None, None]:
     """Mock os.path.exists"""
     with patch("mega_snake.util.props.os", wraps=os) as mock:
         yield mock
 
 
 @pytest.fixture(name="formatting")
-def fixture_formatting() -> Generator[MagicMock]:
+def fixture_formatting() -> Generator[MagicMock, None, None]:
     """Mock formatting"""
     with patch("mega_snake.util.props.formatting") as mock:
         yield mock
 
 
 @pytest.fixture(name="get_package_root")
-def fixture_get_package_root() -> Generator[MagicMock]:
+def fixture_get_package_root() -> Generator[MagicMock, None, None]:
     """Mock get_package_root"""
     with patch("mega_snake.util.props._get_package_root", return_value=ROOT) as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_read_properties")
-def fixture_mk_read_properties() -> Generator[MagicMock]:
+def fixture_mk_read_properties() -> Generator[MagicMock, None, None]:
     """Mock read_properties"""
     with patch("mega_snake.util.props._read_properties", wraps=read_properties) as mock:
         yield mock

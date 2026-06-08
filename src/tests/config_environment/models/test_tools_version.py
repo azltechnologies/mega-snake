@@ -64,35 +64,35 @@ def get_data() -> dict[str, str]:
 
 
 @pytest.fixture(name="ws_advice")
-def fixture_ws_advice() -> Generator[MagicMock]:
+def fixture_ws_advice() -> Generator[MagicMock, None, None]:
     """Mock ws_advice"""
     with patch("mega_snake.config_environment.models.tools_version.ws_advice") as mock:
         yield mock
 
 
 @pytest.fixture(name="ws_info")
-def fixture_ws_info() -> Generator[MagicMock]:
+def fixture_ws_info() -> Generator[MagicMock, None, None]:
     """Mock ws_info"""
     with patch("mega_snake.config_environment.models.tools_version.ws_info") as mock:
         yield mock
 
 
 @pytest.fixture(name="ws_warning")
-def fixture_ws_warning() -> Generator[MagicMock]:
+def fixture_ws_warning() -> Generator[MagicMock, None, None]:
     """Mock ws_warning"""
     with patch("mega_snake.config_environment.models.tools_version.ws_warning") as mock:
         yield mock
 
 
 @pytest.fixture(name="_platform")
-def fixture_platform() -> Generator[MagicMock]:
+def fixture_platform() -> Generator[MagicMock, None, None]:
     """Mock platform"""
     with patch("mega_snake.config_environment.models.tools_version.OS", "dummy") as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_open")
-def fixture_mk_open() -> Generator[MagicMock]:
+def fixture_mk_open() -> Generator[MagicMock, None, None]:
     """Mock open"""
     m_open = mock_open(read_data="mocked file content")
     with patch("builtins.open", m_open):
@@ -100,7 +100,7 @@ def fixture_mk_open() -> Generator[MagicMock]:
 
 
 @pytest.fixture(name="get_validated_input")
-def fixture_get_validated_input() -> Generator[MagicMock]:
+def fixture_get_validated_input() -> Generator[MagicMock, None, None]:
     """Mock get_validated_input"""
     with patch(
         "mega_snake.config_environment.models.tools_version.get_validated_input",
@@ -110,7 +110,7 @@ def fixture_get_validated_input() -> Generator[MagicMock]:
 
 
 @pytest.fixture(name="mk_os")
-def fixture_mk_os() -> Generator[MagicMock]:
+def fixture_mk_os() -> Generator[MagicMock, None, None]:
     """Mock os"""
     with patch("mega_snake.config_environment.models.tools_version.os") as mock:
         mock.path.exists.return_value = True

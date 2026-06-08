@@ -23,7 +23,7 @@ def dict_side_effect(instance: LogWatcher, _wk: str) -> dict[str, str]:
 
 
 @pytest.fixture(name="get_input_call")
-def fixture_bget_input_call() -> Generator[MagicMock]:
+def fixture_bget_input_call() -> Generator[MagicMock, None, None]:
     """Mock get_input_call"""
     with patch(
         "mega_snake.config_environment.models.log_viewer_watcher.VscodeInput.TODAY_TIMESTAMP.get_input_call"
@@ -33,7 +33,7 @@ def fixture_bget_input_call() -> Generator[MagicMock]:
 
 
 @pytest.fixture(name="_log_watcher_query")
-def fixture_log_watcher_query() -> Generator[MagicMock]:
+def fixture_log_watcher_query() -> Generator[MagicMock, None, None]:
     """Mock log_watcher_query"""
     with patch(
         "mega_snake.config_environment.models.log_viewer_watcher.LOG_WATCHER_QUERY", LOG_TEST_QUERY
@@ -42,7 +42,7 @@ def fixture_log_watcher_query() -> Generator[MagicMock]:
 
 
 @pytest.fixture(name="to_dict")
-def fixture_to_dict() -> Generator[MagicMock]:
+def fixture_to_dict() -> Generator[MagicMock, None, None]:
     """Mock to_dict"""
     with patch.object(LogWatcher,"to_dict") as mock:
         dicto = mock.call_args_list

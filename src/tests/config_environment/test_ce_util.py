@@ -7,14 +7,14 @@ from mega_snake.config_environment.util import get_local_file, update_workspace,
 
 
 @pytest.fixture(name="get_property")
-def fixture_get_property() -> Generator[MagicMock]:
+def fixture_get_property() -> Generator[MagicMock, None, None]:
     """Mock get_property"""
     with patch("mega_snake.config_environment.util.get_property") as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_open")
-def fixture_mk_open() -> Generator[MagicMock]:
+def fixture_mk_open() -> Generator[MagicMock, None, None]:
     """Mock open"""
     m_open = mock_open(read_data="mocked file content")
     with patch("builtins.open", m_open):
@@ -22,14 +22,14 @@ def fixture_mk_open() -> Generator[MagicMock]:
 
 
 @pytest.fixture(name="json_dump")
-def fixture_json_dump() -> Generator[MagicMock]:
+def fixture_json_dump() -> Generator[MagicMock, None, None]:
     """Mock json.dump"""
     with patch("json.dump") as mock:
         yield mock
 
 
 @pytest.fixture(name="os_replace")
-def fixture_os_replace() -> Generator[MagicMock]:
+def fixture_os_replace() -> Generator[MagicMock, None, None]:
     """Mock os.replace"""
     with patch("os.replace") as mock:
         yield mock

@@ -39,28 +39,28 @@ def run_after_each_test() -> Generator[None, None, None]:
 
 
 @pytest.fixture(name="_mk_os_darwin")
-def fixture_mk_os_darwin() -> Generator[MagicMock]:
+def fixture_mk_os_darwin() -> Generator[MagicMock, None, None]:
     """Mock _mk_os_darwin"""
     with patch("mega_snake.config_environment.gradle_set.OS", "Darwin") as mock:
         yield mock
 
 
 @pytest.fixture(name="mk_execute")
-def fixture_execute() -> Generator[MagicMock]:
+def fixture_execute() -> Generator[MagicMock, None, None]:
     """Mock mk_execute"""
     with patch("mega_snake.config_environment.gradle_set.execute", wraps=execute) as mock:
         yield mock
 
 
 @pytest.fixture(name="gradle_set")
-def fixture__gradle_set() -> Generator[MagicMock]:
+def fixture__gradle_set() -> Generator[MagicMock, None, None]:
     """Mock gradle_set"""
     with patch("mega_snake.config_environment.gradle_set._gradle_set") as mock:
         yield mock
 
 
 @pytest.fixture(name="get_property")
-def fixture_get_property() -> Generator[MagicMock]:
+def fixture_get_property() -> Generator[MagicMock, None, None]:
     """Mock get_property"""
 
     def prop_side_effect(prop: str) -> Any:
@@ -78,7 +78,7 @@ def fixture_get_property() -> Generator[MagicMock]:
 
 
 @pytest.fixture(name="get_local_file")
-def fixture_get_local_file() -> Generator[MagicMock]:
+def fixture_get_local_file() -> Generator[MagicMock, None, None]:
     """Mock get_local_file"""
     with patch("mega_snake.config_environment.gradle_set.get_local_file") as mock:
         mock.return_value = LOCAL_FILE
@@ -86,7 +86,7 @@ def fixture_get_local_file() -> Generator[MagicMock]:
 
 
 @pytest.fixture(name="run_operation")
-def fixture_run_operation() -> Generator[MagicMock]:
+def fixture_run_operation() -> Generator[MagicMock, None, None]:
     """Mock run_operation"""
     return_value = """
 /opt/homebrew/Cellar/gradle@8.5/8.5\n
@@ -106,21 +106,21 @@ def fixture_run_operation() -> Generator[MagicMock]:
 
 
 @pytest.fixture(name="ws_warning")
-def fixture_ws_warning() -> Generator[MagicMock]:
+def fixture_ws_warning() -> Generator[MagicMock, None, None]:
     """Mock ws_warning"""
     with patch("mega_snake.config_environment.gradle_set.ws_warning") as mock:
         yield mock
 
 
 @pytest.fixture(name="ws_success")
-def fixture_ws_success() -> Generator[MagicMock]:
+def fixture_ws_success() -> Generator[MagicMock, None, None]:
     """Mock ws_success"""
     with patch("mega_snake.config_environment.gradle_set.ws_success") as mock:
         yield mock
 
 
 @pytest.fixture(name="get_validated_input")
-def fixture_get_validated_input() -> Generator[MagicMock]:
+def fixture_get_validated_input() -> Generator[MagicMock, None, None]:
     """Mock get_validated_input"""
     with patch("mega_snake.config_environment.models.tools_version.get_validated_input") as mock:
         mock.return_value = "6"  # Return the third version 8.4
@@ -128,14 +128,14 @@ def fixture_get_validated_input() -> Generator[MagicMock]:
 
 
 @pytest.fixture(name="mk_os")
-def fixture_mk_os() -> Generator[MagicMock]:
+def fixture_mk_os() -> Generator[MagicMock, None, None]:
     """Mock os"""
     with patch("mega_snake.config_environment.models.tools_version.os") as mock:
         yield mock
 
 
 @pytest.fixture(name="os_replace")
-def fixture_os_replace() -> Generator[MagicMock]:
+def fixture_os_replace() -> Generator[MagicMock, None, None]:
     """Mock os_replace"""
     with patch("mega_snake.config_environment.util.os") as mock:
         yield mock.replace

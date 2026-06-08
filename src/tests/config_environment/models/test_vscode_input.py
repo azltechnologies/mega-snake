@@ -21,7 +21,7 @@ def dict_side_effect(instance: VscodeInput) -> dict[str, str]:
 
 
 @pytest.fixture(name="vscode_task")
-def fixture_vscode_task() -> Generator[MagicMock]:
+def fixture_vscode_task() -> Generator[MagicMock, None, None]:
     """Mock VscodeTask"""
     with patch("mega_snake.config_environment.models.vscode_input.VscodeTask") as mock:
         yield mock

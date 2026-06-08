@@ -9,7 +9,7 @@ VERSION_TEST = "1.2.3"
 
 
 @pytest.fixture(name="jq")
-def fixture_jq() -> Generator[MagicMock]:
+def fixture_jq() -> Generator[MagicMock, None, None]:
     """Mock jq"""
     with patch("mega_snake.config_environment.models.vscode_task.jq") as mock:
 
@@ -17,7 +17,7 @@ def fixture_jq() -> Generator[MagicMock]:
 
 
 @pytest.fixture(name="json")
-def fixture_json() -> Generator[MagicMock]:
+def fixture_json() -> Generator[MagicMock, None, None]:
     """Mock json"""
     with patch("mega_snake.config_environment.models.vscode_task.json") as mock:
         yield mock
