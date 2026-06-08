@@ -8,6 +8,7 @@ from importlib.resources import files
 import click
 from mega_snake.constants import SHELL_OPT, MODULE_NAME
 from mega_snake.config_environment.util import get_local_file
+from mega_snake.util.util import cli_metadata
 
 CONFIG_SCRIPT = "config_setup"
 WIN_SHELLS: list[str] = ["powershell", "pwsh"]
@@ -28,6 +29,7 @@ SH_SHELLS: list[str] = ["bash", "zsh"]
                 {" | ".join(SHELL_OPT)}
     """,
 )
+@cli_metadata(flags={"no_init"})
 @click.argument("shell", type=click.Choice(SHELL_OPT, False))
 def shell_path(shell: str) -> None:
     """
@@ -64,6 +66,7 @@ def shell_path(shell: str) -> None:
             usage: mgsnake get-local-config-path
     """,
 )
+@cli_metadata(flags={"no_init"})
 def get_local_config_path() -> None:
     """
     Prints the current location of the local configuration file.

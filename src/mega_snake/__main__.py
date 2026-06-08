@@ -55,16 +55,15 @@ def cli(ctx: click.Context, log_level: str) -> None:
         light_weight: bool = False
         cmd_name = ctx.invoked_subcommand
         if cmd_name:
-            if cmd_name in {"shell-path", "sp", "get-local-config-path", "lcp"}:
-                return
-            ws_advice(f"Invoking subcommand: {cmd_name}")
-            # Access params
             cmd = cli.get_command(ctx, cmd_name)
             if not cmd:
                 raise click.ClickException(f"Command '{cmd_name}' not found")
+            ws_advice(f"Invoking subcommand: {cmd_name}")
             # check if the command has cli_metadata
             metadata = getattr(cmd.callback, "flags", {})
             flags: Optional[set[str]] = metadata.get("flags")
+            if flags and "no_init" in flags:
+                return
             if flags and "skip" in flags:
                 ws_advice("'skip' flag detected. Running in light-weight mode if local working directory is not found.")
                 light_weight = True
