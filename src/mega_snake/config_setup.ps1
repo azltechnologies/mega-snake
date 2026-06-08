@@ -15,6 +15,30 @@ function mgsnake_reload {
         mgsnake msg -t w  "No local config file found"
     }
 }
+
+function mgsnake_load_env {
+    param(
+        [string]$Path = ".env"
+    )
+    if (!(Test-Path $Path)) { return }
+
+    Get-Content $Path | ForEach-Object {
+        $line = $_.Trim()
+        
+        # Ignorar líneas vacías y comentarios
+        if ($line -and !$line.StartsWith('#') -and $line -match '^([^=]+)=(.*)$') {
+            $key = $Matches[1].Trim()
+            
+            # Remover comillas externas (simples o dobles) si existen
+            $value = $Matches[2].Trim() -replace '^["'']|["'']$'
+            
+            # Asignar a las variables de entorno del proceso actual
+            [Environment]::SetEnvironmentVariable($key, $value, 'Process')
+        }
+    }
+    mgsnake msg -t t -p "mgsnake_load_env" ": Environment variables loaded from $env_file"
+}
+
 mgsnake msg -t t -p "mgsnake" ": use this function to set the environment configuration"
 mgsnake_reload
 mgsnake msg -t t -p "mgsnake_reload" ": use this function to reload the local config file"

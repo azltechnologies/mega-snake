@@ -230,6 +230,7 @@ class AppProperties:
         working_path: str = _check_property("working_path", properties)
         log_file: str = _check_property("log_file_name", properties)
         local_config_file: str = _check_property("local_config_file_name", properties)
+        local_env_file: str = _check_property("local_env_file_name", properties)
         graphql_schema_file: str = _check_property("graphql_schema_file_name", properties)
         self.__resources_path_validator(resources_path)
         try:
@@ -239,6 +240,7 @@ class AppProperties:
             )
         except FileNotFoundError as e:
             self.__adding_prop_validator("local_config_file", f"{self.props['working_path']}/{local_config_file}")
+            self.__adding_prop_validator("local_env_file", f"{self.props['working_path']}/{local_env_file}")
             self.__shell_validator(shell)
             try:
                 self.__adding_prop_validator(
@@ -251,6 +253,7 @@ class AppProperties:
         self.__log_file_validator(log_file)
         self.__shell_validator(shell)
         self.__adding_prop_validator("local_config_file", f"{self.props['working_path']}/{local_config_file}")
+        self.__adding_prop_validator("local_env_file", f"{self.props['working_path']}/{local_env_file}")
         self.__adding_prop_validator("graphql_schema_file", f"{self.props['working_path']}/{graphql_schema_file}")
         self.__post_init__()
 

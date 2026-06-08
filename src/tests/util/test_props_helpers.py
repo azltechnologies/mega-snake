@@ -75,6 +75,7 @@ def test_init_app_properties_rejects_invalid_shell_values_during_validation(tmp_
         "log_file_name": "mgsnake",
         "local_config_file_name": ".mgsnake.sh",
         "graphql_schema_file_name": "schema.graphql",
+        "local_env_file_name": ".mgsnake.env",
     }
 
     props_module.AppProperties._instance = None  # pylint: disable=protected-access

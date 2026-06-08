@@ -32,11 +32,30 @@ def execute(override: bool) -> None:  # previously initialLoad
     Args:
         override (bool): A boolean value to override the current gradle version.
     """
+    env_file = get_property("local_env_file")
+    contents: str
+    if not os.path.exists(env_file) or override:
+        with open(env_file, "w", encoding="utf-8") as file:
+            contents = "# This file is used to store local environment variables for the project.\n"
+            contents += "# You can add custom environment variables here.\n"
+            file.write(contents)
+        ws_success(f"Local environment file created: {env_file}")
     local_file = get_local_file()
     if not os.path.exists(local_file) or override:
         shell = get_property("shell")
-        contents: str = "# This file is used to store local configurations for the project.\n"
-        contents += "# You can add custom functions and configurations here.\n"
+        env_name = os.path.basename(env_file)
+        contents = "# This file is used to store local configurations for the project.\n"
+        match shell:
+            case "bash":
+                contents += f'mgsnake_load_env "$(cd "$(dirname "${{BASH_SOURCE[0]:-$0}}")" && pwd)"/{env_name}\n'
+            case "zsh":
+                contents += f'mgsnake_load_env "$(cd "$(dirname "${{(%):-%N}}")" && pwd)"/{env_name}\n'
+            case "powershell" | "pwsh":
+                contents += f'mgsnake_load_env "$(Split-Path -Parent $MyInvocation.MyCommand.Definition)/{env_name}"\n'
+            case _:
+                raise NotImplementedError(f"Shell type not supported: {shell}")
+        contents += "\n# ----\n# You can add custom functions and configurations here.\n"
+        contents += "# The codeblock below loads the local environment variables\n"
         match shell:
             case "bash" | "zsh":
                 contents += (
@@ -44,12 +63,10 @@ def execute(override: bool) -> None:  # previously initialLoad
                     "ORG_GRADLE_PROJECT_example_password='some value'\n"
                 )
             case "powershell" | "pwsh":
-                contents = (
+                contents += (
                     "function example {\n    mgsnake msg 'Hello, World!'\n}\n"
                     "$env:ORG_GRADLE_PROJECT_example_password = 'some value'\n"
                 )
-            case _:
-                return
         with open(local_file, "w", encoding="utf-8") as file:
             file.write(contents)
         ws_success(f"Local configuration file created: {local_file}")

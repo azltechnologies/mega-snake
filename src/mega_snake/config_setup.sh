@@ -23,6 +23,26 @@ mgsnake_reload() {
     fi
 }
 
+mgsnake_load_env() {
+  local env_file="${1:-.env}"
+  [[ -f "$env_file" ]] || return 1
+
+  while IFS='=' read -r key value || [[ -n "$key" ]]; do
+    # 1. Ignorar comentarios y líneas vacías
+    [[ "$key" =~ ^[[:space:]]*# ]] || [[ -z "$key" ]] && continue
+
+    # 2. Limpiar espacios en la clave
+    key=$(echo "$key" | tr -d '[:space:]')
+
+    # 3. Limpiar espacios y quitar comillas externas (simples o dobles) del valor
+    value=$(echo "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^["'\'']//' -e 's/["'\'']$//')
+
+    # 4. Exportar de forma segura al entorno actual
+    export "$key"="$value"
+  done < "$env_file"
+  mgsnake msg -t t -p "mgsnake_load_env" ": Environment variables loaded from $env_file"
+}
+
 mgsnake msg -t t -p "mgsnake" ": use this function to set the environment configuration"
 mgsnake_reload
 mgsnake msg -t t -p "mgsnake_reload" ": use this function to reload the local config file"

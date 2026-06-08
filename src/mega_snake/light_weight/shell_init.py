@@ -66,7 +66,6 @@ def shell_path(shell: str) -> None:
             usage: mgsnake get-local-config-path
     """,
 )
-@cli_metadata(flags={"no_init"})
 def get_local_config_path() -> None:
     """
     Prints the current location of the local configuration file.
