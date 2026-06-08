@@ -10,10 +10,10 @@ from mega_snake.util.util import run_operation
 
 
 @click.command(
-    name="createGraphqlSchema",
+    name="graphql_schema",
     short_help="Creates a GraphQL schema file in the working directory.",
-    help="Creates a GraphQL schema file in the working directory.",
-    epilog="usage: mgsnake createGraphqlSchema <schema_path>",
+    help="Builds a consolidated GraphQL schema and introspection JSON from schema files in a directory.",
+    epilog="usage: mgsnake graphql_schema <schema_path>",
 )
 @click.argument("schema_path", type=click.STRING)
 def create_graphql_schema(schema_path: str) -> None:

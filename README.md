@@ -81,13 +81,13 @@ Then restart your terminal or source the configuration file to activate the `mgs
 
       ```bash
       # Create a working environment
-      mgsnake createWorkingEnv
+      mgsnake working_env
 
       # Check GraphQL schema
-      mgsnake createGraphqlSchema
+      mgsnake graphql_schema
 
       # Show branch details with debug info
-      mgsnake --log-level DEBUG remoteBranchesDetails
+      mgsnake --log-level DEBUG remote_branches_details
       ```
 
    > **Note**: Each command has its own help. Use `mgsnake <command> --help` for specific details.
@@ -98,17 +98,17 @@ Many command names are intentionally descriptive. For faster terminal workflows,
 
 ```bash
 # Full command
-snake createWorkingEnv
+mgsnake working_env
 
 # Alias
-snake cwe
+mgsnake cwe
 ```
 
 ### Available Commands
 
 #### Environment & Configuration
 
-##### `mgsnake createWorkingEnv` (aliases: `cwe`, `env`)
+##### `mgsnake working_env` (aliases: `cwe`, `env`, `createWorkingEnv`)
 
 Sets up a complete VSCode workspace configuration for Java development:
 
@@ -120,7 +120,7 @@ Sets up a complete VSCode workspace configuration for Java development:
 - Sets up log watchers and GitHub queries
 - Creates task definitions for common operations
 
-##### `mgsnake setJava` (alias: `java`)
+##### `mgsnake set_java` (aliases: `java`, `sj`, `setJava`)
 
 Configures Java for your workspace:
 
@@ -130,7 +130,7 @@ Configures Java for your workspace:
 - Configures both VSCode and shell environment
 - Sets up Java formatter settings
 
-##### `mgsnake setGradle` (alias: `gradle`)
+##### `mgsnake set_gradle` (aliases: `gradle`, `sg`, `setGradle`)
 
 Manages Gradle configuration:
 
@@ -139,7 +139,7 @@ Manages Gradle configuration:
 - Updates workspace settings to use selected version
 - Configures both VSCode and shell environment
 
-##### `mgsnake initLocalConfig` (alias: `iload`)
+##### `mgsnake init_local_config` (aliases: `iload`, `ilc`, `initLocalConfig`)
 
 Sets up local development configurations:
 
@@ -149,38 +149,38 @@ Sets up local development configurations:
 
 #### Git & Release Management
 
-##### `mgsnake createDiffTree` (aliases: `dt`, `tree`)
+##### `mgsnake diff_tree` (aliases: `dt`, `tree`, `createDiffTree`)
 
 Creates a visual diff tree of the current branch against master.
 
-- **Usage**: `mgsnake createDiffTree [OPTIONS]`
+- **Usage**: `mgsnake diff_tree [OPTIONS]`
 - **Options**:
   - `-c, --commit-hash <hash>`: Compare against a specific commit instead of master.
   - `-d, --delete-original-files`: Delete generated copy of original files in the tree.
 - **Output**: Generates a tree structure in `workspace_temp/diff_tree/` and opens it in VSCode.
 
-##### `mgsnake remoteBranchesDetails`
+##### `mgsnake remote_branches_details` (aliases: `rbd`, `remoteBranchesDetails`)
 
 Generates a detailed report of remote branches.
 
-- **Usage**: `mgsnake remoteBranchesDetails [OPTIONS]`
+- **Usage**: `mgsnake remote_branches_details [OPTIONS]`
 - **Options**:
   - `-f, --filter-by <A|M|U>`: Filter by (A)ll, (M)erged, or (U)nmerged status against master.
 - **Output**: Creates `workspace_temp/remote_branches.txt` with branch details (author, date, etc.).
 
-##### `mgsnake remoteBranchesCleanUp`
+##### `mgsnake remote_branches_cleanup` (aliases: `rbc`, `remoteBranchesCleanUp`)
 
 Interactive tool to clean up merged remote branches.
 
-- Parses the output of `remoteBranchesDetails`
+- Parses the output of `remote_branches_details`
 - Interactively asks which merged branches to delete from the remote
 - Prunes local references
 
-##### `mgsnake createRelease`
+##### `mgsnake create_release` (aliases: `release`, `cr`, `createRelease`)
 
 Creates a GitHub release and tag for the project.
 
-- **Usage**: `mgsnake createRelease <tag_suffix> <release_type> [notes] [branch]`
+- **Usage**: `mgsnake create_release <tag_suffix> <release_type> [notes] [branch]`
 - **Arguments**:
   - `tag_suffix`: Suffix for the new tag.
   - `release_type`: `p` (Pre-release), `l` (Latest), `r` (Replace latest/Release).
@@ -189,18 +189,18 @@ Creates a GitHub release and tag for the project.
 
 #### Utilities
 
-##### `mgsnake createGraphqlSchema` (aliases: `graphql`, `gql`)
+##### `mgsnake graphql_schema` (aliases: `graphql`, `gql`, `cgs`, `createGraphqlSchema`)
 
 Compiles GraphQL schema files.
 
-- **Usage**: `mgsnake createGraphqlSchema <schema_path>`
+- **Usage**: `mgsnake graphql_schema <schema_path>`
 - Combines all schema files in the given directory into a single `.graphql` file and a `.json` introspection file.
 
-##### `mgsnake expiredCertsJks`
+##### `mgsnake expired_certs_jks` (aliases: `ecj`, `expiredCertsJks`)
 
 Checks a Java KeyStore (JKS) for expired certificates.
 
-- **Usage**: `mgsnake expiredCertsJks <jks_path> [-p password]`
+- **Usage**: `mgsnake expired_certs_jks <jks_path> [-p password]`
 - Lists aliases and valid dates, creating warnings for expired certs.
 
 ##### `mgsnake msg`

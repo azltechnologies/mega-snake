@@ -15,7 +15,7 @@ from mega_snake.remote_branches.details_remote_branches import execute as remote
 
 
 @click.command(
-    name="remoteBranchesCleanUp",
+    name="remote_branches_cleanup",
     short_help="Helper function for deleting branches merged branches from the remote repository.",
     help="Iterates over the remote branches asking the user which merged branches to delete",
     epilog=(
@@ -29,7 +29,7 @@ def remote_branches_cleanup() -> None:
     """
     if not (remote := get_remote()):
         raise LookupError("No remote repository found. Please add a remote repository to the current repository.")
-    prompt: str = "Do you want to rerun the remoteBranchesDetails function?"
+    prompt: str = "Do you want to rerun the remote_branches_details function?"
     yes_no_options: list[str] = ["y", "n"]
     if get_validated_input(prompt, yes_no_options) == "y":
         filter_options: list[str] = ["a", "m"]
@@ -37,7 +37,7 @@ def remote_branches_cleanup() -> None:
         user_input: str = get_validated_input(prompt, filter_options).upper()
         ws_info(f"Filtering branches by: {user_input}")
         remote_branches_details(user_input, remote)
-        ws_success(f"Successfully ran `remoteBranchesDetails -f {user_input}` function")
+        ws_success(f"Successfully ran `remote_branches_details -f {user_input}` function")
     input_file: str = get_output_file()
     # check if input_file exists
     if not os.path.exists(input_file):

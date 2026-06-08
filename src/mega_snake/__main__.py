@@ -27,16 +27,16 @@ Main features:
 - Git integration and workspace organization""",
     epilog="""Examples:\n
     # Set up a complete workspace environment\n
-    mgsnake createWorkingEnv\n
+    mgsnake working_env\n
     \n
     # Configure Java version\n
-    mgsnake setJava\n
+    mgsnake set_java\n
     \n
     # Configure Gradle version\n
-    mgsnake setGradle\n
+    mgsnake set_gradle\n
     \n
     # Initialize local configurations\n
-    mgsnake initLocalConfig\n
+    mgsnake init_local_config\n
     \n
     # Run with debug logging\n
     mgsnake --log-level DEBUG <command>\n
@@ -55,7 +55,7 @@ def cli(ctx: click.Context, log_level: str) -> None:
         light_weight: bool = False
         cmd_name = ctx.invoked_subcommand
         if cmd_name:
-            if cmd_name == "shell-path":
+            if cmd_name in {"shell-path", "sp", "get-local-config-path", "lcp"}:
                 return
             ws_advice(f"Invoking subcommand: {cmd_name}")
             # Access params
@@ -93,7 +93,7 @@ def post_command(ctx, result, **kwargs) -> None:
         sys.exit(exit_code)
 
 
-cli.add_command_with_alias(diff_tree, ["dt", "tree"])
+cli.add_command_with_alias(diff_tree, ["dt", "tree", "createDiffTree"])
 for command in create_release.commands.values():
     cli.add_command(create_release_result_callback(command))
 for command in config_environment.commands.values():

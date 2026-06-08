@@ -26,10 +26,10 @@ from mega_snake.util.formatting import ws_info, ws_success, ws_warning, ws_advic
 
 
 @click.command(
-    name="setJava",
-    short_help="Sets the default Java version on the workspace",
-    help="Sets the default Java version on the workspace",
-    epilog="""usage: mgsnake setJava [OPTIONS]\n
+    name="set_java",
+    short_help="Sets the default Java version in the workspace",
+    help="Detects installed Java versions and sets the default Java version for the workspace and shell config.",
+    epilog="""usage: mgsnake set_java [OPTIONS]\n
     OPTIONS:\n
         -o | --override: Optional[bool] - Override the current Java version\n
     """,

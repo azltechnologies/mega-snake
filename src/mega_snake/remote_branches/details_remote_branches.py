@@ -17,11 +17,11 @@ def get_output_file() -> str:
 
 
 @click.command(
-    name="remoteBranchesDetails",
+    name="remote_branches_details",
     short_help="Gets details of remote branches",
     help="Creates a detailed list of remote branches filtered by type",
     epilog="""The branch details are created within $WS_TEMP path.\n
-    usage: mgsnake remoteBranchesDetails [OPTIONS]\n
+    usage: mgsnake remote_branches_details [OPTIONS]\n
     OPTIONS:\n
         -f | --filter-by: Optional[str] - filter branches by merge status against main branch\n
     """,

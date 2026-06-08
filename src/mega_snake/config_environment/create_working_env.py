@@ -38,10 +38,10 @@ from mega_snake.util.util import (
 
 
 @click.command(
-    name="createWorkingEnv",
-    short_help="Configures the VSCode workspace environment",
-    help="Sets up the VSCode workspace with recommended extensions, default settings, tasks, launch configurations"
-    ", and git exclusions. Also configures Java and Gradle if applicable.",
+    name="working_env",
+    short_help="Configures the VS Code workspace environment",
+    help="Sets up the VS Code workspace with recommended extensions, default settings, tasks, launch configurations,"
+    " and git exclusions. Also configures Java and Gradle when applicable.",
     epilog="""This command will:
     - Create/update VSCode workspace file
     - Configure git exclusions for workspace files
@@ -51,7 +51,7 @@ from mega_snake.util.util import (
     - Set up tasks and launch configurations
     - Configure log watchers and GitHub queries
 
-    usage: mgsnake createWorkingEnv
+    usage: mgsnake working_env
     """,
 )
 @cli_metadata(flags={"skip"})

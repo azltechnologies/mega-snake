@@ -17,8 +17,10 @@ def test_main_cli_and_post_command() -> None:
     runner = CliRunner()
     with patch.dict(os.environ, {"MEGA_SNAKE_SHELL": "bash"}):
         with patch("mega_snake.__main__.init_app_properties"):
-            result = runner.invoke(app_main.cli, ["createDiffTree", "--help"])
+            result = runner.invoke(app_main.cli, ["diff_tree", "--help"])
             assert result.exit_code == 0
+            alias_result = runner.invoke(app_main.cli, ["createDiffTree", "--help"])
+            assert alias_result.exit_code == 0
 
     error_context = click.Context(app_main.cli)
     error_context.invoked_subcommand = "x"

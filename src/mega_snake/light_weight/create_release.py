@@ -15,11 +15,11 @@ NUM_RETRIES = 3
 
 
 @click.command(
-    name="createRelease",
+    name="create_release",
     short_help="Creates a new release on GitHub with the given parameters.",
     help="Creates a new release on GitHub with the given parameters.",
     epilog="""
-    usage: mgsnake createRelease <tag_suffix> <release_type> [release_notes] [release_branch]\n
+    usage: mgsnake create_release <tag_suffix> <release_type> [release_notes] [release_branch]\n
     Args:\n
         tag_suffix: str - suffix to add to the tag\n
         release_type: char -\n
