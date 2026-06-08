@@ -34,6 +34,9 @@ dev = [
     "ruff>=0.1.0",
 ]
 
+[project.urls]
+Repository = "https://github.com/kalin91/mega-snake"
+
 [project.scripts]
 mgsnake = "mega_snake.__main__:cli"  # Asumiendo que 'cli' es tu función Grupo de click
 
