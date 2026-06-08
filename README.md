@@ -1,6 +1,14 @@
 # Mega `Snake`
 
-A CLI tool designed to standardize and automate the local development lifecycle. While its core focus is simplifying **Java/Gradle development in VS Code** ensuring consistent environments across teams, it also serves as a productivity swiss-army knife with utilities for **Git operations**, **GitHub release management**, and **Google Cloud Platform** observability.
+A development environment automation platform for teams using **Java/Gradle in VS Code**. It creates consistent local setups, shell configuration, and workspace tooling so developers can start coding quickly without repeating manual environment setup.
+
+## Why Mega Snake?
+
+New contributors often lose time on first-day setup: matching Java and Gradle versions, configuring VS Code correctly, and wiring repetitive local scripts. Mega Snake solves this by automating the same environment steps for everyone.
+
+- **Start faster:** bootstrap a ready-to-code Java workspace in VS Code with one CLI flow.
+- **Reduce setup drift:** keep local Java/Gradle/tooling configuration consistent across developers.
+- **Automate recurring tasks:** run common Git, release, and utility workflows from one CLI.
 
 ## Installation
 
@@ -83,6 +91,18 @@ Then restart your terminal or source the configuration file to activate the `mgs
       ```
 
    > **Note**: Each command has its own help. Use `mgsnake <command> --help` for specific details.
+
+### Prefer command aliases for daily use
+
+Many command names are intentionally descriptive. For faster terminal workflows, use aliases shown next to each command in this README.
+
+```bash
+# Full command
+snake createWorkingEnv
+
+# Alias
+snake cwe
+```
 
 ### Available Commands
 

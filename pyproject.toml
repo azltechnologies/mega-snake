@@ -1,7 +1,7 @@
 [project]
 name = "mega_snake"
 version = "0.1.0"
-description = "CLI for setting environment for VSCode coding"
+description = "CLI automation platform for Java development in VS Code"
 authors = [
     { name = "Morales Ortega, Carlos Alberto", email = "carlos.mor.ort@gmail.com" },
 ]
