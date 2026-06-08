@@ -4,6 +4,7 @@ import click
 from mega_snake.config_environment.graphql_schema import create_graphql_schema
 from mega_snake.config_environment.java_set import set_java_version
 from mega_snake.config_environment.gradle_set import set_gradle_version
+from mega_snake.config_environment.maven_setup import maven_project_setup, set_maven_version
 from mega_snake.config_environment.local_config import initial_load
 from mega_snake.config_environment.create_working_env import create_working_env
 from mega_snake.util.util import wrapper_decorator
@@ -23,8 +24,10 @@ def wrapper(ctx: click.Context, *_args, **_kwargs) -> None:
 # Export the decorated wrapper for use in other modules
 add_wrapper = wrapper_decorator(wrapper)
 
-main.add_command_with_alias(set_java_version, ["java", "sj", "setJava"])
-main.add_command_with_alias(set_gradle_version, ["gradle", "sg", "setGradle"])
-main.add_command_with_alias(initial_load, ["iload", "ilc", "initLocalConfig"])
-main.add_command_with_alias(create_working_env, ["cwe", "env", "createWorkingEnv"])
-main.add_command_with_alias(create_graphql_schema, ["graphql", "gql", "cgs", "createGraphqlSchema"])
+main.add_command_with_alias(set_java_version, ["java", "sj"])
+main.add_command_with_alias(set_gradle_version, ["gradle", "sg"])
+main.add_command_with_alias(set_maven_version, ["maven", "sm"])
+main.add_command_with_alias(maven_project_setup, ["mps"])
+main.add_command_with_alias(initial_load, ["iload", "ilc"])
+main.add_command_with_alias(create_working_env, ["cwe", "env"])
+main.add_command_with_alias(create_graphql_schema, ["graphql", "gql", "cgs"])

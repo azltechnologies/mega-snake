@@ -5,7 +5,7 @@
 `mega_snake` is a robust Python 3.13+ CLI tool designed to standardize the local development lifecycle. It acts as a "Swiss Army Knife" for developers, primarily automating the complex configuration of VS Code environments for Java/Gradle, but extending into Git management, Release orchestration context, and Google Cloud observability.
 
 **Core Philosophy:**
-- **Zero Config Start**: A developer should be able to run `mgsnake createWorkingEnv` and have a fully functional IDE state immediately.
+- **Zero Config Start**: A developer should be able to run `mgsnake working-env` and have a fully functional IDE state immediately.
 - **Idempotency**: Commands should be safe to run multiple times without destructive side effects unless explicitly requested.
 - **System Integration**: The tool deeply integrates with the OS shell (Bash/Zsh/PowerShell) and external tools (Git, Java, Gradle).
 
@@ -25,7 +25,7 @@
 The application uses a `click.Group` with a custom `CliGroup` class to support command aliases. The entry point `cli()` function initializes global application properties before any command runs.
 
 **Critical Pattern: Initialization & Light-weight Mode**
-The CLI checks for a `skip` flag in command metadata. If present, it bypasses heavy environment checks (like requiring a valid workspace folder), allowing "light-weight" commands (e.g., `createRelease`) to run anywhere.
+The CLI checks for a `skip` flag in command metadata. If present, it bypasses heavy environment checks (like requiring a valid workspace folder), allowing "light-weight" commands (e.g., `create-release`) to run anywhere.
 
 ```python
 # src/mega_snake/__main__.py
@@ -47,7 +47,7 @@ We do not standard `click` alias implementation. We use `CliGroup` to register c
 ```python
 # Registration in __main__.py
 from .diff_tree.module import main as diff_tree
-# Registers 'diff_tree' command accessible via 'dt' and 'tree' aliases
+# Registers 'diff-tree' command accessible via 'dt' and 'tree' aliases
 cli.add_command_with_alias(diff_tree, ["dt", "tree"])
 ```
 
@@ -81,14 +81,14 @@ This implements the **Decorator Pattern**. Instead of repeating validation logic
 
 This is the most complex module, responsible for generating `.code-workspace` files. It configures the "settings" section of the workspace file directly, avoiding reliance on `.vscode/settings.json`.
 
-#### `createWorkingEnv`
+#### `working-env`
 - **Logic**: 
     1. Validates Git repository status.
     2. Loads local developer overrides (`initial_load`).
-    3. Configures Java (`set_java`) and Gradle (`set_gradle`).
+    3. Configures Java (`set-java`) and Gradle (`set-gradle`).
     4. Generates VS Code tasks, launch configurations, and recommendations.
 
-#### `setJava` (`java_set.py`)
+#### `set-java` (`java_set.py`)
 Manages the `java.configuration.runtimes` and `terminal.integrated.env` settings in VS Code.
 
 **Key Logic:**
@@ -105,8 +105,8 @@ JAVA_JQ_QUERY = f'.settings["{ENV_VARIABLE}"].JAVA_HOME'
 # to find and replace the Java path.
 ```
 
-#### `setGradle` (`gradle_set.py`)
-Like `setJava`, this configures the Gradle version for the workspace.
+#### `set-gradle` (`gradle_set.py`)
+Like `set-java`, this configures the Gradle version for the workspace.
 
 **Key Logic:**
 - It identifies installed Gradle versions via `ToolVersion` abstraction.
@@ -114,17 +114,17 @@ Like `setJava`, this configures the Gradle version for the workspace.
 - It ensures consistency between the terminal environment and the IDE's internal Gradle wrapper.
 
 **Technical Note: JSON with Comments**
-Both `setJava` and `setGradle` modify the `.code-workspace` file which contains comments. The standard python `json` library fails on comments. We use a custom `load_json_with_comments` utility to handle VS Code's configuration format safely without stripping comments, which are vital for developers understanding the config.
+Both `set-java` and `set-gradle` modify the `.code-workspace` file which contains comments. The standard python `json` library fails on comments. We use a custom `load_json_with_comments` utility to handle VS Code's configuration format safely without stripping comments, which are vital for developers understanding the config.
 
-#### `initLocalConfig` (`local_config.py`)
+#### `init-local-config` (`local_config.py`)
 Creates a local developer-specific configuration file that is **ignored by Git**.
 
 **Why?**
-Developers often have machine-specific tokens, paths, or aliases that shouldn't be committed to the repo. `initLocalConfig` generates a shell-specific file (`.sh` or `.ps1` logic embedded) that is sourced by the main environment. This pattern allows the tool to support "Convention over Configuration" while still allowing for "Configuration" when necessary.
+Developers often have machine-specific tokens, paths, or aliases that shouldn't be committed to the repo. `init-local-config` generates a shell-specific file (`.sh` or `.ps1` logic embedded) that is sourced by the main environment. This pattern allows the tool to support "Convention over Configuration" while still allowing for "Configuration" when necessary.
 
 ### 3.2 Git Utilities (`src/mega_snake/diff_tree/`)
 
-#### `createDiffTree` (`dt`)
+#### `diff-tree` (`dt`)
 Generates a visual tree representation of changed files.
 
 **Implementation Details:**
@@ -144,7 +144,7 @@ for diff in diff_str.split("\n"):
 
 ### 3.3 Remote Branch Management (`src/mega_snake/remote_branches/`)
 
-#### `remoteBranchesDetails`
+#### `remote-branches-details`
 Analyzes remote branches to suggest cleanup candidates.
 
 **Filtering Logic (`-f` flag):**
@@ -154,11 +154,11 @@ Analyzes remote branches to suggest cleanup candidates.
 
 It creates `workspace_temp/remote_branches.txt` containing detailed metadata (author, last commit date, ahead/behind count) for every branch.
 
-#### `remoteBranchesCleanUp`
-An interactive tool that consumes the output of `remoteBranchesDetails`.
+#### `remote-branches-cleanup`
+An interactive tool that consumes the output of `remote-branches-details`.
 
 **Logic:**
-1. Allows re-running `remoteBranchesDetails` to refresh data.
+1. Allows re-running `remote-branches-details` to refresh data.
 2. Reads `workspace_temp/remote_branches.txt`.
 3. Presents an interactive list to the user to select branches for deletion.
 4. Performs `git push origin --delete <branch>` and prunes local references.
@@ -196,13 +196,13 @@ Instead of re-implementing the GitHub API client (which requires managing OAuth 
 
 ### 3.5 Other Utilities
 
-#### `createGraphqlSchema` (`graphql_schema.py`)
+#### `graphql-schema` (`graphql_schema.py`)
 Compiles multiple `.graphql` files into a single schema and generates introspection JSON.
 
 **Why introspection?**
 Frontend tools (like Apollo) and IDE plugins often require a full introspection result (`schema.json`) to provide autocompletion and type checking, not just the raw SDL string.
 
-#### `expiredCertsJks` (`jks_expired_certs.py`)
+#### `expired-certs-jks` (`jks_expired_certs.py`)
 Audits Java KeyStore (JKS) files for expired certificates using `keytool`.
 
 **Technical Challenge:**
@@ -430,4 +430,3 @@ pytest
 **If you delete a module:**
 - Remove its corresponding test file or test class
 - Verify overall coverage still meets 95% threshold
-

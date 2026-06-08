@@ -9,15 +9,15 @@ from mega_snake.util.util import run_operation, get_command_return_code
 
 
 @click.command(
-    name="expired_certs_jks",
+    name="expired-certs-jks",
     short_help="Check for expired certificates in a JKS file",
     help="Analyze certificates in a Java KeyStore (JKS) file and report their validity status",
     epilog="""
-    Usage: mgsnake expired_certs_jks JKS_PATH [--password PASSWORD]
+    Usage: mgsnake expired-certs-jks JKS_PATH [--password PASSWORD]
 
     Examples:
-      mgsnake expired_certs_jks /path/to/keystore.jks
-      mgsnake expired_certs_jks /path/to/keystore.jks --password mypassword
+      mgsnake expired-certs-jks /path/to/keystore.jks
+      mgsnake expired-certs-jks /path/to/keystore.jks --password mypassword
     Options:
         --password, -p: Custom password for the JKS file (default: changeit)
     """,

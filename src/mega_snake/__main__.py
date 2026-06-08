@@ -27,16 +27,16 @@ Main features:
 - Git integration and workspace organization""",
     epilog="""Examples:\n
     # Set up a complete workspace environment\n
-    mgsnake working_env\n
+    mgsnake working-env\n
     \n
     # Configure Java version\n
-    mgsnake set_java\n
+    mgsnake set-java\n
     \n
     # Configure Gradle version\n
-    mgsnake set_gradle\n
+    mgsnake set-gradle\n
     \n
     # Initialize local configurations\n
-    mgsnake init_local_config\n
+    mgsnake init-local-config\n
     \n
     # Run with debug logging\n
     mgsnake --log-level DEBUG <command>\n
@@ -92,7 +92,7 @@ def post_command(ctx, result, **kwargs) -> None:
         sys.exit(exit_code)
 
 
-cli.add_command_with_alias(diff_tree, ["dt", "tree", "createDiffTree"])
+cli.add_command_with_alias(diff_tree, ["dt", "tree"])
 for command in create_release.commands.values():
     cli.add_command(create_release_result_callback(command))
 for command in config_environment.commands.values():

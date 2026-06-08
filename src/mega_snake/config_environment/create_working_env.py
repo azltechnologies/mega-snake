@@ -38,7 +38,7 @@ from mega_snake.util.util import (
 
 
 @click.command(
-    name="working_env",
+    name="working-env",
     short_help="Configures the VS Code workspace environment",
     help="Sets up the VS Code workspace with recommended extensions, default settings, tasks, launch configurations,"
     " and git exclusions. Also configures Java and Gradle when applicable.",
@@ -51,7 +51,7 @@ from mega_snake.util.util import (
     - Set up tasks and launch configurations
     - Configure log watchers and GitHub queries
 
-    usage: mgsnake working_env
+    usage: mgsnake working-env
     """,
 )
 @cli_metadata(flags={"skip"})
@@ -106,7 +106,7 @@ def _execute(git_repo: bool) -> None:  # previously untrackGradleProps
     if not os.path.exists(build_file) and not os.path.exists(build_kts_file):
         ws_warning(
             f"build.gradle or build.gradle.kts file not found in the current directory. "
-            f"Please run '{APP_NAME} {gradle_command.name}' command if you want to set the gradle version anyway."
+            f"Please run '{APP_NAME} {gradle_command.name}' command if you want to set the Gradle version anyway."
         )
     else:
         set_gradle(False, workspace_file)

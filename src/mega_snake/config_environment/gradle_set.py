@@ -24,10 +24,10 @@ from mega_snake.util.formatting import ws_info, ws_success, ws_warning
 
 
 @click.command(
-    name="set_gradle",
+    name="set-gradle",
     short_help="Sets the default Gradle version in the workspace",
     help="Detects installed Gradle versions and sets the default Gradle version for the workspace and shell config.",
-    epilog="""usage: mgsnake set_gradle [OPTIONS]\n
+    epilog="""usage: mgsnake set-gradle [OPTIONS]\n
     OPTIONS:\n
         -o | --override: Optional[bool] - Override the current Gradle version\n
     """,

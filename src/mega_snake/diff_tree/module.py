@@ -12,12 +12,12 @@ from mega_snake.diff_tree.file_type import FileType
 
 
 @click.command(
-    name="diff_tree",
+    name="diff-tree",
     short_help="Creates diff tree and commit list of current changes",
     help="Creates a diff tree of changes and a commit list of the current branch"
     " against master or a specified commit hash",
     epilog="""The directory tree and commit list are created within $WS_TEMP path.\n
-    usage: mgsnake diff_tree [OPTIONS]\n
+    usage: mgsnake diff-tree [OPTIONS]\n
     OPTIONS:\n
         -c | --commit-hash: Optional[str] - Commit hash to compare against instead of master\n
         -d | --delete-original-files: bool - Delete the generated copy of the original files in the diff tree\n

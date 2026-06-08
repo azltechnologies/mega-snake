@@ -8,10 +8,10 @@ from mega_snake.config_environment.util import get_local_file
 
 
 @click.command(
-    name="init_local_config",
+    name="init-local-config",
     short_help="Creates a local configuration file",
     help="Creates or updates the local configuration file used for developer-specific shell settings.",
-    epilog="""usage: mgsnake init_local_config [OPTIONS]\n
+    epilog="""usage: mgsnake init-local-config [OPTIONS]\n
     OPTIONS:\n
         -o | --override: Optional[bool] - Override the current local configuration file with a new one\n
     """,

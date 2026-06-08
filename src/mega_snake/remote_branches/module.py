@@ -20,5 +20,5 @@ def wrapper(_ctx, *_args, **_kwargs) -> None:
 add_wrapper = wrapper_decorator(wrapper)
 
 
-main.add_command_with_alias(remote_branches_cleanup, ["rbc", "remoteBranchesCleanUp"])
-main.add_command_with_alias(remote_branches_details, ["rbd", "remoteBranchesDetails"])
+main.add_command_with_alias(remote_branches_cleanup, ["rbc"])
+main.add_command_with_alias(remote_branches_details, ["rbd"])

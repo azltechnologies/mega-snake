@@ -190,7 +190,7 @@ class AppProperties:
         Initializes an instance of the AppProperties class.
 
         This constructor follows a critical sequence to support both full initialization and
-        light-weight mode (used in createRelease and similar commands that don't need a workspace).
+        light-weight mode (used in create-release and similar commands that don't need a workspace).
 
         Initialization Flow:
             1. Validates resources_path (must exist and be readable)
@@ -210,7 +210,7 @@ class AppProperties:
             - If light_weight=True: catches the error and returns (partial props are available)
             - If light_weight=False: re-raises the error
 
-        This design allows createRelease commands to access local_config_file and shell
+        This design allows create-release commands to access local_config_file and shell
             without requiring a valid workspace directory.
 
         Args:

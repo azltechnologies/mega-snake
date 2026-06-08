@@ -24,7 +24,7 @@ def wrapper(_ctx, *_args, **_kwargs) -> None:
 add_wrapper = wrapper_decorator(wrapper)
 
 main.add_command_with_alias(echo, ["message"])
-main.add_command_with_alias(create_release, ["release", "cr", "createRelease"])
-main.add_command_with_alias(expired_certs, ["ecj", "expiredCertsJks"])
+main.add_command_with_alias(create_release, ["release", "cr"])
+main.add_command_with_alias(expired_certs, ["ecj"])
 main.add_command_with_alias(shell_path, ["sp"])
 main.add_command_with_alias(get_local_config_path, ["lcp"])
