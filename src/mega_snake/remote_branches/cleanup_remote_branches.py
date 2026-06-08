@@ -16,7 +16,7 @@ from mega_snake.remote_branches.details_remote_branches import execute as remote
 
 @click.command(
     name="remote_branches_cleanup",
-    short_help="Helper function for deleting branches merged branches from the remote repository.",
+    short_help="Deletes merged branches from the remote repository.",
     help="Iterates over the remote branches asking the user which merged branches to delete",
     epilog=(
         "Requires user input to delete branches. "
