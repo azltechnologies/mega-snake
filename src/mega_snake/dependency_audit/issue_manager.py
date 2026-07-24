@@ -71,7 +71,7 @@ def issue_exists(title: str) -> bool:
         bool: True if a matching issue already exists, False otherwise.
     """
     escaped_title: str = title.replace('"', '\\"')
-    cwd: str = f'gh issue list --search "\\"{escaped_title}\\" in:title" --state all --json title 2>&1'
+    cwd: str = f'gh issue list --search "\\"{escaped_title}\\" in:title" --state all --json title'
     result = run_operation(cwd, f"Check for existing issue: {title}", check=False)
     try:
         issues: list[dict] = json.loads(result.stdout or "[]")

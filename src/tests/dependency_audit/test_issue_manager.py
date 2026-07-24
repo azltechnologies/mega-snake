@@ -64,7 +64,12 @@ def test_issue_exists_true(run_operation: MagicMock) -> None:
     run_operation.return_value = MagicMock(stdout=json.dumps([{"title": "[Security] example==1.0.0 - PYSEC-2024-1"}]))
     assert issue_exists("[Security] example==1.0.0 - PYSEC-2024-1") is True
     run_operation.assert_called_once()
-    assert "gh issue list" in run_operation.call_args[0][0]
+    command = run_operation.call_args[0][0]
+    assert "gh issue list" in command
+    # stderr must NOT be merged into stdout: any warning gh writes to stderr (auth notices,
+    # rate-limit hints, etc.) would corrupt the JSON we parse from stdout, the same class of
+    # bug previously fixed in scanner.run_pip_audit.
+    assert "2>&1" not in command
 
 
 def test_issue_exists_false(run_operation: MagicMock) -> None:
