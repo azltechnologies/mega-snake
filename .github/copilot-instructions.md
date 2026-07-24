@@ -194,7 +194,28 @@ We use the `gh` (GitHub CLI) tool because it leverages the user's existing authe
 **Educational Logic:**
 Instead of re-implementing the GitHub API client (which requires managing OAuth tokens, permissions, etc.), we delegate the heavy lifting to the `gh` binary. This is a common "shell wrapper" pattern where Python manages the *control flow* and *validation*, but the shell executes the *remote action*.
 
-### 3.5 Other Utilities
+### 3.5 Dependency Vulnerability Audit (`src/mega_snake/dependency_audit/`)
+
+#### `scan-dependencies` (`sdep`, `audit`)
+Scans the project's locked dependencies for known vulnerabilities and files a GitHub issue per new finding.
+
+**Logic:**
+1. `scanner.py` exports `uv.lock` to a requirements file (`uv export`) and runs `pip-audit` against it, parsing the
+   JSON output (OSV advisory database) into `Vulnerability` objects (package, installed version, fix versions,
+   aliases/CVEs, description).
+2. `issue_manager.py` builds a deterministic issue title per finding, checks `gh issue list --search` for an existing
+   issue with that exact title (open or closed) to avoid duplicates, and files a new one via `gh issue create`
+   otherwise.
+3. `module.py` wires this into the `scan-dependencies` command (`--dry-run` prints findings without creating issues).
+
+**Design Pattern:** Same "shell wrapper" pattern as `create-release` — Python owns control flow/parsing, `gh` owns the
+remote GitHub action.
+
+**Automation:** Enabled via Dependabot (`.github/dependabot.yml`, PRs for outdated deps) plus a scheduled/PR GitHub
+Actions workflow that runs `mgsnake scan-dependencies` (template at `docs/dependency-scan-workflow.yml` — copy to
+`.github/workflows/` to activate it).
+
+### 3.6 Other Utilities
 
 #### `graphql-schema` (`graphql_schema.py`)
 Compiles multiple `.graphql` files into a single schema and generates introspection JSON.

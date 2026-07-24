@@ -1,0 +1,19 @@
+version: 2
+updates:
+  # Keep Python dependencies (pyproject.toml / uv.lock) up to date.
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+    open-pull-requests-limit: 10
+
+  # Keep the GitHub Actions used by this repo's workflows up to date.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "github-actions"
