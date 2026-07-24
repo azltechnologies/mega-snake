@@ -49,5 +49,7 @@ jobs:
           # Optional: Add claude_args to customize behavior and configuration
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
-          # claude_args: '--allowed-tools Bash(gh pr *)'
+          # Allow Claude to run the project's dev toolchain and Git/GitHub commands so it can
+          # validate changes (tests, lint, type-check) and manage PRs without manual approval.
+          claude_args: '--allowed-tools Bash(uv:*),Bash(pytest:*),Bash(ruff:*),Bash(mypy:*),Bash(gh:*),Bash(git:*)'
 
