@@ -11,7 +11,7 @@ dependencies = [
     "click==8.4.2",
     "colorama==0.4.6",
     "directory-tree==1.0.0",
-    "graphql-core==3.2.5",
+    "graphql-core==3.2.11",
     "jq==1.12.0",
     "json-spec==0.12.0",
     "jsoncomment==0.4.2",
@@ -25,7 +25,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest-cov>=6.0.0",
-    "pytest==8.3.4",
+    "pytest>=9.0.3",
     "mypy==2.3.0",
     "mypy-extensions==1.0.0",
     "pytest-pylint>=0.21.0",
