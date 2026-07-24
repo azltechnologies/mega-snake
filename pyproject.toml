@@ -27,7 +27,7 @@ dev = [
     "pytest-cov>=6.0.0",
     "pytest==9.1.1",
     "mypy==2.3.0",
-    "mypy-extensions==1.0.0",
+    "mypy-extensions==1.1.0",
     "pytest-pylint>=0.21.0",
     "pytest-html>=4.1.1",
     "ruff>=0.1.0",
