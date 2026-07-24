@@ -18,9 +18,9 @@ jobs:
 
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      pull-requests: read
-      issues: read
+      contents: read # Review only reads code; it does not push commits
+      pull-requests: write # Required for Claude to post the review comment
+      issues: write # Required for Claude to update its progress comment
       id-token: write
 
     steps:
