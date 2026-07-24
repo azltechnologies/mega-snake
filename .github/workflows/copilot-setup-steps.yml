@@ -14,7 +14,7 @@ jobs:
       contents: read # This is mandatory to allow the action to read the repository contents
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up environment
         uses: ./.github/actions/setup-env
