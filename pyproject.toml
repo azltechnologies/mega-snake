@@ -9,7 +9,7 @@ readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "astroid==3.3.8",
-    "click==8.1.7",
+    "click==8.4.2",
     "colorama==0.4.6",
     "directory-tree==1.0.0",
     "graphql-core==3.2.5",

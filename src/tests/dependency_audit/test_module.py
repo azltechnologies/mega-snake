@@ -9,7 +9,7 @@ from mega_snake.dependency_audit.scanner import Vulnerability
 def test_main_group() -> None:
     """Test the main command group"""
     runner = CliRunner()
-    result = runner.invoke(module.main)
+    result = runner.invoke(module.main, ["--help"])
     assert result.exit_code == 0
     assert "dependency audit related commands" in result.output
 
