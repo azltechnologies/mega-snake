@@ -14,6 +14,7 @@ right auditor automatically, with a manual override available via `get_auditor`.
 """
 
 import json
+import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Protocol
@@ -191,7 +192,7 @@ def run_pip_audit(requirements_path: str) -> list[Vulnerability]:
     Returns:
         list[Vulnerability]: The vulnerabilities found in the given requirements file.
     """
-    cwd: str = f"pip-audit -r {requirements_path} --format json --progress-spinner off"
+    cwd: str = f"pip-audit -r {shlex.quote(requirements_path)} --format json --progress-spinner off"
     result = run_operation(cwd, "Audit dependencies with pip-audit", check=False)
     return parse_pip_audit_output(result.stdout)
 
@@ -276,7 +277,7 @@ def run_osv_scanner(target: str = ".") -> list[Vulnerability]:
     Returns:
         list[Vulnerability]: The vulnerabilities found under the given target.
     """
-    cwd: str = f"osv-scanner --format json --recursive {target}"
+    cwd: str = f"osv-scanner --format json --recursive {shlex.quote(target)}"
     result = run_operation(cwd, "Audit dependencies with osv-scanner", check=False)
     return parse_osv_scanner_output(result.stdout)
 
@@ -341,6 +342,7 @@ def detect_ecosystem(project_root: str = ".") -> str:
     for ecosystem, markers in ECOSYSTEM_MARKERS.items():
         if any((root / marker).exists() for marker in markers):
             return ecosystem
+    ws_warning("No ecosystem marker found. Falling back to generic OSV scan (this may be a full recursive scan of the current directory).")
     return ECOSYSTEM_OSV
 
 
