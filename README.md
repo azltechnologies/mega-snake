@@ -248,7 +248,6 @@ This repository combines two free, open-source tools to keep dependencies up to 
   GitHub issue for every new vulnerability finding (package, current/recommended version, severity, advisory link),
   skipping findings that were already reported.
 
-> **Note:** Enabling the scheduled/PR workflow that runs `mgsnake scan-dependencies` in CI requires adding a workflow
-> file under `.github/workflows/`. A ready-to-use template is provided at
-> [`docs/dependency-scan-workflow.yml`](docs/dependency-scan-workflow.yml) — copy it to
-> `.github/workflows/dependency-scan.yml` to enable scheduled and per-PR scans.
+The scheduled/PR workflow that runs `mgsnake scan-dependencies` in CI lives at
+[`.github/workflows/dependency-scan.yml`](.github/workflows/dependency-scan.yml). It runs weekly, on pull requests that
+touch `pyproject.toml`/`uv.lock`, and on demand via `workflow_dispatch`.

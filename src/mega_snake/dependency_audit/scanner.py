@@ -148,7 +148,7 @@ def run_pip_audit(requirements_path: str) -> list[Vulnerability]:
     Returns:
         list[Vulnerability]: The vulnerabilities found in the given requirements file.
     """
-    cwd: str = f"pip-audit -r {requirements_path} --format json --progress-spinner off 2>&1"
+    cwd: str = f"pip-audit -r {requirements_path} --format json --progress-spinner off"
     result = run_operation(cwd, "Audit dependencies with pip-audit", check=False)
     return parse_pip_audit_output(result.stdout)
 
