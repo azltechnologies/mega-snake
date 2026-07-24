@@ -6,9 +6,11 @@ from unittest.mock import patch, MagicMock
 import pytest
 from mega_snake.dependency_audit.scanner import Vulnerability
 from mega_snake.dependency_audit.issue_manager import (
+    LABEL_DEFINITIONS,
     build_issue_title,
     build_issue_body,
     issue_exists,
+    ensure_labels_exist,
     create_issue,
     report_vulnerabilities,
 )
@@ -94,14 +96,26 @@ def test_create_issue_skips_when_issue_exists(vulnerability: Vulnerability) -> N
 
 
 def test_create_issue_creates_new_issue(vulnerability: Vulnerability, run_operation: MagicMock) -> None:
-    """create_issue should call gh issue create when no matching issue exists."""
+    """create_issue should ensure labels exist and then call gh issue create."""
     with patch("mega_snake.dependency_audit.issue_manager.issue_exists", return_value=False):
         assert create_issue(vulnerability) is True
-    run_operation.assert_called_once()
-    command = run_operation.call_args[0][0]
-    assert "gh issue create" in command
-    assert "[Security] example==1.0.0 - PYSEC-2024-1" in command
-    assert "dependencies,security" in command
+    commands = [call.args[0] for call in run_operation.call_args_list]
+    # Labels must be ensured before the issue is created so gh does not abort.
+    assert any('gh label create "dependencies"' in command for command in commands)
+    assert any('gh label create "security"' in command for command in commands)
+    create_command = run_operation.call_args[0][0]
+    assert "gh issue create" in create_command
+    assert "[Security] example==1.0.0 - PYSEC-2024-1" in create_command
+    assert "dependencies,security" in create_command
+
+
+def test_ensure_labels_exist_creates_every_required_label(run_operation: MagicMock) -> None:
+    """ensure_labels_exist should idempotently create every required label via gh."""
+    ensure_labels_exist()
+    commands = [call.args[0] for call in run_operation.call_args_list]
+    assert len(commands) == len(LABEL_DEFINITIONS)
+    for label in LABEL_DEFINITIONS:
+        assert any(f'gh label create "{label}"' in command and "--force" in command for command in commands)
 
 
 def test_report_vulnerabilities_counts_created_issues(vulnerability: Vulnerability) -> None:
