@@ -212,8 +212,7 @@ Scans the project's locked dependencies for known vulnerabilities and files a Gi
 remote GitHub action.
 
 **Automation:** Enabled via Dependabot (`.github/dependabot.yml`, PRs for outdated deps) plus a scheduled/PR GitHub
-Actions workflow that runs `mgsnake scan-dependencies` (template at `docs/dependency-scan-workflow.yml` — copy to
-`.github/workflows/` to activate it).
+Actions workflow (`.github/workflows/dependency-scan.yml`) that runs `mgsnake scan-dependencies`.
 
 ### 3.6 Other Utilities
 

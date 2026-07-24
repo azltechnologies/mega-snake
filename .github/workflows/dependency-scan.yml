@@ -1,0 +1,39 @@
+# Automated dependency vulnerability scanning.
+#
+# Runs `mgsnake scan-dependencies` (src/mega_snake/dependency_audit), which audits the
+# locked dependencies (`uv.lock`) with `pip-audit` against the OSV advisory database and
+# opens a GitHub issue for every new finding, skipping ones already reported (see
+# README.md "Automated dependency vulnerability scanning").
+name: Dependency Vulnerability Scan
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Weekly, Monday 06:00 UTC
+  pull_request:
+    paths:
+      - "pyproject.toml"
+      - "uv.lock"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up environment
+        uses: ./.github/actions/setup-env
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Scan dependencies and file issues for new findings
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MEGA_SNAKE_SHELL: bash
+        run: uv run mgsnake scan-dependencies

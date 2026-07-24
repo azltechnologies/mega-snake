@@ -100,6 +100,9 @@ def test_run_pip_audit(run_operation: MagicMock) -> None:
     run_operation.assert_called_once()
     command = run_operation.call_args[0][0]
     assert "pip-audit -r requirements.txt" in command
+    # stderr must NOT be merged into stdout: pip-audit prints its human-readable summary
+    # to stderr, which would corrupt the JSON we parse from stdout.
+    assert "2>&1" not in command
     assert run_operation.call_args.kwargs.get("check") is False
     assert not vulnerabilities
 
