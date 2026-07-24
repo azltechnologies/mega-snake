@@ -225,3 +225,30 @@ Internal utility to print and log formatted messages.
 
 - **Usage**: `mgsnake msg <message> [-t type]`
 - **Types**: `S` (Success), `I` (Info), `W` (Warning), `E` (Error), `T` (Tip).
+
+##### `mgsnake scan-dependencies` (aliases: `sdep`, `audit`)
+
+Scans the project's locked dependencies (`uv.lock`) for known vulnerabilities.
+
+- **Usage**: `mgsnake scan-dependencies [--dry-run]`
+- Exports `uv.lock` to a requirements file and runs [`pip-audit`](https://github.com/pypa/pip-audit) against it,
+  which checks packages against the [OSV](https://osv.dev) advisory database.
+- For each vulnerability found, opens a GitHub issue (via the `gh` CLI) containing the affected package, installed
+  version, recommended version, severity and a link to the advisory.
+- Skips filing an issue when one with the same title already exists (open or closed), to avoid duplicates.
+- `--dry-run`: prints the findings without creating any GitHub issues.
+
+## Automated dependency vulnerability scanning
+
+This repository combines two free, open-source tools to keep dependencies up to date and flag vulnerabilities:
+
+- **[Dependabot](https://docs.github.com/en/code-security/dependabot)** (`.github/dependabot.yml`): opens weekly pull
+  requests to update outdated `pip`/`uv` dependencies and GitHub Actions.
+- **`mgsnake scan-dependencies`**: runs [`pip-audit`](https://github.com/pypa/pip-audit) against `uv.lock` and files a
+  GitHub issue for every new vulnerability finding (package, current/recommended version, severity, advisory link),
+  skipping findings that were already reported.
+
+> **Note:** Enabling the scheduled/PR workflow that runs `mgsnake scan-dependencies` in CI requires adding a workflow
+> file under `.github/workflows/`. A ready-to-use template is provided at
+> [`docs/dependency-scan-workflow.yml`](docs/dependency-scan-workflow.yml) — copy it to
+> `.github/workflows/dependency-scan.yml` to enable scheduled and per-PR scans.

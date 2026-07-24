@@ -1,0 +1,51 @@
+# Template GitHub Actions workflow for automated dependency vulnerability scanning.
+#
+# This file cannot be added directly to `.github/workflows/` by this change (workflow
+# files require elevated GitHub App permissions to create/modify). Copy this file to
+# `.github/workflows/dependency-scan.yml` to enable it.
+#
+# It runs `mgsnake scan-dependencies` (src/mega_snake/dependency_audit), which audits
+# the locked dependencies (`uv.lock`) with `pip-audit` against the OSV advisory
+# database and opens a GitHub issue for every new finding, skipping ones already
+# reported (see README.md "Automated dependency vulnerability scanning").
+name: Dependency Vulnerability Scan
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Weekly, Monday 06:00 UTC
+  pull_request:
+    paths:
+      - "pyproject.toml"
+      - "uv.lock"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        run: |
+          pip install uv
+
+      - name: Install dependencies
+        run: |
+          uv sync --all-extras
+
+      - name: Scan dependencies and file issues for new findings
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MEGA_SNAKE_SHELL: bash
+        run: |
+          uv run mgsnake scan-dependencies

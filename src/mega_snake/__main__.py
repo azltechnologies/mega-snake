@@ -8,6 +8,7 @@ from .diff_tree.module import main as diff_tree
 from .light_weight.module import main as create_release, add_wrapper as create_release_result_callback
 from .remote_branches.module import main as remote_branches, add_wrapper as remote_branches_result_callback
 from .config_environment.module import main as config_environment, add_wrapper as config_env_result_callback
+from .dependency_audit.module import main as dependency_audit, add_wrapper as dependency_audit_result_callback
 from .constants import LOGGING_OPT, SHELL_OPT, APP_NAME
 from .util.formatting import get_traceback
 from .util.props import init_app_properties
@@ -99,6 +100,8 @@ for command in config_environment.commands.values():
     cli.add_command(config_env_result_callback(command))
 for command in remote_branches.commands.values():
     cli.add_command(remote_branches_result_callback(command))
+for command in dependency_audit.commands.values():
+    cli.add_command(dependency_audit_result_callback(command))
 
 if __name__ == "__main__":
     try:

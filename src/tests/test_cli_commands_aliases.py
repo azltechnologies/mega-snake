@@ -20,6 +20,7 @@ from mega_snake import __main__ as app_main
         ("remote-branches-cleanup", ["rbc"]),
         ("create-release", ["release", "cr"]),
         ("expired-certs-jks", ["ecj"]),
+        ("scan-dependencies", ["sdep", "audit"]),
     ],
 )
 def test_cli_exposes_kebab_case_names_with_short_aliases(command_name: str, aliases: list[str]) -> None:
