@@ -228,11 +228,20 @@ Internal utility to print and log formatted messages.
 
 ##### `mgsnake scan-dependencies` (aliases: `sdep`, `audit`)
 
-Scans the project's locked dependencies (`uv.lock`) for known vulnerabilities.
+Scans the project's locked dependencies for known vulnerabilities against the [OSV](https://osv.dev) advisory
+database. Multiple ecosystems are supported: the auditor is auto-detected from the project's lockfiles, or can be
+forced explicitly.
 
-- **Usage**: `mgsnake scan-dependencies [--dry-run]`
-- Exports `uv.lock` to a requirements file and runs [`pip-audit`](https://github.com/pypa/pip-audit) against it,
-  which checks packages against the [OSV](https://osv.dev) advisory database.
+- **Usage**: `mgsnake scan-dependencies [--dry-run] [--ecosystem python|java|node|osv]`
+- **Ecosystem detection** (in order, first match wins):
+  - `uv.lock` present → **Python/uv**, audited with [`pip-audit`](https://github.com/pypa/pip-audit).
+  - `build.gradle`, `build.gradle.kts` or `pom.xml` present → **Java** (Gradle/Maven).
+  - `package-lock.json` present → **Node**.
+  - Nothing matches → generic **osv** fallback.
+  - Java, Node and the generic fallback are all audited with
+    [OSV-Scanner](https://github.com/google/osv-scanner), which supports many lockfile formats out of the box and
+    reads the same OSV advisory database as `pip-audit`.
+- `--ecosystem`: forces the auditor instead of auto-detecting it (`python`, `java`, `node` or `osv`).
 - For each vulnerability found, opens a GitHub issue (via the `gh` CLI) containing the affected package, installed
   version, recommended version, severity and a link to the advisory.
 - Skips filing an issue when one with the same title already exists (open or closed), to avoid duplicates.
@@ -244,10 +253,15 @@ This repository combines two free, open-source tools to keep dependencies up to 
 
 - **[Dependabot](https://docs.github.com/en/code-security/dependabot)** (`.github/dependabot.yml`): opens weekly pull
   requests to update outdated `pip`/`uv` dependencies and GitHub Actions.
-- **`mgsnake scan-dependencies`**: runs [`pip-audit`](https://github.com/pypa/pip-audit) against `uv.lock` and files a
-  GitHub issue for every new vulnerability finding (package, current/recommended version, severity, advisory link),
-  skipping findings that were already reported.
+- **`mgsnake scan-dependencies`**: audits the project's dependencies with [`pip-audit`](https://github.com/pypa/pip-audit)
+  (Python/uv) or [OSV-Scanner](https://github.com/google/osv-scanner) (Java/Gradle/Maven, Node, or any other
+  ecosystem) depending on the detected lockfiles, and files a GitHub issue for every new vulnerability finding
+  (package, current/recommended version, severity, advisory link), skipping findings that were already reported.
+  Any repo can reuse this by consuming `mgsnake`, regardless of its stack.
 
 The scheduled/PR workflow that runs `mgsnake scan-dependencies` in CI lives at
 [`.github/workflows/dependency-scan.yml`](.github/workflows/dependency-scan.yml). It runs weekly, on pull requests that
-touch `pyproject.toml`/`uv.lock`, and on demand via `workflow_dispatch`.
+touch `pyproject.toml`/`uv.lock`, and on demand via `workflow_dispatch`. Consuming repos on other ecosystems should
+adapt this workflow to install the right auditor (e.g. `osv-scanner`) and pass `--ecosystem` if auto-detection isn't
+sufficient; `.github/dependabot.yml` and the workflow itself are inherently per-repo (GitHub reads them from the repo
+where they live) and cannot be consumed remotely from the `mega-snake` package.

@@ -197,22 +197,36 @@ Instead of re-implementing the GitHub API client (which requires managing OAuth 
 ### 3.5 Dependency Vulnerability Audit (`src/mega_snake/dependency_audit/`)
 
 #### `scan-dependencies` (`sdep`, `audit`)
-Scans the project's locked dependencies for known vulnerabilities and files a GitHub issue per new finding.
+Scans the project's locked dependencies for known vulnerabilities, across multiple ecosystems, and files a GitHub
+issue per new finding.
 
 **Logic:**
-1. `scanner.py` exports `uv.lock` to a requirements file (`uv export`) and runs `pip-audit` against it, parsing the
-   JSON output (OSV advisory database) into `Vulnerability` objects (package, installed version, fix versions,
-   aliases/CVEs, description).
+1. `scanner.py` defines a `DependencyAuditor` protocol (`scan() -> list[Vulnerability]`) with two implementations:
+   - `PipAuditAuditor`: exports `uv.lock` to a requirements file (`uv export`) and runs `pip-audit` against it
+     (Python/uv projects).
+   - `OsvScannerAuditor`: runs `osv-scanner --format json --recursive <target>` (Java/Gradle/Maven, Node, and as the
+     generic fallback for any other ecosystem). Chosen over one tool per ecosystem because it already reads the same
+     OSV advisory database `Vulnerability.advisory_url` relies on.
+   - Both parse their tool's JSON output into the same `Vulnerability` objects (package, installed version, fix
+     versions, aliases/CVEs, description).
+   - `detect_ecosystem()` picks the auditor from marker files: `uv.lock` → Python, `build.gradle(.kts)`/`pom.xml` →
+     Java, `package-lock.json` → Node, otherwise falls back to the generic `OsvScannerAuditor`. `get_auditor()` /
+     `scan_dependencies()` accept an explicit `ecosystem` override.
 2. `issue_manager.py` builds a deterministic issue title per finding, checks `gh issue list --search` for an existing
    issue with that exact title (open or closed) to avoid duplicates, and files a new one via `gh issue create`
-   otherwise.
-3. `module.py` wires this into the `scan-dependencies` command (`--dry-run` prints findings without creating issues).
+   otherwise. It is ecosystem-agnostic — it only consumes `Vulnerability` objects — and is unaffected by the
+   ecosystem the finding came from.
+3. `module.py` wires this into the `scan-dependencies` command (`--dry-run` prints findings without creating issues;
+   `--ecosystem python|java|node|osv` forces the auditor instead of auto-detecting it).
 
-**Design Pattern:** Same "shell wrapper" pattern as `create-release` — Python owns control flow/parsing, `gh` owns the
-remote GitHub action.
+**Design Pattern:** Same "shell wrapper" pattern as `create-release` — Python owns control flow/parsing, `gh` (and
+`pip-audit`/`osv-scanner`) own the remote/scanning action.
 
 **Automation:** Enabled via Dependabot (`.github/dependabot.yml`, PRs for outdated deps) plus a scheduled/PR GitHub
-Actions workflow (`.github/workflows/dependency-scan.yml`) that runs `mgsnake scan-dependencies`.
+Actions workflow (`.github/workflows/dependency-scan.yml`) that runs `mgsnake scan-dependencies`. Both files are
+inherently per-repo (GitHub reads them from the repo where they live), so consuming repos on other ecosystems must
+still add their own copies (adapted to install the right auditor, e.g. `osv-scanner`), even though the scanning logic
+itself is consumed from `mega-snake`.
 
 ### 3.6 Other Utilities
 
