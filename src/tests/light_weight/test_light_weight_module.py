@@ -6,6 +6,6 @@ from mega_snake.light_weight import module
 def test_main_group() -> None:
     """Test the main command group"""
     runner = CliRunner()
-    result = runner.invoke(module.main)
+    result = runner.invoke(module.main, ["--help"])
     assert result.exit_code == 0
     assert "light weight related commands" in result.output

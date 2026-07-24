@@ -8,7 +8,7 @@ from mega_snake.config_environment import module
 def test_main_group() -> None:
     """Test the main command group"""
     runner = CliRunner()
-    result = runner.invoke(module.main)
+    result = runner.invoke(module.main, ["--help"])
     assert result.exit_code == 0
     assert "Configuration related commands" in result.output
 
