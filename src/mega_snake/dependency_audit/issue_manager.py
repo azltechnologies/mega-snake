@@ -13,6 +13,15 @@ from mega_snake.util.formatting import ws_info, ws_success
 
 ISSUE_LABELS: str = "dependencies,security"
 
+# Definitions (color, description) for every label required on vulnerability issues.
+# `gh issue create` aborts without creating anything when a referenced label is
+# missing, and `scan-dependencies` is meant to run in any repository, so we cannot
+# assume these labels already exist in the target repo.
+LABEL_DEFINITIONS: dict[str, tuple[str, str]] = {
+    "dependencies": ("0366d6", "Pull requests that update a dependency"),
+    "security": ("d73a4a", "Security vulnerability reported by the dependency audit scan"),
+}
+
 
 def build_issue_title(vulnerability: Vulnerability) -> str:
     """Build the deterministic issue title used both for creation and duplicate detection.
@@ -81,6 +90,28 @@ def issue_exists(title: str) -> bool:
     return any(issue.get("title") == title for issue in issues)
 
 
+def ensure_labels_exist() -> None:
+    """Ensure every label required for vulnerability issues exists in the repository.
+
+    `gh issue create` aborts without creating the issue when a referenced label does
+    not exist. Because `scan-dependencies` may run in any repository, the labels are
+    created idempotently using `gh label create --force`, which creates the label when
+    it is missing and updates its color/description when it already exists.
+
+    Parameters:
+        None
+
+    Raises:
+        subprocess.SubprocessError: If a `gh label create` call fails after all retries.
+
+    Returns:
+        None
+    """
+    for label, (color, description) in LABEL_DEFINITIONS.items():
+        cwd: str = f'gh label create "{label}" --color "{color}" --description "{description}" --force'
+        run_operation(cwd, f"Ensure label exists: {label}")
+
+
 def create_issue(vulnerability: Vulnerability) -> bool:
     """Create a GitHub issue for the given vulnerability if one does not already exist.
 
@@ -97,6 +128,7 @@ def create_issue(vulnerability: Vulnerability) -> bool:
     if issue_exists(title):
         ws_info(f"Issue already exists for '{title}'. Skipping.")
         return False
+    ensure_labels_exist()
     body: str = build_issue_body(vulnerability)
     cwd: str = f'gh issue create --title "{title}" --body "{body}" --label "{ISSUE_LABELS}" 2>&1'
     run_operation(cwd, f"Create issue for {title}")
