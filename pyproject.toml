@@ -17,7 +17,7 @@ dependencies = [
     "jsoncomment==0.4.2",
     "pyperclip==1.11.0",
     "rich-click==1.9.8",
-    "types-colorama==0.4.15.20240311",
+    "types-colorama==0.4.15.20260508",
     "virtualenv==21.7.0",
     "pytest-mock==3.15.1",
 ]
