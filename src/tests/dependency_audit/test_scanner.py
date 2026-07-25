@@ -3,6 +3,7 @@
 import json
 from typing import Generator
 from unittest.mock import patch, MagicMock
+import click
 import pytest
 from mega_snake.dependency_audit.scanner import (
     ECOSYSTEM_JAVA,
@@ -206,6 +207,19 @@ def test_run_osv_scanner(run_operation: MagicMock) -> None:
     assert "osv-scanner --format json --recursive some/target" in command
     assert run_operation.call_args.kwargs.get("check") is False
     assert not vulnerabilities
+
+
+def test_run_osv_scanner_raises_when_tool_fails(run_operation: MagicMock) -> None:
+    """Empty output with a non-zero exit means osv-scanner failed to run, not a clean scan."""
+    run_operation.return_value = MagicMock(stdout="", returncode=127)
+    with pytest.raises(click.ClickException, match="osv-scanner produced no output"):
+        run_osv_scanner("some/target")
+
+
+def test_run_osv_scanner_empty_output_clean_exit(run_operation: MagicMock) -> None:
+    """Empty output with a zero exit is treated as a clean scan, not a failure."""
+    run_operation.return_value = MagicMock(stdout="", returncode=0)
+    assert run_osv_scanner("some/target") == []
 
 
 def test_pip_audit_auditor_scan() -> None:

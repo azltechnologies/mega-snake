@@ -18,6 +18,9 @@ import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Protocol
+
+import click
+
 from mega_snake.util.util import run_operation
 from mega_snake.util.formatting import ws_info, ws_warning
 
@@ -272,13 +275,25 @@ def run_osv_scanner(target: str = ".") -> list[Vulnerability]:
         target: Path to the project root to scan recursively.
 
     Raises:
-        None
+        click.ClickException: If `osv-scanner` produces no output and exits with a
+            non-zero status, which signals the tool failed to run (e.g. it is not
+            installed) rather than a clean scan.
 
     Returns:
         list[Vulnerability]: The vulnerabilities found under the given target.
     """
     cwd: str = f"osv-scanner --format json --recursive {shlex.quote(target)}"
     result = run_operation(cwd, "Audit dependencies with osv-scanner", check=False)
+    # A clean scan exits 0 with JSON on stdout; a scan that finds vulnerabilities
+    # exits non-zero but still writes JSON. Empty stdout together with a non-zero
+    # exit therefore means the tool failed to run (e.g. `osv-scanner` is not on
+    # PATH). Failing loudly here avoids a silent false negative that would report
+    # "no vulnerabilities" for a scan that never actually happened.
+    if not result.stdout.strip() and result.returncode != 0:
+        raise click.ClickException(
+            f"osv-scanner produced no output and exited with status {result.returncode}. "
+            "Is it installed and on PATH? See the dependency-audit docs for installation."
+        )
     return parse_osv_scanner_output(result.stdout)
 
 

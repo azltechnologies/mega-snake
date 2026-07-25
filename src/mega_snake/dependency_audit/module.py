@@ -1,7 +1,9 @@
 """Contains the dependency-audit command group: scans dependencies and files GitHub issues for findings."""
 
 from typing import Optional
+
 import click
+
 from mega_snake.util.util import cli_metadata, wrapper_decorator
 from mega_snake.util.cli_group import CliGroup
 from mega_snake.util.formatting import ws_info, ws_success
