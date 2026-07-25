@@ -1,26 +1,27 @@
 name: Claude Code Review
 
+# On-demand only: this review is NOT automatic. It runs when the `claude-cr`
+# label is added to a PR. Re-run it by removing and re-adding the label.
+#
+# Why a direct prompt instead of the `code-review` plugin: that plugin is built
+# for interactive terminal use and fans out into ~5 parallel (Opus) subagents.
+# In headless CI it burns a large share of the token budget and still fails to
+# post results (see anthropics/claude-code#26227). A direct prompt modeled on the
+# official `pr-review-comprehensive.yml` example is single-agent, cheaper, and
+# actually posts the review.
 on:
   pull_request:
-    types: [opened, synchronize, ready_for_review, reopened]
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
+    types: [labeled]
 
 jobs:
   claude-review:
-    # Skip automated bot PRs (Dependabot, etc.) to avoid spending Claude quota on them.
-    # Those PRs can still be reviewed on demand by commenting @claude.
-    if: github.actor != 'dependabot[bot]'
+    # Only run when the trigger label is the one that was just added.
+    if: github.event.label.name == 'claude-cr'
 
     runs-on: ubuntu-latest
     permissions:
       contents: read # Review only reads code; it does not push commits
-      pull-requests: write # Required for Claude to post the review comment
-      issues: write # Required for Claude to update its progress comment
+      pull-requests: write # Required to post the review and inline comments
       id-token: write
 
     steps:
@@ -34,14 +35,21 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
-          plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
-          # Allow the tools the code-review plugin declares. Without this the action's
-          # restrictive allowlist denies every gh/inline-comment call, so the review runs
-          # but posts nothing (permission_denials_count > 0, "No buffered inline comments").
+          # Temporary: surface the full SDK output so we can confirm the run posts
+          # comments and denials stay at ~0. Remove once verified healthy.
+          show_full_output: true
+          prompt: |
+            Review the pull request ${{ github.repository }}#${{ github.event.pull_request.number }}.
+            Use `gh pr diff` to get the changes and `gh pr view` for context.
+            Focus on: correctness/bugs, security, performance, test coverage, and
+            adherence to this repo's CLAUDE.md conventions.
+            Post specific issues as inline comments with
+            mcp__github_inline_comment__create_inline_comment, and leave one concise
+            top-level summary comment with `gh pr comment`. Do NOT spawn subagents;
+            do the review yourself, sequentially.
+          # Read-only review tools: the inline-comment MCP tool plus the `gh` reads
+          # the prompt relies on. No plugin/subagents, so no Task tool is involved.
           claude_args: |
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh search:*)"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
-
