@@ -16,10 +16,11 @@ def test_main_group() -> None:
 
 def test_scan_dependencies_command_no_findings() -> None:
     """When no vulnerabilities are found, no issues should be created."""
-    with patch("mega_snake.dependency_audit.module.scan_dependencies", return_value=[]), patch(
+    with patch("mega_snake.dependency_audit.module.scan_dependencies", return_value=[]) as scan_mock, patch(
         "mega_snake.dependency_audit.module.report_vulnerabilities"
     ) as report_mock:
-        module.scan_dependencies_command.callback(False)
+        module.scan_dependencies_command.callback(False, None)
+    scan_mock.assert_called_once_with(ecosystem=None)
     report_mock.assert_not_called()
 
 
@@ -29,7 +30,7 @@ def test_scan_dependencies_command_dry_run() -> None:
     with patch("mega_snake.dependency_audit.module.scan_dependencies", return_value=[vulnerability]), patch(
         "mega_snake.dependency_audit.module.report_vulnerabilities"
     ) as report_mock:
-        module.scan_dependencies_command.callback(True)
+        module.scan_dependencies_command.callback(True, None)
     report_mock.assert_not_called()
 
 
@@ -39,5 +40,26 @@ def test_scan_dependencies_command_creates_issues() -> None:
     with patch("mega_snake.dependency_audit.module.scan_dependencies", return_value=[vulnerability]), patch(
         "mega_snake.dependency_audit.module.report_vulnerabilities", return_value=1
     ) as report_mock:
-        module.scan_dependencies_command.callback(False)
+        module.scan_dependencies_command.callback(False, None)
     report_mock.assert_called_once_with([vulnerability])
+
+
+def test_scan_dependencies_command_ecosystem_override() -> None:
+    """The --ecosystem override should be forwarded to scan_dependencies."""
+    with patch("mega_snake.dependency_audit.module.scan_dependencies", return_value=[]) as scan_mock, patch(
+        "mega_snake.dependency_audit.module.report_vulnerabilities"
+    ):
+        module.scan_dependencies_command.callback(False, "java")
+    scan_mock.assert_called_once_with(ecosystem="java")
+
+
+def test_scan_dependencies_command_cli_ecosystem_option() -> None:
+    """The --ecosystem CLI flag should be parsed and rejects unknown values."""
+    runner = CliRunner()
+    with patch("mega_snake.dependency_audit.module.scan_dependencies", return_value=[]) as scan_mock:
+        result = runner.invoke(module.scan_dependencies_command, ["--ecosystem", "java"])
+    assert result.exit_code == 0
+    scan_mock.assert_called_once_with(ecosystem="java")
+
+    result = runner.invoke(module.scan_dependencies_command, ["--ecosystem", "unknown"])
+    assert result.exit_code != 0

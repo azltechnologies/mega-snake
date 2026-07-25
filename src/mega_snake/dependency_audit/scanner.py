@@ -1,16 +1,45 @@
 """
-This module scans the project's locked dependencies for known vulnerabilities.
+This module scans a project's locked dependencies for known vulnerabilities.
 
-It exports the `uv.lock` file to a `requirements.txt` file and runs `pip-audit`
-against it, parsing the JSON output into a list of `Vulnerability` objects.
+It supports multiple ecosystems through a small `DependencyAuditor` protocol:
+- `PipAuditAuditor` exports `uv.lock` to a requirements file and runs `pip-audit`
+  against it (Python/uv projects).
+- `OsvScannerAuditor` runs `osv-scanner` against the project tree, covering
+  Java/Gradle/Maven, Node, and any other ecosystem OSV-Scanner supports.
+
+Both auditors normalize their tool-specific output into a shared list of
+`Vulnerability` objects. `detect_ecosystem` inspects the project root for marker
+files (`uv.lock`, `build.gradle(.kts)`/`pom.xml`, `package-lock.json`) to pick the
+right auditor automatically, with a manual override available via `get_auditor`.
 """
 
 import json
+import shlex
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional, Protocol
+
+import click
+
 from mega_snake.util.util import run_operation
 from mega_snake.util.formatting import ws_info, ws_warning
 
 REQUIREMENTS_EXPORT_PATH: str = "workspace_temp/dependency-audit-requirements.txt"
+
+ECOSYSTEM_PYTHON: str = "python"
+ECOSYSTEM_JAVA: str = "java"
+ECOSYSTEM_NODE: str = "node"
+ECOSYSTEM_OSV: str = "osv"
+
+SUPPORTED_ECOSYSTEMS: tuple[str, ...] = (ECOSYSTEM_PYTHON, ECOSYSTEM_JAVA, ECOSYSTEM_NODE, ECOSYSTEM_OSV)
+
+# Marker files used to auto-detect a project's ecosystem, checked in order.
+# The generic "osv" ecosystem has no marker: it is the fallback when nothing matches.
+ECOSYSTEM_MARKERS: dict[str, tuple[str, ...]] = {
+    ECOSYSTEM_PYTHON: ("uv.lock",),
+    ECOSYSTEM_JAVA: ("build.gradle", "build.gradle.kts", "pom.xml"),
+    ECOSYSTEM_NODE: ("package-lock.json",),
+}
 
 
 @dataclass
@@ -74,6 +103,24 @@ class Vulnerability:
         if any(alias.upper().startswith("CVE-") for alias in self.aliases):
             return "See advisory (CVE-tracked)"
         return "unknown"
+
+
+class DependencyAuditor(Protocol):
+    """Protocol implemented by every ecosystem-specific dependency auditor."""
+
+    def scan(self) -> list[Vulnerability]:
+        """Run the audit and return the vulnerabilities found.
+
+        Parameters:
+            None
+
+        Raises:
+            None
+
+        Returns:
+            list[Vulnerability]: The vulnerabilities found by this auditor.
+        """
+        ...  # pragma: no cover - structural typing only
 
 
 def export_requirements(output_path: str = REQUIREMENTS_EXPORT_PATH) -> str:
@@ -148,22 +195,212 @@ def run_pip_audit(requirements_path: str) -> list[Vulnerability]:
     Returns:
         list[Vulnerability]: The vulnerabilities found in the given requirements file.
     """
-    cwd: str = f"pip-audit -r {requirements_path} --format json --progress-spinner off"
+    cwd: str = f"pip-audit -r {shlex.quote(requirements_path)} --format json --progress-spinner off"
     result = run_operation(cwd, "Audit dependencies with pip-audit", check=False)
     return parse_pip_audit_output(result.stdout)
 
 
-def scan_dependencies() -> list[Vulnerability]:
-    """Run the full dependency audit pipeline: export, audit, and parse.
+def _extract_osv_fix_versions(vulnerability: dict) -> list[str]:
+    """Extract the fixed versions referenced by an OSV-Scanner vulnerability entry.
 
     Parameters:
-        None
+        vulnerability: A single vulnerability entry from OSV-Scanner's JSON output,
+            following the OSV schema (`affected[].ranges[].events[].fixed`).
 
     Raises:
-        subprocess.SubprocessError: If exporting the locked dependencies fails.
+        None
 
     Returns:
-        list[Vulnerability]: The vulnerabilities found in the project's locked dependencies.
+        list[str]: The fixed versions found, in the order they appear.
     """
-    requirements_path: str = export_requirements()
-    return run_pip_audit(requirements_path)
+    fix_versions: list[str] = []
+    for affected in vulnerability.get("affected", []):
+        for value_range in affected.get("ranges", []):
+            for event in value_range.get("events", []):
+                fixed: Optional[str] = event.get("fixed")
+                if fixed:
+                    fix_versions.append(fixed)
+    return fix_versions
+
+
+def parse_osv_scanner_output(raw_output: str) -> list[Vulnerability]:
+    """Parse the raw JSON produced by `osv-scanner` into `Vulnerability` objects.
+
+    Parameters:
+        raw_output: The raw stdout content produced by `osv-scanner --format json`.
+
+    Raises:
+        None
+
+    Returns:
+        list[Vulnerability]: One entry per (package, vulnerability) pair found. Empty if
+            the output is empty or cannot be parsed as JSON.
+    """
+    vulnerabilities: list[Vulnerability] = []
+    if not raw_output or not raw_output.strip():
+        return vulnerabilities
+    try:
+        data: dict = json.loads(raw_output)
+    except json.JSONDecodeError:
+        ws_warning("Could not parse osv-scanner output as JSON. Skipping vulnerability scan results.")
+        return vulnerabilities
+    results: list[dict] = data.get("results", [])
+    for result in results:
+        for package_entry in result.get("packages", []):
+            package_info: dict = package_entry.get("package", {})
+            package: str = package_info.get("name", "unknown")
+            installed_version: str = package_info.get("version", "unknown")
+            for vuln in package_entry.get("vulnerabilities", []):
+                vulnerabilities.append(
+                    Vulnerability(
+                        package=package,
+                        installed_version=installed_version,
+                        vulnerability_id=vuln.get("id", "UNKNOWN"),
+                        fix_versions=_extract_osv_fix_versions(vuln),
+                        aliases=vuln.get("aliases", []),
+                        description=vuln.get("summary") or vuln.get("details", ""),
+                    )
+                )
+    ws_info(f"Found {len(vulnerabilities)} vulnerabilities via osv-scanner.")
+    return vulnerabilities
+
+
+def run_osv_scanner(target: str = ".") -> list[Vulnerability]:
+    """Run `osv-scanner` against the given target and parse its results.
+
+    `osv-scanner` exits with a non-zero status code when vulnerabilities are found,
+    so the underlying command is executed without raising on failure.
+
+    Parameters:
+        target: Path to the project root to scan recursively.
+
+    Raises:
+        click.ClickException: If `osv-scanner` produces no output and exits with a
+            non-zero status, which signals the tool failed to run (e.g. it is not
+            installed) rather than a clean scan.
+
+    Returns:
+        list[Vulnerability]: The vulnerabilities found under the given target.
+    """
+    cwd: str = f"osv-scanner --format json --recursive {shlex.quote(target)}"
+    result = run_operation(cwd, "Audit dependencies with osv-scanner", check=False)
+    # A clean scan exits 0 with JSON on stdout; a scan that finds vulnerabilities
+    # exits non-zero but still writes JSON. Empty stdout together with a non-zero
+    # exit therefore means the tool failed to run (e.g. `osv-scanner` is not on
+    # PATH). Failing loudly here avoids a silent false negative that would report
+    # "no vulnerabilities" for a scan that never actually happened.
+    if not result.stdout.strip() and result.returncode != 0:
+        raise click.ClickException(
+            f"osv-scanner produced no output and exited with status {result.returncode}. "
+            "Is it installed and on PATH? See the dependency-audit docs for installation."
+        )
+    return parse_osv_scanner_output(result.stdout)
+
+
+@dataclass
+class PipAuditAuditor:
+    """Audits Python/uv projects by exporting `uv.lock` and running `pip-audit`."""
+
+    requirements_output_path: str = REQUIREMENTS_EXPORT_PATH
+
+    def scan(self) -> list[Vulnerability]:
+        """Export the locked Python dependencies and audit them with `pip-audit`.
+
+        Parameters:
+            None
+
+        Raises:
+            subprocess.SubprocessError: If exporting the locked dependencies fails.
+
+        Returns:
+            list[Vulnerability]: The vulnerabilities found in the project's locked dependencies.
+        """
+        requirements_path: str = export_requirements(self.requirements_output_path)
+        return run_pip_audit(requirements_path)
+
+
+@dataclass
+class OsvScannerAuditor:
+    """Audits any ecosystem supported by OSV-Scanner (Java/Gradle/Maven, Node, ...)."""
+
+    target: str = "."
+
+    def scan(self) -> list[Vulnerability]:
+        """Audit the target project tree with `osv-scanner`.
+
+        Parameters:
+            None
+
+        Raises:
+            None
+
+        Returns:
+            list[Vulnerability]: The vulnerabilities found under the target project tree.
+        """
+        return run_osv_scanner(self.target)
+
+
+def detect_ecosystem(project_root: str = ".") -> str:
+    """Detect a project's ecosystem by looking for well-known lockfile/build markers.
+
+    Parameters:
+        project_root: The directory to inspect for ecosystem marker files.
+
+    Raises:
+        None
+
+    Returns:
+        str: One of `SUPPORTED_ECOSYSTEMS`. Falls back to `ECOSYSTEM_OSV` when no
+            known marker file is found, so OSV-Scanner is used as a generic default.
+    """
+    root: Path = Path(project_root)
+    for ecosystem, markers in ECOSYSTEM_MARKERS.items():
+        if any((root / marker).exists() for marker in markers):
+            return ecosystem
+    ws_warning(
+        "No ecosystem marker found. Falling back to generic OSV scan "
+        "(this may be a full recursive scan of the current directory)."
+    )
+    return ECOSYSTEM_OSV
+
+
+def get_auditor(ecosystem: Optional[str] = None, project_root: str = ".") -> DependencyAuditor:
+    """Resolve the `DependencyAuditor` to use for the given (or detected) ecosystem.
+
+    Parameters:
+        ecosystem: An explicit ecosystem override (one of `SUPPORTED_ECOSYSTEMS`). When
+            None, the ecosystem is auto-detected from `project_root`.
+        project_root: The directory to inspect for ecosystem markers and to scan.
+
+    Raises:
+        ValueError: If `ecosystem` is provided but not one of `SUPPORTED_ECOSYSTEMS`.
+
+    Returns:
+        DependencyAuditor: `PipAuditAuditor` for the Python ecosystem, `OsvScannerAuditor`
+            for every other (Java, Node, or generic OSV) ecosystem.
+    """
+    resolved: str = ecosystem or detect_ecosystem(project_root)
+    if resolved not in SUPPORTED_ECOSYSTEMS:
+        raise ValueError(f"Unsupported ecosystem '{resolved}'. Expected one of: {', '.join(SUPPORTED_ECOSYSTEMS)}.")
+    if resolved == ECOSYSTEM_PYTHON:
+        return PipAuditAuditor()
+    return OsvScannerAuditor(target=project_root)
+
+
+def scan_dependencies(ecosystem: Optional[str] = None, project_root: str = ".") -> list[Vulnerability]:
+    """Run the full dependency audit pipeline for the detected or given ecosystem.
+
+    Parameters:
+        ecosystem: An explicit ecosystem override (one of `SUPPORTED_ECOSYSTEMS`). When
+            None, the ecosystem is auto-detected from `project_root`.
+        project_root: The directory to inspect for ecosystem markers and to scan.
+
+    Raises:
+        ValueError: If `ecosystem` is provided but not one of `SUPPORTED_ECOSYSTEMS`.
+        subprocess.SubprocessError: If the underlying auditor's export/scan step fails.
+
+    Returns:
+        list[Vulnerability]: The vulnerabilities found in the project's dependencies.
+    """
+    auditor: DependencyAuditor = get_auditor(ecosystem, project_root)
+    return auditor.scan()
