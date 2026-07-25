@@ -342,7 +342,10 @@ def detect_ecosystem(project_root: str = ".") -> str:
     for ecosystem, markers in ECOSYSTEM_MARKERS.items():
         if any((root / marker).exists() for marker in markers):
             return ecosystem
-    ws_warning("No ecosystem marker found. Falling back to generic OSV scan (this may be a full recursive scan of the current directory).")
+    ws_warning(
+        "No ecosystem marker found. Falling back to generic OSV scan "
+        "(this may be a full recursive scan of the current directory)."
+    )
     return ECOSYSTEM_OSV
 
 
