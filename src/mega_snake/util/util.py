@@ -62,7 +62,9 @@ def run_operation(cwd: str, description: str, check: bool = True) -> subprocess.
         flag: str = "-Command" if shell in ["powershell", "pwsh"] else "-c"
         try:
             ws_advice(f"Running: {cwd}")
-            result = subprocess.run([shell, flag, cwd], shell=False, check=check, capture_output=True, text=True)
+            result = subprocess.run(
+                [shell, flag, cwd], shell=False, check=check, capture_output=True, text=True, errors="replace"
+            )
             ws_advice(f"{description} successfully on attempt {attempt}!")
             ws_advice(f"stdout: {result.stdout}")
             break  # Exit the loop on successful push

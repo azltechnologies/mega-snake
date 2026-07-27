@@ -57,6 +57,75 @@ def test_file_type_and_diff_tree_helpers() -> None:
         diff_module._display_inner_tree("/tmp", "/tmp/out.txt", True)
 
 
+def test_get_binary_files() -> None:
+    """_get_binary_files should identify only entries with '-' in both numstat columns."""
+    with patch("mega_snake.diff_tree.module.run_operation") as run_operation:
+        run_operation.return_value.stdout = "1\t2\ta.txt\n-\t-\tasset.webp\n-\t-\tfont.ttf\n"
+        result = diff_module._get_binary_files("main", "head")
+    assert result == {"asset.webp", "font.ttf"}
+    run_operation.assert_called_once_with(
+        "git diff --numstat main head", "getting binary file information between 'main' and 'head' branches"
+    )
+
+    # empty numstat output should yield an empty set without crashing
+    with patch("mega_snake.diff_tree.module.run_operation") as run_operation:
+        run_operation.return_value.stdout = ""
+        result = diff_module._get_binary_files("main", "head")
+    assert result == set()
+
+
+def test_create_files_skips_binary_contents() -> None:
+    """_create_files should write a placeholder for binary files instead of calling git show."""
+    FileType.MODIFED.add("asset.webp")
+    FileType.MODIFED.add("text.txt")
+    try:
+        with patch("mega_snake.diff_tree.module.run_operation") as run_operation, patch(
+            "builtins.open", mock_open()
+        ) as m_open, patch("mega_snake.diff_tree.module.os.makedirs"), patch(
+            "mega_snake.diff_tree.module.os.path.dirname", return_value="/tmp"
+        ):
+            run_operation.return_value.stdout = "text content"
+            diff_module._create_files("/tmp/root", "main", True, {"asset.webp"})
+
+        written_contents = [call.args[0] for call in m_open().write.call_args_list]
+        assert "Binary file (contents not shown)" in written_contents
+        assert "text content" in written_contents
+        run_operation.assert_called_once_with("git show main:text.txt", "Getting file contents")
+    finally:
+        for ft in FileType:
+            ft.files_added = 0
+            ft.files.clear()
+
+
+def test_diff_tree_main_computes_binary_files() -> None:
+    """diff_tree main should compute binary files and forward them to _create_files."""
+    with patch("mega_snake.diff_tree.module.get_property", return_value="/tmp"), patch(
+        "mega_snake.diff_tree.module.os.path.exists", return_value=True
+    ), patch("mega_snake.diff_tree.module.get_current_commit", return_value="head"), patch(
+        "mega_snake.diff_tree.module.run_operation"
+    ) as run_operation, patch(
+        "mega_snake.diff_tree.module._create_files"
+    ) as create_files, patch("mega_snake.diff_tree.module._display_inner_tree"), patch(
+        "mega_snake.diff_tree.module.shutil.rmtree"
+    ), patch(
+        "builtins.open", mock_open()
+    ):
+        run_operation.side_effect = [
+            SimpleNamespace(stdout=""),
+            SimpleNamespace(stdout=""),
+            SimpleNamespace(stdout="commit"),
+            SimpleNamespace(stdout=":000000 100644 0000000 1111111 A\tfile.txt"),
+            SimpleNamespace(stdout="-\t-\tasset.webp"),
+            SimpleNamespace(stdout="commit log"),
+            SimpleNamespace(stdout=""),
+            SimpleNamespace(stdout="diff content"),
+            SimpleNamespace(stdout=""),
+        ]
+        diff_module.main.callback("abc", True)
+
+    assert create_files.call_args.args[3] == {"asset.webp"}
+
+
 def test_diff_tree_main_paths() -> None:
     """Cover diff_tree main with empty and non-empty diffs."""
     with patch("mega_snake.diff_tree.module.get_property", return_value="/tmp"), patch(
@@ -85,9 +154,10 @@ def test_diff_tree_main_paths() -> None:
             SimpleNamespace(stdout=""),
             SimpleNamespace(stdout="commit"),
             SimpleNamespace(stdout=":000000 100644 0000000 1111111 A\tfile.txt"),
-            SimpleNamespace(stdout="commit log"),
-            SimpleNamespace(stdout="diff content"),
             SimpleNamespace(stdout=""),
+            SimpleNamespace(stdout="commit log"),
+            SimpleNamespace(stdout=""),
+            SimpleNamespace(stdout="diff content"),
             SimpleNamespace(stdout=""),
         ]
         diff_module.main.callback("abc", True)
