@@ -105,7 +105,9 @@ def test_run_operation(mk_ws_warning: MagicMock, mk_subprocess_run: MagicMock) -
     with patch("mega_snake.util.util.get_property", return_value="bash"):
         result = run_operation(command, description)
     mk_ws_warning.assert_not_called()
-    mk_subprocess_run.assert_called_once_with(["bash", "-c", command], shell=False, check=True, capture_output=True, text=True)
+    mk_subprocess_run.assert_called_once_with(
+        ["bash", "-c", command], shell=False, check=True, capture_output=True, text=True, errors="replace"
+    )
     assert result.stdout == "Hello, World!"
     mk_subprocess_run.reset_mock()
     mk_ws_warning.reset_mock()

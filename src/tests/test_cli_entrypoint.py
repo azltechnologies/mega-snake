@@ -3,11 +3,13 @@
 import os
 import runpy
 import sys
+from importlib.metadata import PackageNotFoundError
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import click
 import pytest
+from click.testing import CliRunner
 
 from mega_snake import __main__ as app_main
 from mega_snake.util.formatting import WorkspaceError
@@ -81,6 +83,28 @@ def test_cli_requires_a_supported_shell_env(shell_value: str | None, expected_me
 
     echo_mock.assert_any_call(f"Error during initialization: {expected_message}", err=True)
     echo_mock.assert_any_call("TRACE", err=True)
+
+
+def test_get_version_returns_installed_package_version() -> None:
+    """get_version should return the installed distribution version."""
+    with patch("mega_snake.__main__.get_package_version", return_value="1.2.3"):
+        assert app_main.get_version() == "1.2.3"
+
+
+def test_get_version_falls_back_when_package_not_found() -> None:
+    """get_version should fall back to 'unknown' when the package metadata is missing."""
+    with patch("mega_snake.__main__.get_package_version", side_effect=PackageNotFoundError):
+        assert app_main.get_version() == "unknown"
+
+
+@pytest.mark.parametrize("flag", ["-v", "--version"])
+def test_cli_version_flag_prints_version_and_exits(flag: str) -> None:
+    """`mgsnake -v` / `mgsnake --version` should print the version and exit successfully."""
+    runner = CliRunner()
+    with patch("mega_snake.__main__.get_package_version", return_value="9.9.9"):
+        result = runner.invoke(app_main.cli, [flag])
+    assert result.exit_code == 0
+    assert "9.9.9" in result.output
 
 
 def test_running_main_module_wraps_cli_errors() -> None:

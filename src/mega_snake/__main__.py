@@ -1,6 +1,8 @@
 """Sets the environment configuration"""
 
 import os
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as get_package_version
 from typing import Optional
 import sys
 import click
@@ -9,13 +11,61 @@ from .light_weight.module import main as create_release, add_wrapper as create_r
 from .remote_branches.module import main as remote_branches, add_wrapper as remote_branches_result_callback
 from .config_environment.module import main as config_environment, add_wrapper as config_env_result_callback
 from .dependency_audit.module import main as dependency_audit, add_wrapper as dependency_audit_result_callback
-from .constants import LOGGING_OPT, SHELL_OPT, APP_NAME
+from .constants import LOGGING_OPT, SHELL_OPT, APP_NAME, MODULE_NAME
 from .util.formatting import get_traceback
 from .util.props import init_app_properties
 from .util.formatting import WorkspaceError, ws_advice
 from .util.cli_group import CliGroup
 
 
+def get_version() -> str:
+    """Return the installed package version, falling back to 'unknown' when not installed.
+
+    Parameters:
+        None
+
+    Raises:
+        None
+
+    Returns:
+        str: The installed distribution version, or "unknown" if the package metadata
+            cannot be found (e.g. running from a source checkout without installation).
+    """
+    try:
+        return get_package_version(MODULE_NAME)
+    except PackageNotFoundError:
+        return "unknown"
+
+
+def print_version(ctx: click.Context, _param: click.Parameter, value: bool) -> None:
+    """Print the CLI version and exit, invoked eagerly by the `-v`/`--version` option.
+
+    Parameters:
+        ctx: The current click context.
+        _param: The click parameter that triggered this callback (unused).
+        value: Whether the flag was provided on the command line.
+
+    Raises:
+        None
+
+    Returns:
+        None
+    """
+    if not value or ctx.resilient_parsing:
+        return
+    click.echo(f"{APP_NAME}, version {get_version()}")
+    ctx.exit()
+
+
+@click.option(
+    "--version",
+    "-v",
+    is_flag=True,
+    expose_value=False,
+    is_eager=True,
+    callback=print_version,
+    help="Show the version and exit.",
+)
 @click.group(
     help="""A CLI tool focused on simplifying Java development with VSCode by automating workspace configuration.
 
