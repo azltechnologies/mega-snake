@@ -78,7 +78,8 @@ def main(commit_hash: Optional[str], delete_original_files: bool) -> None:
         symbol = columns[0].split(" ")[4]
         path: str = columns[1]
         FileType.from_symbol(symbol).add(path)
-    _create_files(diff_tree_dummy_repo, main_branch, not delete_original_files)
+    binary_files: set[str] = _get_binary_files(main_branch, current_branch)
+    _create_files(diff_tree_dummy_repo, main_branch, not delete_original_files, binary_files)
     _display_inner_tree(diff_tree_dummy_repo, f"{tree_output}/diff_tree.txt", not delete_original_files)
     ws_success(f"Diff tree created at {tree_output}/diff_tree.txt")
     # write the commit list to the file
@@ -103,23 +104,62 @@ def main(commit_hash: Optional[str], delete_original_files: bool) -> None:
         ws_success("Deleted the generated copy of the original files in the diff tree")
 
 
-def _create_files(location: str, main_branch: str, show_contents: bool) -> None:
+def _get_binary_files(main_branch: str, current_branch: str) -> set[str]:
+    """
+    Identifies binary files changed between two branches using ``git diff --numstat``.
+
+    Git reports ``-`` in both the added/removed line columns for binary files, which is
+    used here to detect them without any extra I/O beyond the diff itself.
+
+    Args:
+        main_branch: str
+        current_branch: str
+
+    Returns:
+        set[str]: Paths of files detected as binary in the diff.
+    """
+    numstat: str = run_operation(
+        f"git diff --numstat {main_branch} {current_branch}",
+        f"getting binary file information between '{main_branch}' and '{current_branch}' branches",
+    ).stdout.strip()
+    binary_files: set[str] = set()
+    if not numstat:
+        return binary_files
+    for line in numstat.split("\n"):
+        columns: list[str] = line.split("\t")
+        if len(columns) == 3 and columns[0] == "-" and columns[1] == "-":
+            binary_files.add(columns[2])
+    return binary_files
+
+
+def _create_files(
+    location: str, main_branch: str, show_contents: bool, binary_files: Optional[set[str]] = None
+) -> None:
     """
     Creates new files for each file type in the specified location.
 
+    Binary files are detected via ``binary_files`` and written with a placeholder instead
+    of their raw contents, since dumping binary bytes into a text snapshot has no value and
+    previously crashed the command with a UnicodeDecodeError.
+
     Args:
         location: str
+        main_branch: str
+        show_contents: bool
+        binary_files: Optional[set[str]]
     """
     contents: str
+    binary_files = binary_files or set()
     for file_type in FileType:
         for file in file_type.files:
             new_file_path: str = f"{location}/{file} - {file_type.symbol}"
             os.makedirs(os.path.dirname(new_file_path), exist_ok=True)
-            contents = (
-                ""
-                if not show_contents or file_type.id_type == "A"
-                else run_operation(f"git show {main_branch}:{file}", "Getting file contents").stdout
-            )
+            if not show_contents or file_type.id_type == "A":
+                contents = ""
+            elif file in binary_files:
+                contents = "Binary file (contents not shown)"
+            else:
+                contents = run_operation(f"git show {main_branch}:{file}", "Getting file contents").stdout
             with open(new_file_path, "w", encoding="utf-8") as new_file:
                 new_file.write(contents)
 
