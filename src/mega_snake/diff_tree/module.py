@@ -6,7 +6,7 @@ from typing import Optional
 import click
 from directory_tree import DisplayTree
 from mega_snake.util.formatting import ws_info, ws_success
-from mega_snake.util.util import run_operation, get_main_branch, get_current_commit, get_remote
+from mega_snake.util.util import run_operation, get_main_branch, get_current_commit, get_remote, cli_metadata
 from mega_snake.util.props import get_property
 from mega_snake.diff_tree.file_type import FileType
 
@@ -32,6 +32,7 @@ from mega_snake.diff_tree.file_type import FileType
     is_flag=True,
     help="Delete the generated copy of the original files in the diff tree",
 )
+@cli_metadata(flags={"skip"})
 def main(commit_hash: Optional[str], delete_original_files: bool) -> None:
     """
     Creates a diff tree of the current branch against master or a specified commit hash.
