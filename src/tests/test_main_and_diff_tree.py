@@ -12,6 +12,13 @@ from mega_snake.diff_tree.file_type import FileType
 from mega_snake.diff_tree import module as diff_module
 
 
+def test_diff_tree_main_has_skip_flag() -> None:
+    """diff-tree should be flagged for light-weight init so a missing workspace_temp folder
+    doesn't crash the CLI before the command runs; the command itself creates any needed
+    subdirectories lazily via os.makedirs(..., exist_ok=True)."""
+    assert diff_module.main.callback.flags == {"flags": {"skip"}}
+
+
 def test_main_cli_and_post_command() -> None:
     """Cover cli init, error path, and post-command."""
     runner = CliRunner()
