@@ -5,7 +5,7 @@ import re
 from typing import Optional
 from datetime import datetime, timezone
 from mega_snake.util.util import run_operation
-from mega_snake.util.formatting import ws_advice
+from mega_snake.util.formatting import ws_advice, ws_info
 
 
 @dataclasses.dataclass
@@ -128,15 +128,50 @@ class RemoteBranch:
             raise LookupError(f"Commit {commit.commit_hash} not found in any branch")
         pattern: str = rf"\s*remotes/{remote}/{main_branch}\s*$"
         merged_on_main: bool = bool(re.search(pattern, within_branches, re.MULTILINE))
+        main_common_ancestor: str = run_operation(
+            f"git merge-base {branch} {main_branch}", "Getting main common ancestor"
+        ).stdout.strip()
+        if not merged_on_main and local_branch != main_branch:
+            merged_on_main = cls.is_squash_or_rebase_merged(branch, main_branch, main_common_ancestor)
         if filter_by == "M" and not merged_on_main:
             return None
         if filter_by == "U" and merged_on_main and local_branch != main_branch:
             return None
         mail: str = run_operation(f"git log -1 --pretty='format:%ae'  {branch}", "Getting commit author").stdout.strip()
-        main_common_ancestor: str = run_operation(
-            f"git merge-base {branch} {main_branch}", "Getting main common ancestor"
-        ).stdout.strip()
         return cls(local_branch, merged_on_main, commit, mail, main_common_ancestor)
+
+    @staticmethod
+    def is_squash_or_rebase_merged(branch: str, main_branch: str, main_common_ancestor: str) -> bool:
+        """
+        Determine whether a branch's changes were already integrated into the main branch
+        through a squash or rebase merge, where the branch tip commit itself is no longer an
+        ancestor of the main branch.
+
+        Parameters:
+            branch: The remote branch reference to check.
+            main_branch: The main branch to compare against.
+            main_common_ancestor: The common ancestor commit between branch and main_branch.
+
+        Raises:
+            None
+
+        Returns:
+            bool: True if the branch's changes are already applied to main_branch, False otherwise.
+        """
+        if not main_common_ancestor:
+            return False
+        tree: str = run_operation(f"git rev-parse {branch}^{{tree}}", "Getting branch tree").stdout.strip()
+        synthetic_commit: str = run_operation(
+            f"git commit-tree {tree} -p {main_common_ancestor} -m squash-check",
+            "Creating synthetic commit to compare branch changes against main",
+        ).stdout.strip()
+        cherry_output: str = run_operation(
+            f"git cherry {main_branch} {synthetic_commit}", "Checking if branch changes are already applied to main"
+        ).stdout.strip()
+        if cherry_output.startswith("-"):
+            ws_info(f"Branch {branch} appears to be squash/rebase merged into {main_branch}")
+            return True
+        return False
 
     def __lt__(self: "RemoteBranch", other: "RemoteBranch") -> bool:
         """Compare two RemoteBranch instances by their commit timestamp."""
