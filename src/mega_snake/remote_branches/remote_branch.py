@@ -100,11 +100,16 @@ class RemoteBranch:
     @classmethod
     def from_branch(cls, branch: str, filter_by: str, main_branch: str, remote: str) -> Optional["RemoteBranch"]:
         """
-        Get the remote branch info from a branch
+        Initialize a RemoteBranch instance from a branch name, filtering by merge status against the main branch.
+        First, it parses the branch name to extract the local branch name. Then, it retrieves the commit information
+        for the branch, checks if the branch is merged into the main branch, and finally constructs a RemoteBranch
+        instance if the branch meets the specified filter criteria.
 
         Args:
-            branch: str
-            filter_by: str
+            branch: str: The full reference name of the remote branch (e.g., 'remotes/origin/feature-branch').
+            filter_by: str: Filter criteria ('M' for merged, 'U' for unmerged).
+            main_branch: str: The name of the main branch (e.g., 'main').
+            remote: str: The name of the remote repository (e.g., 'origin').
 
         Returns:
             RemoteBranch
@@ -146,6 +151,14 @@ class RemoteBranch:
         Determine whether a branch's changes were already integrated into the main branch
         through a squash or rebase merge, where the branch tip commit itself is no longer an
         ancestor of the main branch.
+        First, it checks if the main_common_ancestor is None or empty. If it is, the function returns False,
+        indicating that the branch's changes are not applied to the main branch.
+        Otherwise, it retrieves the tree object of the branch's tip commit and creates a synthetic commit with that tree
+        and the main_common_ancestor as its parent. Then, it uses git cherry to check if the synthetic commit is already
+        applied to the main branch. If git cherry returns a line starting with "-", it indicates that the changes from
+        the branch are already present in the main branch, and the function returns True. Otherwise, it returns False.
+        git cherry determines whether the synthetic commit's changes are already present in the main branch,
+        even if they were introduced through a different commit.
 
         Parameters:
             branch: The remote branch reference to check.
