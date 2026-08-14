@@ -4,7 +4,7 @@ import os
 from typing import Optional
 import click
 from mega_snake.util.formatting import ws_info, ws_success
-from mega_snake.util.util import get_validated_input, get_remote, run_operation
+from mega_snake.util.util import get_validated_input, require_remote, run_operation
 from mega_snake.remote_branches.parse_remote_branches import (
     define_branches,
     RemoteBranch,
@@ -27,8 +27,7 @@ def remote_branches_cleanup() -> None:
     """
     Deletes branches that have been merged into the main branch from the remote repository
     """
-    if not (remote := get_remote()):
-        raise LookupError("No remote repository found. Please add a remote repository to the current repository.")
+    remote: str = require_remote()
     prompt: str = "Do you want to rerun the remote-branches-details function?"
     yes_no_options: list[str] = ["y", "n"]
     if get_validated_input(prompt, yes_no_options) == "y":

@@ -1,13 +1,10 @@
 """remote branches module for the cli"""
 
-import os
 import click
 from mega_snake.remote_branches.cleanup_remote_branches import remote_branches_cleanup
 from mega_snake.remote_branches.details_remote_branches import remote_branches_details
 from mega_snake.util.cli_group import CliGroup
-from mega_snake.util.formatting import ws_success
-from mega_snake.util.props import get_property
-from mega_snake.util.util import cli_metadata, get_remote, get_validated_input, wrapper_decorator
+from mega_snake.util.util import cli_metadata, ensure_working_path, require_remote, wrapper_decorator
 
 
 @click.group(cls=CliGroup)
@@ -25,29 +22,21 @@ def wrapper(_ctx, *_args, **_kwargs) -> None:
     CLI initialization, so this check runs instead and can offer to create the folder rather than
     letting the command crash with a raw FileNotFoundError.
 
+    The remote is resolved through ``require_remote``, which caches it, so the commands invoked
+    right after this check reuse the same answer instead of resolving (and prompting for) it again.
+
     Parameters:
         _ctx: The click context (unused).
 
     Raises:
-        LookupError: If no remote repository is found for the current git repository.
-        click.ClickException: If the working path folder is missing and the user declines to
-            create it.
+        click.ClickException: If no remote repository is found, or if the working path folder is
+            missing and the user declines to create it.
 
     Returns:
         None
     """
-    if not get_remote():
-        raise LookupError("No remote repository found. Please add a remote repository to the current repository.")
-    working_path: str = get_property("working_path")
-    if os.path.exists(working_path):
-        return
-    prompt: str = f"The working path folder '{working_path}' does not exist. Would you like to create it?"
-    if get_validated_input(prompt, ["y", "n"]) != "y":
-        raise click.ClickException(
-            f"Cannot run this command without the '{working_path}' folder. Please create it and try again."
-        )
-    os.makedirs(working_path)
-    ws_success(f"Created working path folder at '{working_path}'")
+    require_remote()
+    ensure_working_path()
 
 
 # Export the decorated wrapper for use in other modules

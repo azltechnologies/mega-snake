@@ -1,10 +1,12 @@
 """ Tests for the remote_branches module. """
 
+from types import SimpleNamespace
 from unittest.mock import patch
 import click
 import pytest
 from click.testing import CliRunner
 from mega_snake.remote_branches import module
+from mega_snake.util.util import require_remote, reset_remote_cache
 
 def test_main_group() -> None:
     """Test the main command group"""
@@ -20,51 +22,50 @@ def test_wrapper_has_skip_flag() -> None:
     assert module.wrapper.flags == {"flags": {"skip"}}
 
 
-def test_wrapper_raises_when_no_remote() -> None:
-    """The wrapper should raise a LookupError when there is no configured git remote."""
-    with patch("mega_snake.remote_branches.module.get_remote", return_value=None):
-        with pytest.raises(LookupError, match="No remote repository found"):
+def test_wrapper_delegates_to_the_shared_utilities() -> None:
+    """The wrapper is only a pre-flight check: it resolves the remote and the working path through
+    the shared utilities, so the commands it wraps reuse the cached remote instead of resolving
+    (and prompting for) it a second time."""
+    with patch("mega_snake.remote_branches.module.require_remote") as require_remote, patch(
+        "mega_snake.remote_branches.module.ensure_working_path"
+    ) as ensure_working_path:
+        module.wrapper(None)
+    require_remote.assert_called_once_with()
+    ensure_working_path.assert_called_once_with()
+
+
+def test_wrapper_fails_when_no_remote() -> None:
+    """A repository without a remote fails with the shared friendly error before anything else."""
+    with patch(
+        "mega_snake.remote_branches.module.require_remote",
+        side_effect=click.ClickException("No remote repository found."),
+    ), patch("mega_snake.remote_branches.module.ensure_working_path") as ensure_working_path:
+        with pytest.raises(click.ClickException, match="No remote repository found"):
+            module.wrapper(None)
+    ensure_working_path.assert_not_called()
+
+
+def test_wrapper_fails_when_working_path_is_declined() -> None:
+    """A missing working path the user declines to create surfaces as a clean ClickException."""
+    with patch("mega_snake.remote_branches.module.require_remote"), patch(
+        "mega_snake.remote_branches.module.ensure_working_path",
+        side_effect=click.ClickException("Cannot continue without the 'workspace_temp' folder."),
+    ):
+        with pytest.raises(click.ClickException, match="Cannot continue without"):
             module.wrapper(None)
 
 
-def test_wrapper_is_noop_when_working_path_exists() -> None:
-    """The wrapper should not prompt or touch the filesystem when the folder already exists."""
-    with patch("mega_snake.remote_branches.module.get_remote", return_value="origin"), patch(
-        "mega_snake.remote_branches.module.get_property", return_value="/tmp/workspace_temp"
-    ), patch("mega_snake.remote_branches.module.os.path.exists", return_value=True) as exists, patch(
-        "mega_snake.remote_branches.module.os.makedirs"
-    ) as makedirs, patch("mega_snake.remote_branches.module.get_validated_input") as get_validated_input:
-        module.wrapper(None)
-    exists.assert_called_once_with("/tmp/workspace_temp")
-    makedirs.assert_not_called()
-    get_validated_input.assert_not_called()
-
-
-def test_wrapper_creates_working_path_when_user_confirms() -> None:
-    """The wrapper should create the missing working path folder when the user agrees to."""
-    with patch("mega_snake.remote_branches.module.get_remote", return_value="origin"), patch(
-        "mega_snake.remote_branches.module.get_property", return_value="/tmp/workspace_temp"
-    ), patch("mega_snake.remote_branches.module.os.path.exists", return_value=False), patch(
-        "mega_snake.remote_branches.module.os.makedirs"
-    ) as makedirs, patch(
-        "mega_snake.remote_branches.module.get_validated_input", return_value="y"
-    ) as get_validated_input, patch(
-        "mega_snake.remote_branches.module.ws_success"
-    ) as ws_success:
-        module.wrapper(None)
+def test_remote_is_resolved_once_across_wrapper_and_command() -> None:
+    """End to end on the caching: the wrapper and the command it wraps share a single `git remote`
+    resolution, so a repository with several remotes prompts the user only once."""
+    reset_remote_cache()
+    with patch("mega_snake.util.util.run_operation") as run_operation, patch(
+        "mega_snake.util.util.get_validated_input", return_value="1"
+    ) as get_validated_input:
+        run_operation.return_value = SimpleNamespace(stdout="origin\nfork")
+        with patch("mega_snake.remote_branches.module.ensure_working_path"):
+            module.wrapper(None)
+        assert require_remote() == "fork"  # what the wrapped command does right after
+    run_operation.assert_called_once_with("git remote", "Getting remotes")
     get_validated_input.assert_called_once()
-    makedirs.assert_called_once_with("/tmp/workspace_temp")
-    ws_success.assert_called_once()
-
-
-def test_wrapper_raises_clean_error_when_user_declines() -> None:
-    """The wrapper should raise a friendly ClickException, not a raw FileNotFoundError, when the
-    user declines to create the missing working path folder."""
-    with patch("mega_snake.remote_branches.module.get_remote", return_value="origin"), patch(
-        "mega_snake.remote_branches.module.get_property", return_value="/tmp/workspace_temp"
-    ), patch("mega_snake.remote_branches.module.os.path.exists", return_value=False), patch(
-        "mega_snake.remote_branches.module.os.makedirs"
-    ) as makedirs, patch("mega_snake.remote_branches.module.get_validated_input", return_value="n"):
-        with pytest.raises(click.ClickException, match="Cannot run this command"):
-            module.wrapper(None)
-    makedirs.assert_not_called()
+    reset_remote_cache()
