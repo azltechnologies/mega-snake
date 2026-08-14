@@ -116,6 +116,53 @@ def test_from_branch_compares_against_the_remote_main_reference() -> None:
         assert "git cherry remotes/origin/main remotes/origin/feature" in commands
 
 
+def test_from_branch_applies_the_requested_filter() -> None:
+    """The filter drops the branches that don't match it: 'M' keeps only merged branches and 'U'
+    only the ones still carrying unique work."""
+    merged_calls = [
+        SimpleNamespace(stdout="abc123\n"),  # commit hash
+        SimpleNamespace(stdout="msg"),  # commit message
+        SimpleNamespace(stdout="1735689600"),  # commit date
+        SimpleNamespace(stdout=" remotes/origin/main "),  # contains check: merged into main
+        SimpleNamespace(stdout="base789"),  # merge-base
+        SimpleNamespace(stdout="author@test.com"),  # mail
+    ]
+    with patch("mega_snake.remote_branches.remote_branch.run_operation") as run_operation:
+        run_operation.side_effect = list(merged_calls)
+        assert RemoteBranch.from_branch("remotes/origin/feature", "U", "main", "origin") is None
+
+    with patch("mega_snake.remote_branches.remote_branch.run_operation") as run_operation:
+        run_operation.side_effect = [
+            SimpleNamespace(stdout="abc123\n"),  # commit hash
+            SimpleNamespace(stdout="msg"),  # commit message
+            SimpleNamespace(stdout="1735689600"),  # commit date
+            SimpleNamespace(stdout=" remotes/origin/feature "),  # contains check: no main match
+            SimpleNamespace(stdout="base789"),  # merge-base
+            SimpleNamespace(stdout="+ c1 one"),  # cherry branch: commit not applied
+            SimpleNamespace(stdout="tree456"),  # rev-parse tree
+            SimpleNamespace(stdout="synthetic123"),  # commit-tree
+            SimpleNamespace(stdout="+ synthetic123 msg"),  # cherry synthetic: not applied
+        ]
+        assert RemoteBranch.from_branch("remotes/origin/feature", "M", "main", "origin") is None
+
+
+def test_from_branch_rejects_a_branch_it_cannot_relate_to_the_remote() -> None:
+    """Quoted references are accepted, but a reference that doesn't belong to the remote, or a commit
+    no branch contains, cannot be described and is reported instead of silently skipped."""
+    with patch("mega_snake.remote_branches.remote_branch.run_operation") as run_operation:
+        run_operation.side_effect = [
+            SimpleNamespace(stdout="abc123\n"),
+            SimpleNamespace(stdout="msg"),
+            SimpleNamespace(stdout="1735689600"),
+            SimpleNamespace(stdout=""),  # contains check: no branch holds the commit
+        ]
+        with pytest.raises(LookupError, match="not found in any branch"):
+            RemoteBranch.from_branch("'remotes/origin/feature'", "A", "main", "origin")
+
+    with pytest.raises(LookupError, match="Unable to parse local branch name"):
+        RemoteBranch.from_branch('"remotes/other/feature"', "A", "main", "origin")
+
+
 def test_is_squash_or_rebase_merged_without_common_ancestor() -> None:
     """Without a common ancestor there is nothing to compare, so no git calls are made."""
     with patch("mega_snake.remote_branches.remote_branch.run_operation") as run_operation:
@@ -123,11 +170,19 @@ def test_is_squash_or_rebase_merged_without_common_ancestor() -> None:
         run_operation.assert_not_called()
 
 
-def test_is_rebase_merged_without_own_commits() -> None:
-    """A branch with no commits of its own is left to the ancestry check, not reported as rebased."""
+def test_rebase_check_without_own_commits_falls_through_to_the_squash_check() -> None:
+    """An empty git cherry output means the branch has no commits of its own, a case left to the
+    ancestry check, so it is not reported as rebased and the squash check still gets its turn."""
     with patch("mega_snake.remote_branches.remote_branch.run_operation") as run_operation:
-        run_operation.return_value = SimpleNamespace(stdout="")
-        assert RemoteBranch._is_rebase_merged("remotes/origin/feature", "remotes/origin/main") is False
+        run_operation.side_effect = [
+            SimpleNamespace(stdout=""),  # cherry branch: no commits of its own
+            SimpleNamespace(stdout="tree456"),  # rev-parse tree
+            SimpleNamespace(stdout="synthetic123"),  # commit-tree
+            SimpleNamespace(stdout="+ synthetic123 msg"),  # cherry synthetic: not applied
+        ]
+        merged = RemoteBranch.is_squash_or_rebase_merged("remotes/origin/feature", "remotes/origin/main", "base789")
+    assert merged is False
+    assert run_operation.call_count == 4
 
 
 def test_parse_and_delete_helpers() -> None:
