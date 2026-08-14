@@ -90,17 +90,94 @@ def test_get_binary_files() -> None:
     """_get_binary_files should identify only entries with '-' in both numstat columns."""
     with patch("mega_snake.diff_tree.diff_tree.run_operation") as run_operation:
         run_operation.return_value.stdout = "1\t2\ta.txt\n-\t-\tasset.webp\n-\t-\tfont.ttf\n"
-        result = diff_tree_cmd._get_binary_files("main", "head")
+        result = diff_tree_cmd._get_binary_files("main head")
     assert result == {"asset.webp", "font.ttf"}
     run_operation.assert_called_once_with(
-        "git diff --numstat main head", "getting binary file information between 'main' and 'head' branches"
+        "git diff --numstat main head", "getting binary file information for 'main head'"
     )
 
     # empty numstat output should yield an empty set without crashing
     with patch("mega_snake.diff_tree.diff_tree.run_operation") as run_operation:
         run_operation.return_value.stdout = ""
-        result = diff_tree_cmd._get_binary_files("main", "head")
+        result = diff_tree_cmd._get_binary_files("main head")
     assert result == set()
+
+
+def test_diff_tree_main_rejects_an_invalid_commit_hash() -> None:
+    """A reference that is not a commit is rejected before any diff is attempted against it."""
+    with patch("mega_snake.diff_tree.diff_tree.get_property", return_value="/tmp"), patch(
+        "mega_snake.diff_tree.diff_tree.os.path.exists", return_value=False
+    ), patch("mega_snake.diff_tree.diff_tree.get_current_commit", return_value="head"), patch(
+        "mega_snake.diff_tree.diff_tree.os.makedirs"
+    ), patch("mega_snake.diff_tree.diff_tree.run_operation") as run_operation:
+        run_operation.return_value.stdout = "tree"
+        with pytest.raises(ValueError, match="Invalid commit hash: abc"):
+            diff_tree_cmd.diff_tree.callback("abc", False, "c")
+
+
+def test_get_diff_target_per_scope() -> None:
+    """Each scope maps to the git revision arguments that include exactly its changes."""
+    assert diff_tree_cmd._get_diff_target("c", "main", "head") == "main head"
+    assert diff_tree_cmd._get_diff_target("s", "main", "head") == "--cached main"
+    assert diff_tree_cmd._get_diff_target("u", "main", "head") == "main"
+
+
+def test_get_untracked_files() -> None:
+    """Untracked files are only listed for the unstaged scope, and never for the other ones."""
+    with patch("mega_snake.diff_tree.diff_tree.run_operation") as run_operation:
+        run_operation.return_value.stdout = "new.txt\nfolder/other.txt\n"
+        assert diff_tree_cmd._get_untracked_files("u") == ["new.txt", "folder/other.txt"]
+    run_operation.assert_called_once_with("git ls-files --others --exclude-standard", "getting untracked files")
+
+    # a clean working tree yields no entries instead of a single empty path
+    with patch("mega_snake.diff_tree.diff_tree.run_operation") as run_operation:
+        run_operation.return_value.stdout = ""
+        assert diff_tree_cmd._get_untracked_files("u") == []
+
+    with patch("mega_snake.diff_tree.diff_tree.run_operation") as run_operation:
+        assert diff_tree_cmd._get_untracked_files("c") == []
+        assert diff_tree_cmd._get_untracked_files("s") == []
+        run_operation.assert_not_called()
+
+
+def test_diff_tree_main_includes_untracked_files_in_unstaged_scope() -> None:
+    """With the unstaged scope, untracked files are reported as added even though git diff ignores
+    them, and the run is not considered empty when they are the only change."""
+    for file_type in FileType:
+        file_type.files_added = 0
+        file_type.files.clear()
+    try:
+        with patch("mega_snake.diff_tree.diff_tree.get_property", return_value="/tmp"), patch(
+            "mega_snake.diff_tree.diff_tree.os.path.exists", return_value=True
+        ), patch("mega_snake.diff_tree.diff_tree.get_current_commit", return_value="head"), patch(
+            "mega_snake.diff_tree.diff_tree.run_operation"
+        ) as run_operation, patch(
+            "mega_snake.diff_tree.diff_tree._create_files"
+        ), patch("mega_snake.diff_tree.diff_tree._display_inner_tree"), patch(
+            "mega_snake.diff_tree.diff_tree.shutil.rmtree"
+        ), patch("mega_snake.diff_tree.diff_tree.os.makedirs"), patch(
+            "builtins.open", mock_open()
+        ):
+            run_operation.side_effect = [
+                SimpleNamespace(stdout="commit"),  # commit hash validation
+                SimpleNamespace(stdout="new.txt"),  # untracked files
+                SimpleNamespace(stdout=""),  # raw diff: nothing tracked changed
+                SimpleNamespace(stdout=""),  # numstat
+                SimpleNamespace(stdout="commit log"),  # commit list
+                SimpleNamespace(stdout=""),  # opening commit file
+                SimpleNamespace(stdout="diff content"),  # changes
+                SimpleNamespace(stdout=""),  # opening changes file
+            ]
+            diff_tree_cmd.diff_tree.callback("abc", True, "u")
+
+        assert FileType.ADDED.files == ["new.txt"]
+        commands = [call.args[0] for call in run_operation.call_args_list]
+        assert "git diff --raw --no-renames abc" in commands
+        assert "git diff abc" in commands
+    finally:
+        for file_type in FileType:
+            file_type.files_added = 0
+            file_type.files.clear()
 
 
 def test_create_files_skips_binary_contents() -> None:
@@ -148,7 +225,7 @@ def test_diff_tree_main_computes_binary_files() -> None:
             SimpleNamespace(stdout="diff content"),
             SimpleNamespace(stdout=""),
         ]
-        diff_tree_cmd.diff_tree.callback("abc", True)
+        diff_tree_cmd.diff_tree.callback("abc", True, "c")
 
     assert create_files.call_args.args[3] == {"asset.webp"}
 
@@ -163,7 +240,7 @@ def test_diff_tree_main_paths() -> None:
         "mega_snake.diff_tree.diff_tree.os.makedirs"
     ), patch("mega_snake.diff_tree.diff_tree.run_operation") as run_operation:
         run_operation.return_value.stdout = ""
-        diff_tree_cmd.diff_tree.callback(None, False)
+        diff_tree_cmd.diff_tree.callback(None, False, "c")
 
     with patch("mega_snake.diff_tree.diff_tree.get_property", return_value="/tmp"), patch(
         "mega_snake.diff_tree.diff_tree.os.path.exists", return_value=True
@@ -185,4 +262,4 @@ def test_diff_tree_main_paths() -> None:
             SimpleNamespace(stdout="diff content"),
             SimpleNamespace(stdout=""),
         ]
-        diff_tree_cmd.diff_tree.callback("abc", True)
+        diff_tree_cmd.diff_tree.callback("abc", True, "c")
