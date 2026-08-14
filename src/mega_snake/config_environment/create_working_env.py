@@ -1,7 +1,6 @@
 """This module contains the functions for setting the workspace for the project."""
 
 import os
-from pathlib import Path
 import shutil
 import json
 import re
@@ -32,6 +31,8 @@ from mega_snake.util.util import (
     get_command_return_code,
     get_validated_input,
     cli_metadata,
+    ensure_working_path,
+    exclude_from_git,
     get_remote_url,
     load_json_with_comments,
     get_input_or_default,
@@ -96,7 +97,7 @@ def _execute(git_repo: bool) -> None:  # previously untrackGradleProps
         None
     """
     workspace_file: str = _get_workspace_file()
-    working_path: str = _get_working_path()
+    working_path: str = ensure_working_path("Working path is required to configure the working environment. Exiting...")
     if git_repo:
         _git_exclude(working_path)
     initial_load(False)
@@ -176,63 +177,26 @@ def _get_workspace_file() -> str:
     return workspace_file
 
 
-def _get_working_path() -> str:
-    """
-    Gets the working path for the project. If not found, creates a new one.
+def _git_exclude(working_path: str) -> None:
+    """Exclude the .vscode folder, the working path and the root workspace file from git.
+
+    Parameters:
+        working_path: The working path folder; only its basename is excluded.
+
+    Raises:
+        None
 
     Returns:
-        str - The working path
+        None
     """
-    working_path: str = get_property("working_path")
-    assert working_path, (
-        "Working path is required to configure the working environment, but not found in the properties. This is a bug."
+    folder: str = os.path.basename(working_path)
+    exclude_from_git(
+        [
+            (".vscode/", ".vscode folder"),
+            (f"{folder}/", f"{folder} folder"),
+            ("/*.code-workspace", "root code-workspace file"),
+        ]
     )
-    assert Path(working_path).resolve().is_relative_to(Path.cwd().resolve()), (
-        "Working path is not in the current directory. This is a bug."
-    )
-    if os.path.exists(working_path):
-        ws_info(f"Working path found: {working_path}")
-        return working_path
-    ws_warning("Working path not found in current directory")
-    if get_validated_input("Would you like to create a new default working path?", ["y", "n"]).lower() == "n":
-        raise RuntimeError("Working path is required to configure the working environment. Exiting...")
-    os.makedirs(working_path, exist_ok=True)
-    ws_success(f"Working path created at {working_path}")
-    return working_path
-
-
-def _git_exclude(working_path: str) -> None:
-    """
-    Excludes the .vscode folder and the working path from git.
-    """
-    working_path = os.path.basename(working_path)
-    ex_file: str = ".git/info/exclude"
-    # Reading git exclude file
-    with open(ex_file, "r", encoding="utf-8") as file:
-        exclude: str = file.read()
-    if not exclude.endswith("\n"):
-        exclude += "\n"
-    regex = re.compile(r"^\s*\.vscode/?\s*$", re.MULTILINE)
-    if regex.search(exclude):
-        ws_advice(f".vscode folder already excluded in {ex_file}")
-    else:
-        exclude += ".vscode/\n"
-        ws_success(f"Excluded .vscode folder in {ex_file}")
-    regex = re.compile(rf"^\s*{working_path}/?\s*$", re.MULTILINE)
-    if regex.search(exclude):
-        ws_advice(f"{working_path} folder already excluded in {ex_file}")
-    else:
-        exclude += f"{working_path}/\n"
-        ws_success(f"Excluded {working_path} folder in {ex_file}")
-    regex = re.compile(r"^\s*/\*\.code-workspace\s*$", re.MULTILINE)
-    if regex.search(exclude):
-        ws_advice(f"root code-workspace file already excluded in {ex_file}")
-    else:
-        exclude += "/*.code-workspace\n"
-        ws_success(f"Excluded root code-workspace file in {ex_file}")
-    # Writing git exclude file
-    with open(ex_file, "w", encoding="utf-8") as file:
-        file.write(exclude)
 
 
 def _add_default_settings(workspace_file: str, working_path: str) -> None:

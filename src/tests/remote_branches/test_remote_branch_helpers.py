@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, mock_open, patch
 import subprocess
 
+import click
 import pytest
 
 from mega_snake.remote_branches.remote_branch import Commit, RemoteBranch
@@ -60,7 +61,7 @@ def test_details_and_cleanup_commands() -> None:
     """Cover details and cleanup command flows."""
     remote_branch = RemoteBranch("feature", True, Commit.from_strings("abc", "2025-01-01T00:00:00Z", "msg"), "a@b", "x")
 
-    with patch("mega_snake.remote_branches.details_remote_branches.get_remote", return_value="origin"), patch(
+    with patch("mega_snake.remote_branches.details_remote_branches.require_remote", return_value="origin"), patch(
         "mega_snake.remote_branches.details_remote_branches.get_main_branch", return_value="main"
     ), patch(
         "mega_snake.remote_branches.details_remote_branches.get_property", return_value="/tmp"
@@ -82,7 +83,7 @@ def test_details_and_cleanup_commands() -> None:
         with pytest.raises(ValueError):
             execute("X")
 
-    with patch("mega_snake.remote_branches.cleanup_remote_branches.get_remote", return_value="origin"), patch(
+    with patch("mega_snake.remote_branches.cleanup_remote_branches.require_remote", return_value="origin"), patch(
         "mega_snake.remote_branches.cleanup_remote_branches.get_validated_input", side_effect=["n"]
     ), patch(
         "mega_snake.remote_branches.cleanup_remote_branches.get_output_file", return_value="/tmp/branches.txt"
@@ -100,11 +101,14 @@ def test_details_and_cleanup_commands() -> None:
     ):
         remote_branches_cleanup.callback()
 
-    with patch("mega_snake.remote_branches.cleanup_remote_branches.get_remote", return_value=None):
-        with pytest.raises(LookupError):
+    with patch(
+        "mega_snake.remote_branches.cleanup_remote_branches.require_remote",
+        side_effect=click.ClickException("No remote repository found."),
+    ):
+        with pytest.raises(click.ClickException, match="No remote repository found"):
             remote_branches_cleanup.callback()
 
-    with patch("mega_snake.remote_branches.cleanup_remote_branches.get_remote", return_value="origin"), patch(
+    with patch("mega_snake.remote_branches.cleanup_remote_branches.require_remote", return_value="origin"), patch(
         "mega_snake.remote_branches.cleanup_remote_branches.get_validated_input", side_effect=["y", "m"]
     ), patch(
         "mega_snake.remote_branches.cleanup_remote_branches.remote_branches_details"
@@ -116,7 +120,7 @@ def test_details_and_cleanup_commands() -> None:
         with pytest.raises(FileNotFoundError):
             remote_branches_cleanup.callback()
 
-    with patch("mega_snake.remote_branches.cleanup_remote_branches.get_remote", return_value="origin"), patch(
+    with patch("mega_snake.remote_branches.cleanup_remote_branches.require_remote", return_value="origin"), patch(
         "mega_snake.remote_branches.cleanup_remote_branches.get_validated_input", side_effect=["n"]
     ), patch(
         "mega_snake.remote_branches.cleanup_remote_branches.get_output_file", return_value="/tmp/branches.txt"

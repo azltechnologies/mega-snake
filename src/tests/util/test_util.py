@@ -1,6 +1,7 @@
 """Test cases for util.py"""
 
 import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock, patch, mock_open
 from typing import Generator, Callable
 from types import SimpleNamespace
@@ -10,6 +11,8 @@ from click.testing import CliRunner
 from mega_snake.util.util import (
     load_json_with_comments,
     run_operation,
+    ensure_working_path,
+    exclude_from_git,
     get_command_return_code,
     get_input_or_default,
     get_validated_input,
@@ -18,8 +21,20 @@ from mega_snake.util.util import (
     get_main_branch,
     get_current_commit,
     cli_metadata,
+    require_remote,
+    reset_remote_cache,
     wrapper_decorator,
+    GIT_EXCLUDE_FILE,
+    NO_REMOTE_MESSAGE,
 )
+
+
+@pytest.fixture(autouse=True)
+def fixture_clear_remote_cache() -> Generator[None, None, None]:
+    """Keep the memoized remote from leaking between tests."""
+    reset_remote_cache()
+    yield
+    reset_remote_cache()
 
 
 @pytest.fixture(name="mk_ws_advice")
@@ -214,6 +229,7 @@ def test_get_remote(mk_run_operation: MagicMock, mk_get_validated_input: MagicMo
     mk_run_operation.assert_called_once_with("git remote", "Getting remotes")
     mk_get_validated_input.assert_not_called()
     mk_run_operation.reset_mock()
+    reset_remote_cache()
 
     # Test with a single remote
     mk_run_operation.return_value.stdout = origin
@@ -222,6 +238,7 @@ def test_get_remote(mk_run_operation: MagicMock, mk_get_validated_input: MagicMo
     mk_run_operation.assert_called_once_with("git remote", "Getting remotes")
     mk_get_validated_input.assert_not_called()
     mk_run_operation.reset_mock()
+    reset_remote_cache()
 
     # Test with multiple remotes
     mk_run_operation.return_value.stdout = f"{origin}\n{fork}"
@@ -230,6 +247,53 @@ def test_get_remote(mk_run_operation: MagicMock, mk_get_validated_input: MagicMo
     assert result == fork
     mk_run_operation.assert_called_once_with("git remote", "Getting remotes")
     mk_get_validated_input.assert_called_once()
+
+
+def test_get_remote_is_cached(mk_run_operation: MagicMock, mk_get_validated_input: MagicMock) -> None:
+    """The remote is resolved once per process: no extra `git remote`, no extra prompt."""
+    origin = "origin"
+    fork = "fork"
+    mk_run_operation.return_value.stdout = f"{origin}\n{fork}"
+    mk_get_validated_input.return_value = 1
+
+    assert get_remote() == fork
+    assert get_remote() == fork
+    assert get_remote() == fork
+    mk_run_operation.assert_called_once_with("git remote", "Getting remotes")
+    mk_get_validated_input.assert_called_once()
+
+    # A "no remote" answer is cached too, so it is not re-resolved on every call either
+    reset_remote_cache()
+    mk_run_operation.reset_mock()
+    mk_run_operation.return_value.stdout = ""
+    assert get_remote() is None
+    assert get_remote() is None
+    mk_run_operation.assert_called_once_with("git remote", "Getting remotes")
+
+
+def test_get_remote_when_command_fails(mk_run_operation: MagicMock, mk_ws_warning: MagicMock) -> None:
+    """A failing `git remote` (e.g. not a git repository) is reported with the friendly message."""
+    mk_run_operation.side_effect = subprocess.SubprocessError("git remote failed after 3 attempts")
+
+    assert get_remote() is None
+    mk_ws_warning.assert_called_once()
+    assert NO_REMOTE_MESSAGE in mk_ws_warning.call_args.args[0]
+
+    # The failure is cached as "no remote", so the retries are not repeated
+    mk_run_operation.reset_mock()
+    assert get_remote() is None
+    mk_run_operation.assert_not_called()
+
+
+def test_require_remote(mk_run_operation: MagicMock) -> None:
+    """require_remote returns the remote, or fails with the shared friendly ClickException."""
+    mk_run_operation.return_value.stdout = "origin"
+    assert require_remote() == "origin"
+
+    reset_remote_cache()
+    mk_run_operation.return_value.stdout = ""
+    with pytest.raises(click.ClickException, match="No remote repository found"):
+        require_remote()
 
 
 def test_get_remote_url(mk_run_operation: MagicMock, mk_get_remote: MagicMock) -> None:
@@ -366,3 +430,170 @@ def test_wrapper_decorator() -> None:
     assert result.exception is None
     assert isinstance(wrapped_command, click.Command)
     assert exit_code == 21
+
+
+@pytest.fixture(name="mk_util_ws_success")
+def fixture_mk_util_ws_success() -> Generator[MagicMock, None, None]:
+    """Fixture for ws_success."""
+    with patch("mega_snake.util.util.ws_success") as mock:
+        yield mock
+
+
+@pytest.fixture(name="mk_util_ws_info")
+def fixture_mk_util_ws_info() -> Generator[MagicMock, None, None]:
+    """Fixture for ws_info."""
+    with patch("mega_snake.util.util.ws_info") as mock:
+        yield mock
+
+
+@pytest.fixture(name="mk_get_property")
+def fixture_mk_get_property() -> Generator[MagicMock, None, None]:
+    """Fixture for get_property."""
+    with patch("mega_snake.util.util.get_property") as mock:
+        yield mock
+
+
+ENTRIES: list[tuple[str, str]] = [("workspace_temp/", "workspace_temp folder"), (".vscode/", ".vscode folder")]
+
+
+def test_exclude_from_git_creates_missing_exclude_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_util_ws_success: MagicMock,
+    mk_ws_advice: MagicMock,
+) -> None:
+    """A missing .git/info/exclude file is created instead of crashing with FileNotFoundError."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".git").mkdir()
+
+    exclude_from_git(ENTRIES)
+
+    content = (tmp_path / GIT_EXCLUDE_FILE).read_text(encoding="utf-8")
+    assert content.splitlines() == ["workspace_temp/", ".vscode/"]
+    assert mk_util_ws_success.call_count == 2
+    mk_ws_advice.assert_not_called()
+
+
+def test_exclude_from_git_is_idempotent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_util_ws_success: MagicMock,
+    mk_ws_advice: MagicMock,
+) -> None:
+    """Entries already excluded are reported but not duplicated, and comments are preserved."""
+    monkeypatch.chdir(tmp_path)
+    exclude_file = tmp_path / GIT_EXCLUDE_FILE
+    exclude_file.parent.mkdir(parents=True)
+    exclude_file.write_text("# comments here\nworkspace_temp/", encoding="utf-8")
+
+    exclude_from_git(ENTRIES)
+
+    lines = exclude_file.read_text(encoding="utf-8").splitlines()
+    assert lines == ["# comments here", "workspace_temp/", ".vscode/"]
+    mk_util_ws_success.assert_called_once()
+    mk_ws_advice.assert_called_once()
+
+    # Running it again changes nothing
+    mk_util_ws_success.reset_mock()
+    exclude_from_git(ENTRIES)
+    assert exclude_file.read_text(encoding="utf-8").splitlines() == lines
+    mk_util_ws_success.assert_not_called()
+
+
+def test_exclude_from_git_outside_a_git_repository(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_ws_warning: MagicMock,
+) -> None:
+    """Outside a git repository the exclusions are skipped with a warning, not an error."""
+    monkeypatch.chdir(tmp_path)
+
+    exclude_from_git(ENTRIES)
+
+    assert not (tmp_path / ".git").exists()
+    mk_ws_warning.assert_called_once()
+
+
+def test_ensure_working_path_when_it_exists(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_get_property: MagicMock,
+    mk_get_validated_input: MagicMock,
+    mk_util_ws_info: MagicMock,
+) -> None:
+    """An existing working path is returned as-is, without prompting the user."""
+    monkeypatch.chdir(tmp_path)
+    working_path = tmp_path / "workspace_temp"
+    working_path.mkdir()
+    mk_get_property.return_value = str(working_path)
+
+    assert ensure_working_path() == str(working_path)
+    mk_get_validated_input.assert_not_called()
+    mk_util_ws_info.assert_called_once()
+
+
+def test_ensure_working_path_creates_and_excludes_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_get_property: MagicMock,
+    mk_get_validated_input: MagicMock,
+    mk_util_ws_success: MagicMock,
+    mk_ws_warning: MagicMock,
+    mk_util_ws_info: MagicMock,
+) -> None:
+    """A missing working path is created on confirmation and excluded from git right away."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".git").mkdir()
+    working_path = tmp_path / "workspace_temp"
+    mk_get_property.return_value = str(working_path)
+    mk_get_validated_input.return_value = "y"
+
+    assert ensure_working_path() == str(working_path)
+    assert working_path.is_dir()
+    mk_get_validated_input.assert_called_once()
+    assert "workspace_temp/" in (tmp_path / GIT_EXCLUDE_FILE).read_text(encoding="utf-8").splitlines()
+    assert mk_util_ws_success.call_count == 2  # one for the exclusion, one for the creation
+
+    # It is safe to run again even if the folder appeared in between (no exist_ok race)
+    mk_get_validated_input.reset_mock()
+    assert ensure_working_path() == str(working_path)
+    mk_get_validated_input.assert_not_called()
+
+
+def test_ensure_working_path_when_user_declines(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_get_property: MagicMock,
+    mk_get_validated_input: MagicMock,
+    mk_ws_warning: MagicMock,
+) -> None:
+    """Declining to create the folder fails with a friendly ClickException, not a raw error."""
+    monkeypatch.chdir(tmp_path)
+    working_path = tmp_path / "workspace_temp"
+    mk_get_property.return_value = str(working_path)
+    mk_get_validated_input.return_value = "n"
+
+    with pytest.raises(click.ClickException, match="Cannot continue without"):
+        ensure_working_path()
+    assert not working_path.exists()
+
+    # Callers can customize the message shown when the user declines
+    with pytest.raises(click.ClickException, match="custom message"):
+        ensure_working_path("custom message")
+
+
+def test_ensure_working_path_invalid_property(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_get_property: MagicMock,
+) -> None:
+    """An empty working path, or one outside the current directory, is a bug and asserts."""
+    monkeypatch.chdir(tmp_path)
+
+    mk_get_property.return_value = ""
+    with pytest.raises(AssertionError, match="not found in the properties"):
+        ensure_working_path()
+
+    mk_get_property.return_value = str(tmp_path.parent / "somewhere_else")
+    with pytest.raises(AssertionError, match="not in the current directory"):
+        ensure_working_path()
