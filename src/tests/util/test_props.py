@@ -9,6 +9,7 @@ import pytest
 from tests.test_util.util_test import param_injector, get_mock
 from tests.test_util.side_effect_wrapper import SideEffectWrapper
 from mega_snake.util.props import (
+    complete_app_properties,
     init_app_properties,
     get_property,
     AppProperties,
@@ -551,3 +552,117 @@ def test_fail_scenarios(request) -> None:
         reset_mocks(*mocks.values())
 
     my_function()  # pylint: disable=E1120
+
+
+def test_complete_app_properties(tmp_path, monkeypatch: pytest.MonkeyPatch, formatting: MagicMock) -> None:
+    """Test the deferred initialization used by light-weight commands.
+
+    Light-weight mode stops the initialization when the working path is missing, so the properties
+    living inside that folder (the log file above all) stay unset and nothing is logged to file.
+    Once the folder exists, complete_app_properties finishes exactly where __init__ stopped.
+    """
+    package_root: str = os.path.abspath(ROOT)
+    working_path = tmp_path / "test_workspace_temp"
+    AppProperties._instance = None  # pylint: disable=W0212
+    monkeypatch.chdir(tmp_path)
+    try:
+        with patch("mega_snake.util.props._get_package_root", return_value=package_root):
+            init_app_properties("DEBUG", "bash", True)
+
+        app_props: AppProperties = AppProperties.get_instance()
+        assert not app_props.is_fully_initialized()
+        formatting.config_log.assert_not_called()
+        # the working path is known even though it does not exist yet, which is what lets the
+        # pre-flight checks offer to create it
+        assert get_property("working_path") == str(working_path)
+        with pytest.raises(KeyError):
+            get_property("log_file")
+
+        # once the folder is there, the deferred half of the initialization can run
+        os.makedirs(working_path)
+        complete_app_properties()
+
+        assert app_props.is_fully_initialized()
+        assert app_props.log_level == LOGGING_NAME_TO_LEVEL["DEBUG"]
+        assert get_property("log_file").startswith(str(working_path))
+        assert get_property("graphql_schema_file").startswith(str(working_path))
+        formatting.config_log.assert_called_once()
+
+        # calling it again is a no-op: no duplicated handlers
+        complete_app_properties()
+        formatting.config_log.assert_called_once()
+    finally:
+        AppProperties._instance = None  # pylint: disable=W0212
+
+
+def test_complete_app_properties_when_initialization_was_not_deferred(
+    tmp_path, monkeypatch: pytest.MonkeyPatch, formatting: MagicMock
+) -> None:
+    """A full initialization leaves nothing to complete, so the call is a no-op."""
+    package_root: str = os.path.abspath(ROOT)
+    AppProperties._instance = None  # pylint: disable=W0212
+    monkeypatch.chdir(tmp_path)
+    os.makedirs(tmp_path / "test_workspace_temp")
+    (tmp_path / "dummy.code-workspace").write_text("{}", encoding="utf-8")
+    try:
+        with patch("mega_snake.util.props._get_package_root", return_value=package_root):
+            init_app_properties("INFO", "bash", False)
+        assert AppProperties.get_instance().is_fully_initialized()
+        formatting.config_log.assert_called_once()
+
+        complete_app_properties()
+        formatting.config_log.assert_called_once()
+    finally:
+        AppProperties._instance = None  # pylint: disable=W0212
+
+
+def test_properties_reload_reconfigures_logging_with_the_log_file(
+    tmp_path, monkeypatch: pytest.MonkeyPatch, formatting: MagicMock
+) -> None:
+    """Setting the log level outside initialization is a reload: it must reconfigure logging against
+    the log file, not against the developer's local config file."""
+    package_root: str = os.path.abspath(ROOT)
+    working_path = tmp_path / "test_workspace_temp"
+    AppProperties._instance = None  # pylint: disable=W0212
+    monkeypatch.chdir(tmp_path)
+    os.makedirs(working_path)
+    (tmp_path / "dummy.code-workspace").write_text("{}", encoding="utf-8")
+    try:
+        with patch("mega_snake.util.props._get_package_root", return_value=package_root):
+            init_app_properties("INFO", "bash", False)
+        app_props: AppProperties = AppProperties.get_instance()
+        log_file: str = get_property("log_file")
+        local_config_file: str = get_property("local_config_file")
+        formatting.config_log.reset_mock()
+
+        # setting it from outside the initialization takes the reload path
+        app_props.log_level = LOGGING_NAME_TO_LEVEL["ERROR"]
+
+        formatting.config_log.assert_called_once_with(log_file, LOGGING_NAME_TO_LEVEL["ERROR"])
+        assert formatting.config_log.call_args.args[0] != local_config_file
+        formatting.ws_advice.assert_called()
+    finally:
+        AppProperties._instance = None  # pylint: disable=W0212
+
+
+def test_properties_reload_before_the_log_file_exists(
+    tmp_path, monkeypatch: pytest.MonkeyPatch, formatting: MagicMock
+) -> None:
+    """A reload on an initialization deferred by light-weight mode has no log file to point at, so
+    it reports the reload without trying to configure logging."""
+    package_root: str = os.path.abspath(ROOT)
+    AppProperties._instance = None  # pylint: disable=W0212
+    monkeypatch.chdir(tmp_path)
+    try:
+        with patch("mega_snake.util.props._get_package_root", return_value=package_root):
+            init_app_properties("INFO", "bash", True)
+        app_props: AppProperties = AppProperties.get_instance()
+        assert not app_props.is_fully_initialized()
+        formatting.config_log.reset_mock()
+
+        app_props.log_level = LOGGING_NAME_TO_LEVEL["ERROR"]
+
+        formatting.config_log.assert_not_called()
+        formatting.ws_advice.assert_called()
+    finally:
+        AppProperties._instance = None  # pylint: disable=W0212

@@ -2,7 +2,6 @@
 
 import builtins
 import json
-from pathlib import Path
 from unittest.mock import MagicMock, patch, mock_open, call
 from typing import Generator, Any
 import jq
@@ -11,7 +10,6 @@ import pytest
 from mega_snake.config_environment.create_working_env import (
     create_working_env,
     _get_workspace_file as get_workspace_file,
-    _get_working_path as get_working_path,
     _git_exclude as git_exclude,
     _add_default_settings as add_default_settings,
     _launch_substituter as launch_substituter,
@@ -111,8 +109,8 @@ def fixture_mk_get_workspace_file() -> Generator[MagicMock, None, None]:
 
 @pytest.fixture(name="mk_get_working_path")
 def fixture_get_working_path() -> Generator[MagicMock, None, None]:
-    """Mock _get_working_path"""
-    with patch("mega_snake.config_environment.create_working_env._get_working_path") as mock:
+    """Mock the shared ensure_working_path utility consumed by create_working_env"""
+    with patch("mega_snake.config_environment.create_working_env.ensure_working_path") as mock:
         yield mock
 
 
@@ -235,10 +233,10 @@ def fixture_mk_new_wk_contents() -> Generator[MagicMock, None, None]:
         yield mock
 
 
-@pytest.fixture(name="mk_path")
-def fixture_mk_path() -> Generator[MagicMock, None, None]:
-    """Mock path"""
-    with patch("mega_snake.config_environment.create_working_env.Path") as mock:
+@pytest.fixture(name="mk_exclude_from_git")
+def fixture_mk_exclude_from_git() -> Generator[MagicMock, None, None]:
+    """Mock the shared exclude_from_git utility consumed by create_working_env"""
+    with patch("mega_snake.config_environment.create_working_env.exclude_from_git") as mock:
         yield mock
 
 
@@ -543,148 +541,18 @@ def test_get_workspace_file(
         mocks_reset()
 
 
-def test_get_working_path(
-    get_property: MagicMock,
-    mk_path: MagicMock,
-    mk_os: MagicMock,
-    ws_warning: MagicMock,
-    get_validated_input: MagicMock,
-    ws_success: MagicMock,
-) -> None:
-    """testing get_working_path private method"""
-    cwd_resolve: MagicMock = mk_path.cwd().resolve
-    cwd_resolve.return_value = WK_PARENTH_PATH
-    os_path_exists: MagicMock = mk_os.path.exists
-    os_path_exists.return_value = True
-    os_makedirs: MagicMock = mk_os.makedirs
-    mk_path.side_effect = Path
-    result: str = "None"
-
-    def mocks_reset() -> None:
-        """reset mocks"""
-        nonlocal result
-        result = None
-        reset_mocks(
-            get_property,
-            mk_path,
-            cwd_resolve,
-            mk_os,
-            ws_warning,
-            get_validated_input,
-            os_makedirs,
-            ws_success,
-        )
-
-    # test when working path exists
-    result = get_working_path()
-    assert result == WK_PATH
-    mk_path.assert_called_once_with(WK_PATH)
-    cwd_resolve.assert_called_once()
-    os_path_exists.assert_called_once_with(WK_PATH)
-    ws_warning.assert_not_called()
-    os_makedirs.assert_not_called()
-    ws_success.assert_not_called()
-    mocks_reset()
-
-    # test when working path doesn't exist and denied to create workspace the directory
-    get_validated_input.return_value = "n"
-    os_path_exists.return_value = False
-    with pytest.raises(RuntimeError):
-        get_working_path()
-    mk_path.assert_called_once_with(WK_PATH)
-    cwd_resolve.assert_called_once()
-    os_path_exists.assert_called_once_with(WK_PATH)
-    ws_warning.assert_called_once()
-    os_makedirs.assert_not_called()
-    ws_success.assert_not_called()
-    mocks_reset()
-
-    # test when working path doesn't exist and accept to create workspace the directory
-    get_validated_input.return_value = "y"
-    os_path_exists.return_value = False
-    result = get_working_path()
-    assert result == WK_PATH
-    mk_path.assert_called_once_with(WK_PATH)
-    cwd_resolve.assert_called_once()
-    os_path_exists.assert_called_once_with(WK_PATH)
-    ws_warning.assert_called_once()
-    os_makedirs.assert_called_once()
-    ws_success.assert_called_once()
-    mocks_reset()
-
-    # test when working path is not subpath of current directory
-    cwd_resolve.return_value = "/x/y/z"
-    with pytest.raises(AssertionError):
-        get_working_path()
-    mk_path.assert_called_once_with(WK_PATH)
-    cwd_resolve.assert_called_once()
-    os_path_exists.assert_not_called()
-    ws_warning.assert_not_called()
-    os_makedirs.assert_not_called()
-    ws_success.assert_not_called()
-    mocks_reset()
-
-    # test when property is empty
-    get_property.side_effect = None
-    get_property.return_value = ""
-    with pytest.raises(AssertionError):
-        get_working_path()
-    mk_path.assert_not_called()
-    cwd_resolve.assert_not_called()
-    os_path_exists.assert_not_called()
-    ws_warning.assert_not_called()
-    os_makedirs.assert_not_called()
-    ws_success.assert_not_called()
-    mocks_reset()
-
-
 def test_git_exclude(
-    ws_advice: MagicMock,
-    ws_success: MagicMock,
+    mk_exclude_from_git: MagicMock,
 ) -> None:
-    """testing _git_exclude private method"""
-    empty_file_content = "# comments here\n# comments there"
-    final_file_content = "# comments here\n# comments there\n.vscode/\nsome_path/\n/*.code-workspace\n"
-
-    result: str = None
-    m_open: MagicMock = mock_open(read_data=empty_file_content)
-    file_mock: MagicMock = m_open.return_value
-    read_mock: MagicMock = file_mock.read
-    write_mock: MagicMock = file_mock.write
-
-    def mocks_reset() -> None:
-        """reset mocks"""
-        nonlocal result
-        result = None
-        reset_mocks(m_open, file_mock, read_mock, write_mock, ws_advice, ws_success)
-
-    with patch("builtins.open", m_open):
-        # tests when file is empty
-        git_exclude(WK_PATH)
-        read_mock.assert_called_once()
-        write_mock.assert_called_once()
-        result = write_mock.call_args.args[0]
-        lines: list[str] = result.splitlines()
-        assert ".vscode/" in lines
-        assert f"{WK_BASENAME_PATH}/" in lines
-        assert "/*.code-workspace" in lines
-        assert ws_success.call_count == 3
-        ws_advice.assert_not_called()
-        mocks_reset()
-
-        # tests when file is updated
-        read_mock.return_value = final_file_content
-        git_exclude(WK_PATH)
-        read_mock.assert_called_once()
-        write_mock.assert_called_once()
-        result = write_mock.call_args.args[0]
-        lines: list[str] = result.splitlines()
-        assert ".vscode/" in lines
-        assert f"{WK_BASENAME_PATH}/" in lines
-        assert "/*.code-workspace" in lines
-        assert ws_advice.call_count == 3
-        ws_success.assert_not_called()
-        mocks_reset()
+    """testing _git_exclude private method delegates to the shared exclude_from_git utility"""
+    git_exclude(WK_PATH)
+    mk_exclude_from_git.assert_called_once_with(
+        [
+            (".vscode/", ".vscode folder"),
+            (f"{WK_BASENAME_PATH}/", f"{WK_BASENAME_PATH} folder"),
+            ("/*.code-workspace", "root code-workspace file"),
+        ]
+    )
 
 
 def test_add_default_settings(

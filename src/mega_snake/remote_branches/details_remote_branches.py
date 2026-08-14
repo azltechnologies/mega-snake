@@ -6,7 +6,7 @@ from typing import Optional
 import click
 from mega_snake.util.formatting import ws_info, ws_success
 from mega_snake.remote_branches.remote_branch import RemoteBranch
-from mega_snake.util.util import run_operation, get_main_branch, get_remote
+from mega_snake.util.util import run_operation, get_main_branch, require_remote
 from mega_snake.util.props import get_property
 from mega_snake.constants import REMOTE_BRANCHES_OPT
 
@@ -58,9 +58,7 @@ def execute(filter_by: str, remote: Optional[str] = None) -> None:
             f"Invalid filter: {filter_by}; filter value must be one of:\n {' | '.join(REMOTE_BRANCHES_OPT)}"
         )
     if not remote:
-        remote = get_remote()
-    if not remote:
-        raise LookupError("No remote repository found. Please add a remote repository to the current repository.")
+        remote = require_remote()
     run_operation("git fetch --all --prune", "Fetching all remotes and pruning deleted branches")
     main_branch: str = get_main_branch(remote)
     list_output: str = get_output_file()
