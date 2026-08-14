@@ -75,6 +75,13 @@ def config_log(path: str, level: int) -> None:
     default_formatter = logging.Formatter(default_format)
     error_formatter = logging.Formatter(error_format)
 
+    # Reconfiguring replaces the handlers instead of stacking them: without this, calling config_log
+    # again (a properties reload) would attach a second pair of handlers to the same file and every
+    # record would be written twice from that point on.
+    for handler in list(logger.handlers):
+        logger.removeHandler(handler)
+        handler.close()
+
     # Create a file handler with encoding
     default_file_handler = logging.FileHandler(path, encoding="utf-8", delay=True)
     default_file_handler.setLevel(logging.DEBUG)
