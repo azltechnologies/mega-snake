@@ -6,6 +6,7 @@ from typing import Generator, Callable
 from types import SimpleNamespace
 import pytest
 from mega_snake.util.formatting import (
+    logger as formatting_logger,
     ErrorFilter,
     DefaultFilter,
     config_log,
@@ -123,6 +124,35 @@ def test_config_log(mk_file_handler: MagicMock) -> None:
     error_handler.setFormatter.assert_called_once()
     default_handler.addFilter.assert_called_once()
     error_handler.addFilter.assert_called_once()
+
+
+def test_config_log_replaces_handlers_instead_of_stacking_them(mk_file_handler: MagicMock) -> None:
+    """Reconfiguring logging must not leave the previous handlers attached.
+
+    A properties reload calls config_log again; if the old handlers stayed, every record would be
+    written twice to the same file from that point on.
+    """
+    original_handlers = list(formatting_logger.handlers)
+    original_level = formatting_logger.level
+    try:
+        formatting_logger.handlers.clear()
+        mk_file_handler.side_effect = [MagicMock() for _ in range(4)]
+
+        config_log("first.log", logging.INFO)
+        first_handlers = list(formatting_logger.handlers)
+        assert len(first_handlers) == 2
+
+        config_log("second.log", logging.DEBUG)
+        assert len(formatting_logger.handlers) == 2
+        assert all(handler not in first_handlers for handler in formatting_logger.handlers)
+        # the replaced handlers are closed, so their file descriptors are not leaked
+        for handler in first_handlers:
+            handler.close.assert_called_once()
+        assert formatting_logger.level == logging.DEBUG
+    finally:
+        formatting_logger.handlers.clear()
+        formatting_logger.handlers.extend(original_handlers)
+        formatting_logger.setLevel(original_level)
 
 
 def test_get_traceback() -> None:

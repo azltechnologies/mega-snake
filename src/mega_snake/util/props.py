@@ -41,22 +41,32 @@ def _get_package_root() -> str:
         ) from e
 
 
+# Methods allowed to run initialization-only operations. "complete_initialization" is part of the
+# initialization too: it is the second half of an __init__ that light-weight mode left unfinished
+# because the working path did not exist yet.
+INITIALIZATION_METHODS: tuple[str, ...] = ("__init__", "complete_initialization")
+
+
 def _check_forbidden_execution(
     method: str, message: str, reload: bool = False, props: Optional["AppProperties"] = None
 ) -> None:
     # Get call stack
     frames = inspect.stack()
-    # Check if called from __init__
-    called_from_init: bool = any(frame.function == method for frame in frames[2:])  # Skip current frame
+    allowed: tuple[str, ...] = INITIALIZATION_METHODS if method == "__init__" else (method,)
+    # Check if called from __init__ (or from the deferred completion of that same initialization)
+    called_from_init: bool = any(frame.function in allowed for frame in frames[2:])  # Skip current frame
     if not called_from_init:
         if not reload:
             raise PermissionError(f"Operation not permitted: {message} is only allowed during initialization")
         if not props:
             raise ValueError("properties must be set when reloading properties")
-        formatting.config_log(
-            props._retrieve_property("local_config_file"),
-            props.log_level,  # pylint: disable=protected-access
-        )
+        # Only reconfigure logging when there is a log file to point it at: an initialization
+        # deferred by light-weight mode has no "log_file" yet, and reloading must not invent one.
+        if props.is_fully_initialized():
+            formatting.config_log(
+                props._retrieve_property("log_file"),  # pylint: disable=protected-access
+                props.log_level,
+            )
         formatting.ws_advice(f"Properties reloaded by: {message}")
 
 
@@ -225,6 +235,10 @@ class AppProperties:
             ValueError: If shell or other validation fails
         """
         self._props = {}
+        # Kept so an initialization deferred by light-weight mode can be finished later, once the
+        # working path exists, without having to read the properties file again
+        self._pending_properties = properties
+        self._pending_log_level = log_level
         # Check if the required properties are set
         resources_path: str = _check_property("resources_path", properties)
         working_path: str = _check_property("working_path", properties)
@@ -254,6 +268,48 @@ class AppProperties:
         self.__shell_validator(shell)
         self.__adding_prop_validator("local_config_file", f"{self.props['working_path']}/{local_config_file}")
         self.__adding_prop_validator("local_env_file", f"{self.props['working_path']}/{local_env_file}")
+        self.__adding_prop_validator("graphql_schema_file", f"{self.props['working_path']}/{graphql_schema_file}")
+        self.__post_init__()
+
+    def is_fully_initialized(self) -> bool:
+        """Check whether the initialization completed, as opposed to being deferred.
+
+        Parameters:
+            None
+
+        Raises:
+            None
+
+        Returns:
+            bool: True when every property is set, False when light-weight mode stopped the
+                initialization half way because the working path did not exist.
+        """
+        return "log_file" in self._props
+
+    def complete_initialization(self) -> None:
+        """Set the properties that were skipped when the working path did not exist yet.
+
+        Light-weight mode lets a command start without a working path, so the properties that live
+        inside that folder (the log file above all) could not be resolved. Once the folder is there,
+        this finishes exactly where ``__init__`` stopped, leaving the instance in the same state a
+        full initialization would have produced.
+
+        Parameters:
+            None
+
+        Raises:
+            FileNotFoundError: If the working path still does not exist.
+            NotADirectoryError: If the working path exists but is not a directory.
+            PermissionError: If the working path is not writable.
+
+        Returns:
+            None
+        """
+        log_file: str = _check_property("log_file_name", self._pending_properties)
+        graphql_schema_file: str = _check_property("graphql_schema_file_name", self._pending_properties)
+        self.__working_path_validator(self._props["working_path"])
+        self.log_level_from_str(self._pending_log_level)
+        self.__log_file_validator(log_file)
         self.__adding_prop_validator("graphql_schema_file", f"{self.props['working_path']}/{graphql_schema_file}")
         self.__post_init__()
 
@@ -348,6 +404,34 @@ def init_app_properties(log_level: str, shell: Optional[str], light_weight: bool
     formatting.ws_advice(f"Set log file: {app_props._retrieve_property('log_file')}")
     formatting.ws_advice(f"Set shell: {app_props._retrieve_property('shell')}")
     formatting.ws_advice(f"Set local config file: {app_props._retrieve_property('local_config_file')}")
+
+
+def complete_app_properties() -> None:
+    """Finish an initialization that light-weight mode deferred, and start logging to file.
+
+    Console output never depended on this: every ``ws_*`` helper prints before logging, so a
+    light-weight command that runs without a working path still talks to the user normally, it just
+    has nowhere to write its log file. Commands that do end up with a working path (because it
+    already existed, or because the user accepted creating it) call this to get the rest of the
+    properties and the file handlers that a full initialization would have set up.
+
+    It is idempotent and safe to call when the initialization already completed.
+
+    Parameters:
+        None
+
+    Raises:
+        RuntimeError: If the properties singleton was never initialized.
+
+    Returns:
+        None
+    """
+    app_props: AppProperties = AppProperties.get_instance()
+    if app_props.is_fully_initialized():
+        return
+    app_props.complete_initialization()
+    formatting.config_log(app_props._retrieve_property("log_file"), app_props.log_level)
+    formatting.ws_advice(f"Deferred initialization completed; log file: {app_props._retrieve_property('log_file')}")
 
 
 # pylint: disable=C0415

@@ -3,19 +3,31 @@ This module contains utility functions for common operations.
 """
 
 import json
+import os
 import re
 import subprocess
 import platform
 import time
+from pathlib import Path
 from typing import Any, Callable, Optional
 import inspect
 import click
 from colorama import init, Fore, Back, Style
 from jsoncomment import JsonComment
-from mega_snake.util.formatting import ws_advice, ws_warning
+from mega_snake.util.formatting import ws_advice, ws_info, ws_success, ws_warning
 from mega_snake.util.props import get_property
 
 OS = platform.system()
+
+NO_REMOTE_MESSAGE = "No remote repository found. Please add a remote repository to the current repository."
+GIT_EXCLUDE_FILE = os.path.join(".git", "info", "exclude")
+
+# Caches the resolved remote for the lifetime of the process. Resolving it is not free: it spawns a
+# `git remote` subprocess and, when the repository has more than one remote, it prompts the user to
+# pick one. Several call sites need the remote during a single command run (pre-flight wrappers, the
+# commands themselves, get_main_branch), so without this cache the user would be prompted repeatedly
+# for the very same answer.
+_remote_cache: dict[str, Optional[str]] = {}
 
 # Initialize colopiprama
 init(autoreset=True)
@@ -138,25 +150,82 @@ def get_validated_input(p_prompt: str, valid_values: list[str]) -> str:
             raise KeyError(f"Too many invalid inputs for '{p_prompt} —— {instructions}'. Exiting.")
 
 
-def get_remote() -> Optional[str]:
-    """
-    Gets the remote of the repository.
+def reset_remote_cache() -> None:
+    """Clear the cached remote so the next call to get_remote resolves it again.
+
+    Parameters:
+        None
+
+    Raises:
+        None
 
     Returns:
-        str
+        None
     """
-    result: str = run_operation("git remote", "Getting remotes").stdout.strip()
+    _remote_cache.clear()
+
+
+def get_remote() -> Optional[str]:
+    """Get the remote of the repository, resolving it only once per process.
+
+    The result (including ``None``) is cached, so repeated calls within the same command run reuse
+    the first answer instead of spawning another ``git remote`` or prompting the user again when the
+    repository has multiple remotes. If ``git remote`` fails altogether (e.g. the current directory
+    is not a git repository), the failure is reported as a warning and treated as "no remote", so
+    callers get the same friendly handling as a repository without remotes.
+
+    Parameters:
+        None
+
+    Raises:
+        None
+
+    Returns:
+        Optional[str]: The remote name, or None when there is no remote available.
+    """
+    if "remote" in _remote_cache:
+        return _remote_cache["remote"]
+    try:
+        result: str = run_operation("git remote", "Getting remotes").stdout.strip()
+    except subprocess.SubprocessError as error:
+        ws_warning(f"{NO_REMOTE_MESSAGE} Unable to get the remotes: {error}")
+        _remote_cache["remote"] = None
+        return None
     if not result:
+        _remote_cache["remote"] = None
         return None
     remotes: list[str] = result.split("\n")
     if len(remotes) == 1:
+        _remote_cache["remote"] = remotes[0]
         return remotes[0]
     options: list[str] = [str(i) for i in range(0, len(remotes))]
     prompt: str = "Multiple remotes found in the current repository; Please select one of the following:\n"
     for index, remote in enumerate(remotes):
         prompt += f"\t{index}: {remote}\n"
     remote_index = int(get_validated_input(prompt, options))
+    _remote_cache["remote"] = remotes[remote_index]
     return remotes[remote_index]
+
+
+def require_remote() -> str:
+    """Get the remote of the repository, failing with a friendly error when there is none.
+
+    This is the single entry point for commands that cannot work without a remote, so they all
+    share the same message and the same (cached) resolution.
+
+    Parameters:
+        None
+
+    Raises:
+        click.ClickException: If the repository has no remote configured.
+
+    Returns:
+        str: The remote name.
+    """
+    remote: Optional[str] = get_remote()
+    if not remote:
+        raise click.ClickException(NO_REMOTE_MESSAGE)
+    return remote
 
 
 def get_remote_url() -> Optional[str]:
@@ -199,6 +268,86 @@ def get_current_commit() -> str:
     """
     result = run_operation("git rev-parse HEAD", "Getting current branch").stdout.strip()
     return result
+
+
+def exclude_from_git(entries: list[tuple[str, str]]) -> None:
+    """Add the given entries to the repository's local git exclude file when missing.
+
+    Entries already present are left untouched, so the operation is idempotent. When the current
+    directory is not a git repository the exclusions are skipped with a warning instead of failing,
+    and a missing exclude file is created rather than crashing with a FileNotFoundError.
+
+    Parameters:
+        entries: Pairs of (entry, description); the entry is the literal line written to the git
+            exclude file (e.g. ``".vscode/"``) and the description is used in the log messages.
+
+    Raises:
+        None
+
+    Returns:
+        None
+    """
+    if not os.path.exists(".git"):
+        ws_warning(
+            f"Not inside a git repository; skipping git exclusions for: "
+            f"{', '.join(description for _, description in entries)}"
+        )
+        return
+    exclude: str = ""
+    if os.path.exists(GIT_EXCLUDE_FILE):
+        with open(GIT_EXCLUDE_FILE, "r", encoding="utf-8") as file:
+            exclude = file.read()
+    else:
+        os.makedirs(os.path.dirname(GIT_EXCLUDE_FILE), exist_ok=True)
+    if exclude and not exclude.endswith("\n"):
+        exclude += "\n"
+    for entry, description in entries:
+        regex = re.compile(rf"^\s*{re.escape(entry.rstrip('/'))}/?\s*$", re.MULTILINE)
+        if regex.search(exclude):
+            ws_advice(f"{description} already excluded in {GIT_EXCLUDE_FILE}")
+            continue
+        exclude += f"{entry}\n"
+        ws_success(f"Excluded {description} in {GIT_EXCLUDE_FILE}")
+    with open(GIT_EXCLUDE_FILE, "w", encoding="utf-8") as file:
+        file.write(exclude)
+
+
+def ensure_working_path(decline_message: Optional[str] = None) -> str:
+    """Get the working path, offering to create it (and exclude it from git) when it is missing.
+
+    This is the single implementation shared by every command that writes its output to the working
+    path (``workspace_temp`` by default), so they all behave the same way when the folder is not
+    there yet instead of crashing with a raw FileNotFoundError.
+
+    Parameters:
+        decline_message: Error message used when the user declines to create the folder. Defaults to
+            a generic message mentioning the working path.
+
+    Raises:
+        AssertionError: If the working path property is empty or points outside the current
+            directory, which would mean the properties were built incorrectly.
+        click.ClickException: If the working path is missing and the user declines to create it.
+
+    Returns:
+        str: The absolute path to the existing working path folder.
+    """
+    working_path: str = get_property("working_path")
+    assert working_path, "Working path is required but was not found in the properties. This is a bug."
+    assert Path(working_path).resolve().is_relative_to(Path.cwd().resolve()), (
+        "Working path is not in the current directory. This is a bug."
+    )
+    if os.path.exists(working_path):
+        ws_info(f"Working path found: {working_path}")
+        return working_path
+    ws_warning("Working path not found in current directory")
+    if get_validated_input("Would you like to create a new default working path?", ["y", "n"]) == "n":
+        raise click.ClickException(
+            decline_message or f"Cannot continue without the '{working_path}' folder. Please create it and try again."
+        )
+    os.makedirs(working_path, exist_ok=True)
+    exclude_from_git([(f"{os.path.basename(working_path)}/", f"{os.path.basename(working_path)} folder")])
+    ws_success(f"Working path created at {working_path}")
+    return working_path
 
 
 def cli_metadata(**metadata) -> Callable:
