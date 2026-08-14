@@ -3,10 +3,10 @@
 import os
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as get_package_version
-from typing import Optional
+from typing import Callable, Optional
 import sys
 import click
-from .diff_tree.module import main as diff_tree
+from .diff_tree.module import main as diff_tree, add_wrapper as diff_tree_result_callback
 from .light_weight.module import main as create_release, add_wrapper as create_release_result_callback
 from .remote_branches.module import main as remote_branches, add_wrapper as remote_branches_result_callback
 from .config_environment.module import main as config_environment, add_wrapper as config_env_result_callback
@@ -143,15 +143,20 @@ def post_command(ctx, result, **kwargs) -> None:
         sys.exit(exit_code)
 
 
-cli.add_command_with_alias(diff_tree, ["dt", "tree"])
-for command in create_release.commands.values():
-    cli.add_command(create_release_result_callback(command))
-for command in config_environment.commands.values():
-    cli.add_command(config_env_result_callback(command))
-for command in remote_branches.commands.values():
-    cli.add_command(remote_branches_result_callback(command))
-for command in dependency_audit.commands.values():
-    cli.add_command(dependency_audit_result_callback(command))
+# Every module exposes the same pair: its command group, and the decorator that wraps each of its
+# commands with the module's own pre-flight checks. Registration order drives the order shown in
+# the help output.
+MODULES: list[tuple[CliGroup, Callable]] = [
+    (diff_tree, diff_tree_result_callback),
+    (create_release, create_release_result_callback),
+    (config_environment, config_env_result_callback),
+    (remote_branches, remote_branches_result_callback),
+    (dependency_audit, dependency_audit_result_callback),
+]
+
+for group, add_wrapper in MODULES:
+    for command in group.commands.values():
+        cli.add_command(add_wrapper(command))
 
 if __name__ == "__main__":
     try:

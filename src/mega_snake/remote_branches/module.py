@@ -4,6 +4,7 @@ import click
 from mega_snake.remote_branches.cleanup_remote_branches import remote_branches_cleanup
 from mega_snake.remote_branches.details_remote_branches import remote_branches_details
 from mega_snake.util.cli_group import CliGroup
+from mega_snake.util.props import complete_app_properties
 from mega_snake.util.util import cli_metadata, ensure_working_path, require_remote, wrapper_decorator
 
 
@@ -25,6 +26,9 @@ def wrapper(_ctx, *_args, **_kwargs) -> None:
     The remote is resolved through ``require_remote``, which caches it, so the commands invoked
     right after this check reuse the same answer instead of resolving (and prompting for) it again.
 
+    Once the working path is secured, ``complete_app_properties`` finishes the initialization that
+    light-weight mode deferred, so the rest of the command logs to file and honours --log-level.
+
     Parameters:
         _ctx: The click context (unused).
 
@@ -37,6 +41,7 @@ def wrapper(_ctx, *_args, **_kwargs) -> None:
     """
     require_remote()
     ensure_working_path()
+    complete_app_properties()
 
 
 # Export the decorated wrapper for use in other modules

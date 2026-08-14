@@ -39,6 +39,26 @@ def cli(ctx: click.Context, log_level: str, shell: str) -> None:
         init_app_properties(log_level, shell, light_weight=True)
 ```
 
+**What light-weight mode actually defers**
+When `working_path` (e.g. `workspace_temp`) is missing, `AppProperties.__init__` raises `FileNotFoundError` *after* setting
+`resources_path`, `working_path`, `local_config_file`, `local_env_file`, `shell` and a best-effort `workspace_file`.
+`init_app_properties` swallows that error when `light_weight=True`, which leaves **unset**: the `_log_level` attribute,
+`log_file`, `graphql_schema_file` and the `__post_init__` validation — and skips `formatting.config_log`, so nothing is
+written to the log file and `--log-level DEBUG` has no effect (`ws_advice` checks `logger.level`).
+
+Console output is unaffected: every `ws_*` helper in `formatting.py` calls `print()` **before** `logger.*`, so the tool
+always talks to the user regardless of whether logging is configured. That is the decoupling light-weight mode relies on.
+
+**Completing a deferred initialization (`complete_app_properties`)**
+Commands that are light-weight but *do* need the working path (see the pre-flight wrappers below) call
+`complete_app_properties()` right after securing the folder. It finishes exactly where `__init__` stopped
+(`_log_level`, `log_file`, `graphql_schema_file`, `config_log`) and is idempotent, so it is a no-op after a full
+initialization. `_check_forbidden_execution` treats `complete_initialization` as part of the initialization
+(`INITIALIZATION_METHODS`), which is what allows the init-only validators to run from there.
+
+**Rule of thumb:** a command may be light-weight *and* depend on `working_path` only if its wrapper offers to create the
+folder and fails with a clean `click.ClickException` when the user declines. Never let it reach the command body without it.
+
 ### 2.2 Command Registration & Aliases (`src/mega_snake/util/cli_group.py`)
 
 We do not standard `click` alias implementation. We use `CliGroup` to register commands with multiple names.
@@ -127,14 +147,23 @@ Developers often have machine-specific tokens, paths, or aliases that shouldn't 
 #### `diff-tree` (`dt`)
 Generates a visual tree representation of changed files.
 
+**Module layout** (same shape as every other module): `diff_tree/diff_tree.py` holds the command and its helpers,
+`diff_tree/module.py` holds the `CliGroup`, the pre-flight `wrapper` (carrying the `skip` flag) and `add_wrapper`.
+`__main__.py` registers it by iterating `diff_tree.commands.values()` and wrapping each one, so the aliases go through
+the same pre-flight check as the command.
+
 **Implementation Details:**
 - Uses `git diff-tree -r {main_branch} {current_branch}` to get raw file lists.
 - categorizes files using `FileType.from_symbol(symbol)`.
 - Reconstructs a dummy directory structure in `workspace_temp/diff_tree_dummy_repo`.
 - Uses `directory_tree` library to generating the visual text tree.
+- The output directory is wiped (`shutil.rmtree`) and recreated (`os.makedirs`) on **every** run, so no file write
+  depends on a directory left behind by a previous run.
+- No remote is required: `get_main_branch` falls back to the current local branch, so its wrapper only calls
+  `ensure_working_path()` + `complete_app_properties()`.
 
 ```python
-# src/mega_snake/diff_tree/module.py
+# src/mega_snake/diff_tree/diff_tree.py
 for diff in diff_str.split("\n"):
     columns: list[str] = diff.split("\t")
     symbol = columns[0].split(" ")[4] # M, A, D, etc.
@@ -165,6 +194,11 @@ An interactive tool that consumes the output of `remote-branches-details`.
 
 **Design Pattern: Pipeline via Files**
 Instead of passing complex objects between commands in memory, we use the filesystem (`remote_branches.txt`) as an intermediate buffer. This allows the user to inspect (and potentially edit) the list of candidates before running the destructive cleanup command.
+
+**Pre-flight wrapper (`remote_branches/module.py`)**
+Both commands are light-weight (`skip`) but need a remote and the working path, so the wrapper runs
+`require_remote()` → `ensure_working_path()` → `complete_app_properties()`. The commands themselves still call
+`require_remote()`; because `get_remote()` is memoized, that costs no extra `git remote` and no second prompt.
 
 ### 3.4 Release Management (`src/mega_snake/light_weight/create_release.py`)
 
@@ -280,6 +314,18 @@ result = run_operation(
 if result.returncode != 0:
     # handle error...
 ```
+
+**Shared helpers — always reuse these, never reimplement them:**
+
+| Helper | Use it for |
+|---|---|
+| `get_remote()` | The repository's remote. **Memoized per process**: one `git remote`, and with several remotes the user is prompted only once no matter how many call sites ask. Returns `None` (with a warning) instead of raising when `git remote` fails, e.g. outside a repository. `reset_remote_cache()` exists for tests. |
+| `require_remote()` | Same, for commands that cannot work without a remote: raises `click.ClickException(NO_REMOTE_MESSAGE)`. This is the **single** place that message lives — do not re-raise your own. |
+| `ensure_working_path(decline_message=None)` | Get `working_path`, offering to create it when missing (and excluding it from git right away), or failing with a clean `click.ClickException`. Used by `working-env` and by every light-weight pre-flight wrapper. |
+| `exclude_from_git(entries)` | Append `(entry, description)` pairs to `.git/info/exclude`. Idempotent; skips with a warning outside a git repository and creates the exclude file when missing. |
+
+**Anything that creates a folder under the repo must exclude it from git in the same step** — that is what
+`ensure_working_path` does, and why nothing else should call `os.makedirs(working_path)` directly.
 
 ---
 
@@ -411,6 +457,15 @@ When end-users install `mega_snake` via `uv tool install` or `pipx install`:
     -   Let unexpected errors bubble up to `__main__.py` to be caught by the global handler
 
 5.  **Paths**: Always use `pathlib.Path` or `os.path` joins. Never use string concatenation for paths.
+
+6.  **Language**: All code comments, docstrings, and identifier names (variables, functions, classes, etc.) must be
+    written in English, regardless of the language used to discuss the task. This is an English-speaking work
+    environment.
+
+7. **Avoid duplicated code**: Each fix, implementation or modification in the codebase must use the existing utilities, helpers, and patterns. Additionally, If you find yourself copying and pasting code, consider refactoring it into a shared utility function or class.
+
+8.  **Consistency**: We must use the same approach and design patterns consistently across the codebase. If a pattern is already established, follow it rather than introducing a new one. If you are writing a new implementation, make sure to check what development patterns are being used in the codebase beforehand, so you can use similar approaches in your new solution unless there is a strong reason to deviate.
+
 
 ### 6.2 Testing & Coverage Requirements (CRITICAL)
 
