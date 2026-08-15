@@ -1,6 +1,8 @@
-Manages Gradle configuration:
+Writes `java.import.gradle.home` and the `GRADLE_HOME` entry of `terminal.integrated.env.<os>` in the
+`.code-workspace` file, keeping the Gradle the IDE imports with and the one your integrated terminal
+calls on the same version.
 
-- Detects installed Gradle versions
-- Allows selection of specific Gradle version
-- Updates workspace settings to use selected version
-- Configures both VSCode and shell environment
+## Notes
+
+As with `set-java`, the `.code-workspace` file is read with a comment-preserving loader, so your
+annotations are not stripped.

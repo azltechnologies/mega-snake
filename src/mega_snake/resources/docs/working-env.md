@@ -1,9 +1,12 @@
-Sets up a complete VSCode workspace configuration for Java development:
+The "zero-config start" command: a single run should leave the IDE ready to code, so it is the one
+to reach for on a freshly cloned repository.
 
-- Creates/updates VSCode workspace file with recommended settings
-- Configures git exclusions for workspace files
-- Sets up Java and Gradle configurations
-- Adds recommended VSCode extensions
-- Configures debugging settings and launch configurations
-- Sets up log watchers and GitHub queries
-- Creates task definitions for common operations
+On top of what the synopsis lists, it also sets up log watchers and GitHub query definitions, and it
+runs the Java and Gradle configuration steps for you — `set-java` and `set-gradle` are only needed
+afterwards when you want to switch versions.
+
+## Notes
+
+Requires a valid Git repository. Developer-specific overrides are loaded before the defaults are
+written, so anything you set through `init-local-config` wins over the values this command
+generates.

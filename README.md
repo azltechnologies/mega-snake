@@ -94,7 +94,7 @@ Then restart your terminal or source the configuration file to activate the `mgs
 
 ### Prefer command aliases for daily use
 
-Many command names are intentionally descriptive. For faster terminal workflows, use aliases shown next to each command in this README.
+Many command names are intentionally descriptive. For faster terminal workflows, use the aliases shown next to each command in [COMMANDS.md](COMMANDS.md).
 
 ```bash
 # Full command
@@ -114,7 +114,8 @@ This repository combines two free, open-source tools to keep dependencies up to 
 
 - **[Dependabot](https://docs.github.com/en/code-security/dependabot)** (`.github/dependabot.yml`): opens weekly pull
   requests to update outdated `pip`/`uv` dependencies and GitHub Actions.
-
+- **[`mgsnake scan-dependencies`](COMMANDS.md#scan-dependencies)**: audits the locked dependencies and files a GitHub
+  issue for every new vulnerability finding. Any repo can reuse this by consuming `mgsnake`, regardless of its stack.
 
 The scheduled/PR workflow that runs `mgsnake scan-dependencies` in CI lives at
 [`.github/workflows/dependency-scan.yml`](.github/workflows/dependency-scan.yml). It runs weekly, on pull requests that

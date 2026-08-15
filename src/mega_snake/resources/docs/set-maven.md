@@ -1,5 +1,7 @@
-Configures Maven for pom.xml-based projects:
+Sets `M2_HOME` in both the workspace terminal settings and the local shell config, and points VS
+Code's Maven executable path at the detected installation.
 
-- Detects Maven installation from your shell or uses `--maven-home`
-- Sets `M2_HOME` in workspace terminal settings and local shell config
-- Configures VS Code Maven executable path
+## Notes
+
+Intended for `pom.xml`-based projects. Run `maven-project-setup` afterwards to add the matching VS
+Code task definitions.
