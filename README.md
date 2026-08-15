@@ -109,6 +109,17 @@ mgsnake cwe
 
 [See COMMANDS.md for the full list of available commands and their usage.](COMMANDS.md)
 
+The same reference is readable without leaving the terminal, which is usually faster than opening the file:
+
+```bash
+# The whole reference, paged
+mgsnake man
+
+# A single command (aliases work too)
+mgsnake man diff-tree
+mgsnake man dt
+```
+
 That file is **generated**, not hand-written: `mgsnake generate-docs` introspects the registered commands (synopsis,
 aliases, options, defaults) and appends a per-command prose fragment from `src/mega_snake/resources/docs/`. This way
 the option tables can never drift away from the code.

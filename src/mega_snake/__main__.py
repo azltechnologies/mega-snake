@@ -93,7 +93,8 @@ Main features:
     # Run with debug logging\n
     mgsnake --log-level DEBUG <command>\n
     \n
-For more details on specific commands, use: mgsnake <command> --help""",
+For more details on specific commands, use: mgsnake <command> --help\n
+For the full reference — outputs, examples and caveats — use: mgsnake man [COMMAND]""",
     context_settings={"help_option_names": ["-h", "--help"]},
     cls=CliGroup,
     no_args_is_help=True,

@@ -409,6 +409,7 @@ other, and two tests enforce it (§6.3).
 | `docs_gen/introspect.py` | Walks the CLI and normalizes it into `IntrospectedCommand` dataclasses. Owns `normalize_help()` and `normalize_epilog()`. |
 | `docs_gen/markdown_writer.py` | Pure rendering: dataclasses → Markdown. Owns the table-escaping helpers and `write_or_check_document()`. |
 | `docs_gen/generate_docs.py` | The `generate-docs` Click command only. |
+| `docs_gen/man_page.py` | The `man` Click command: alias resolution, terminal rendering, paging. |
 | `docs_gen/module.py` | The `CliGroup`, the `wrapper` (carrying `docs_group="Documentation"`) and `add_wrapper`. |
 
 `generate-docs` is `@cli_metadata(flags={"no_init"})`: it needs no workspace, no git and no `MEGA_SNAKE_SHELL`, so it
@@ -418,6 +419,35 @@ root `cli` **lazily inside the function**, because `__main__` imports this modul
 **Flags:** `--output PATH` (default `COMMANDS.md`) and `--check` (render in memory, diff, exit non-zero when stale).
 `--check` compares with `splitlines()` and writes with `newline="\n"`, so CRLF/LF differences never cause a false
 failure on Windows.
+
+#### `man`
+
+Pages the same reference in the terminal — the whole document, or one command when `mgsnake man [COMMAND]` names one.
+Also `no_init`, and it imports the root `cli` lazily for the same reason.
+
+**It renders in memory; it never reads `COMMANDS.md`.** That file is committed to the repository but is *not* shipped
+in the wheel (`packages = ["src/mega_snake"]` only sweeps in the package tree, and `COMMANDS.md` sits at the repo
+root). Reading it would produce a command that works in a source checkout and fails for every installed user — the
+exact class of bug that never shows up in development. The fragments *are* packaged, so introspection plus
+`importlib.resources` is the only source that exists in both environments.
+
+**Nothing is installed to `/usr/share/man`.** `uv tool install` and `pipx` create an isolated environment and copy
+nothing to the system man path, so `man mgsnake` cannot resolve. Paging from inside the CLI is also the only form
+that works on PowerShell, where `man` does not exist.
+
+Three details that are easy to get wrong when touching this command:
+
+- **`<br>` must be folded back into spaces before rendering.** The Markdown writer emits `CELL_LINE_BREAK` so
+  multi-line option help survives a table row; rich drops HTML tags outright, which would glue the choice lists of
+  `--type-msg` and `--filter-by` into one unreadable run. Import the constant, never the literal.
+- **Aliases resolve to the real command.** The hidden alias commands are separate click objects that
+  `iter_documented_commands()` skips, so `man dt` maps `dt` → `diff-tree` through the `ATTR_ALIAS` list rather than
+  looking the alias command up.
+- **ANSI is emitted unconditionally** (`Console(force_terminal=True)`). Click's pager strips it again when the pager
+  cannot display color, so this keeps the styling where it works without breaking where it does not.
+
+Rendering reuses `render_markdown()` on a filtered command list rather than adding a second rendering path — a
+single-command page is the same document with one entry, which is what keeps the two outputs from drifting apart.
 
 #### Document structure (heading levels)
 
