@@ -15,6 +15,7 @@ import click
 from colorama import init, Fore, Back, Style
 from jsoncomment import JsonComment
 from mega_snake.util.formatting import ws_advice, ws_info, ws_success, ws_warning
+from mega_snake.util.cli_group import ATTR_ALIAS, ATTR_DOCS, ATTR_GROUP
 from mega_snake.util.props import get_property
 
 OS = platform.system()
@@ -367,6 +368,26 @@ def cli_metadata(**metadata) -> Callable:
 def wrapper_decorator(sub_wrapper: Callable) -> Callable:
     """Decorator to wrap a command with additional logic"""
 
+    preserved_attrs: tuple[str, ...] = (ATTR_ALIAS, ATTR_DOCS, ATTR_GROUP)
+
+    def apply_command_metadata(target: click.Command, source: Any) -> None:
+        """Copy custom documentation metadata from a wrapper or callback onto a command.
+
+        Parameters:
+            target: The command that should receive the metadata.
+            source: The callback or wrapper that may carry metadata.
+
+        Raises:
+            None
+
+        Returns:
+            None
+        """
+        metadata: dict[str, Any] = getattr(source, "flags", {})
+        for attr_name in (ATTR_DOCS, ATTR_GROUP):
+            if value := metadata.get(attr_name):
+                setattr(target, attr_name, value)
+
     def decorator(command) -> click.Command:
         """
         Decorator that can handle both Click Commands and regular functions
@@ -391,8 +412,11 @@ def wrapper_decorator(sub_wrapper: Callable) -> Callable:
 
         comm = click.Command(**{k: getattr(command, k) for k, _p in command_signature.items() if k != "self"})
         comm.callback = wrapper  # Override the callback with our wrapper
-        if aliases := getattr(command, "aliases", []):
-            setattr(comm, "aliases", aliases)
+        for attr_name in preserved_attrs:
+            if value := getattr(command, attr_name, None):
+                setattr(comm, attr_name, value)
+        apply_command_metadata(comm, sub_wrapper)
+        apply_command_metadata(comm, command.callback)
         return comm
 
     return decorator

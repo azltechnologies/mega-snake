@@ -7,6 +7,7 @@ from typing import Callable, Optional
 import sys
 import click
 from .diff_tree.module import main as diff_tree, add_wrapper as diff_tree_result_callback
+from .docs_gen.module import main as docs_gen, add_wrapper as docs_gen_result_callback
 from .light_weight.module import main as create_release, add_wrapper as create_release_result_callback
 from .remote_branches.module import main as remote_branches, add_wrapper as remote_branches_result_callback
 from .config_environment.module import main as config_environment, add_wrapper as config_env_result_callback
@@ -148,6 +149,7 @@ def post_command(ctx, result, **kwargs) -> None:
 # the help output.
 MODULES: list[tuple[CliGroup, Callable]] = [
     (diff_tree, diff_tree_result_callback),
+    (docs_gen, docs_gen_result_callback),
     (create_release, create_release_result_callback),
     (config_environment, config_env_result_callback),
     (remote_branches, remote_branches_result_callback),
