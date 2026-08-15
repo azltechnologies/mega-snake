@@ -32,6 +32,13 @@ dev = [
     "pytest-html>=4.1.1",
     "ruff>=0.1.0",
     "pip-audit>=2.7.0",
+    # Floor is load-bearing: twine <= 6.0 parses distribution metadata through 'pkginfo', which only
+    # knows Metadata-Version up to 2.2 and silently yields empty fields for anything newer instead of
+    # failing on the version itself. Hatchling emits 2.5, so an older twine reports the symptom
+    # ("missing required fields: Name, Version") on a perfectly valid wheel. 6.1 dropped pkginfo for
+    # 'packaging'. Always run it as 'uv run twine check dist/*' so the pinned version is used and not
+    # whatever the system happens to provide.
+    "twine>=6.1",
 ]
 
 [project.urls]
