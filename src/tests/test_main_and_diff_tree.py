@@ -140,6 +140,82 @@ def test_get_untracked_files() -> None:
         run_operation.assert_not_called()
 
 
+def test_get_pending_changes_report_per_scope() -> None:
+    """The report only covers what the scope includes: nothing for the committed scope, the index
+    for the staged one, and the working tree on top of it for the unstaged one."""
+    with patch("mega_snake.diff_tree.diff_tree.run_operation") as run_operation:
+        assert diff_tree_cmd._get_pending_changes_report("c", []) == ""
+        run_operation.assert_not_called()
+
+    with patch("mega_snake.diff_tree.diff_tree.run_operation") as run_operation:
+        run_operation.return_value.stdout = "staged.txt"
+        report = diff_tree_cmd._get_pending_changes_report("s", [])
+    assert report == "Staged files:\n- staged.txt\n\n"
+    run_operation.assert_called_once_with("git diff --cached --name-only", "getting staged files")
+
+    with patch("mega_snake.diff_tree.diff_tree.run_operation") as run_operation:
+        run_operation.side_effect = [
+            SimpleNamespace(stdout="modified.txt"),  # unstaged files
+            SimpleNamespace(stdout="staged.txt"),  # staged files
+        ]
+        report = diff_tree_cmd._get_pending_changes_report("u", ["new.txt"])
+    # unstaged first, so the commit list below keeps reading from newest to oldest
+    assert report == "Unstaged files:\n- modified.txt\n- new.txt\n\nStaged files:\n- staged.txt\n\n"
+
+
+def test_get_pending_changes_report_skips_the_empty_sections() -> None:
+    """A section with no file is left out entirely instead of printing an empty heading."""
+    with patch("mega_snake.diff_tree.diff_tree.run_operation") as run_operation:
+        run_operation.side_effect = [
+            SimpleNamespace(stdout=""),  # unstaged files: none
+            SimpleNamespace(stdout="staged.txt"),  # staged files
+        ]
+        assert diff_tree_cmd._get_pending_changes_report("u", []) == "Staged files:\n- staged.txt\n\n"
+
+    with patch("mega_snake.diff_tree.diff_tree.run_operation") as run_operation:
+        run_operation.return_value.stdout = ""
+        assert diff_tree_cmd._get_pending_changes_report("u", []) == ""
+
+
+def test_diff_tree_main_writes_the_pending_changes_above_the_commits() -> None:
+    """The commit file keeps the commits, with the uncommitted work reported on top of them."""
+    for file_type in FileType:
+        file_type.files_added = 0
+        file_type.files.clear()
+    try:
+        with patch("mega_snake.diff_tree.diff_tree.get_property", return_value="/tmp"), patch(
+            "mega_snake.diff_tree.diff_tree.os.path.exists", return_value=True
+        ), patch("mega_snake.diff_tree.diff_tree.get_current_commit", return_value="head"), patch(
+            "mega_snake.diff_tree.diff_tree.run_operation"
+        ) as run_operation, patch(
+            "mega_snake.diff_tree.diff_tree._create_files"
+        ), patch("mega_snake.diff_tree.diff_tree._display_inner_tree"), patch(
+            "mega_snake.diff_tree.diff_tree.shutil.rmtree"
+        ), patch("mega_snake.diff_tree.diff_tree.os.makedirs"), patch(
+            "builtins.open", mock_open()
+        ) as m_open:
+            run_operation.side_effect = [
+                SimpleNamespace(stdout="commit"),  # commit hash validation
+                SimpleNamespace(stdout=""),  # untracked files
+                SimpleNamespace(stdout=":000000 100644 0000000 1111111 A\tfile.txt"),  # raw diff
+                SimpleNamespace(stdout=""),  # numstat
+                SimpleNamespace(stdout="2026-08-14 abc123\nmsg"),  # commit list
+                SimpleNamespace(stdout="modified.txt"),  # unstaged files
+                SimpleNamespace(stdout="staged.txt"),  # staged files
+                SimpleNamespace(stdout=""),  # opening commit file
+                SimpleNamespace(stdout="diff content"),  # changes
+                SimpleNamespace(stdout=""),  # opening changes file
+            ]
+            diff_tree_cmd.diff_tree.callback("abc", True, "u")
+
+        written = [call.args[0] for call in m_open().write.call_args_list]
+        assert "Unstaged files:\n- modified.txt\n\nStaged files:\n- staged.txt\n\n2026-08-14 abc123\nmsg" in written
+    finally:
+        for file_type in FileType:
+            file_type.files_added = 0
+            file_type.files.clear()
+
+
 def test_diff_tree_main_includes_untracked_files_in_unstaged_scope() -> None:
     """With the unstaged scope, untracked files are reported as added even though git diff ignores
     them, and the run is not considered empty when they are the only change."""
@@ -164,6 +240,8 @@ def test_diff_tree_main_includes_untracked_files_in_unstaged_scope() -> None:
                 SimpleNamespace(stdout=""),  # raw diff: nothing tracked changed
                 SimpleNamespace(stdout=""),  # numstat
                 SimpleNamespace(stdout="commit log"),  # commit list
+                SimpleNamespace(stdout=""),  # unstaged files
+                SimpleNamespace(stdout=""),  # staged files
                 SimpleNamespace(stdout=""),  # opening commit file
                 SimpleNamespace(stdout="diff content"),  # changes
                 SimpleNamespace(stdout=""),  # opening changes file

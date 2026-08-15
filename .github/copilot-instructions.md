@@ -161,8 +161,11 @@ the same pre-flight check as the command.
 - Untracked files are invisible to `git diff`, so `_get_untracked_files` adds them (via
   `git ls-files --others --exclude-standard`) as `FileType.ADDED` — for the `u` scope only.
 - The same `diff_target` drives the binary-file detection (`git diff --numstat`) and the `diff_changes.txt` patch, so
-  the three outputs always describe the same set of changes. The commit list is unaffected: only committed work has
-  commits.
+  the three outputs always describe the same set of changes.
+- `diff_commit.txt` cannot follow `diff_target` (uncommitted work has no commits), so `_get_pending_changes_report`
+  prepends the pending files to it instead: `Unstaged files:` (`git diff --name-only` plus the untracked ones) and
+  then `Staged files:` (`git diff --cached --name-only`), each one only when the scope covers it **and** it has
+  files. Sections go above the newest commit, keeping the whole file newest-first.
 - categorizes files using `FileType.from_symbol(symbol)`.
 - Reconstructs a dummy directory structure in `workspace_temp/diff_tree_dummy_repo`.
 - Uses `directory_tree` library to generating the visual text tree.
