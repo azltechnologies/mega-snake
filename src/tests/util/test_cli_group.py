@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 from click.testing import CliRunner
 import click
 import pytest
-from mega_snake.util.cli_group import CliGroup
+from mega_snake.util.cli_group import ATTR_GROUP, CliGroup
 
 ATTR_ALIAS = "aliases"
 TEST_PARAMS = [MagicMock(name="param1"), MagicMock(name="param2")]
@@ -117,8 +117,12 @@ def test_add_command_with_alias_no_aliases() -> None:
     assert len(group2.commands) == 1
 
 
-def test_format_commands() -> None:
-    """Test format_commands"""
+def test_help_lists_commands_with_their_aliases() -> None:
+    """Rendering help should list every public command together with its aliases.
+
+    rich-click renders that alias column natively from the ``aliases`` attribute, which is why
+    CliGroup no longer overrides ``format_commands``.
+    """
 
     @click.group(context_settings=dict(help_option_names=["-h", "--help"]), cls=CliGroup)
     def clo() -> None:
@@ -138,3 +142,28 @@ def test_format_commands() -> None:
     assert result.exit_code == 0
     assert "My Excellent CLO" in result.output
     assert "More commands" in result.output
+    assert "moreCommands" in result.output
+    assert "mc" in result.output
+    assert set(clo.commands) == {*(cmd.name for cmd in cli.commands.values()), "moreCommands", "mc", "mC"}
+
+
+def test_add_command_keeps_an_explicit_group_title_verbatim() -> None:
+    """An explicitly declared docs group must never be reformatted, unlike a derived one."""
+
+    @click.command(name="explicit", help="Explicit group")
+    def explicit_command() -> None:
+        """Command carrying an explicit group title."""
+
+    @click.command(name="derived", help="Derived group")
+    def derived_command() -> None:
+        """Command without any group metadata."""
+
+    setattr(explicit_command, ATTR_GROUP, "GraphQL & gRPC")
+    group = CliGroup(name="root")
+    group.add_command(explicit_command)
+    group.add_command(derived_command)
+
+    assert getattr(group.commands["explicit"], ATTR_GROUP) == "GraphQL & gRPC"
+    # The derived title comes from the module path, so it is turned into a display title.
+    derived_key: str = derived_command.callback.__module__.split(".")[-1]
+    assert getattr(group.commands["derived"], ATTR_GROUP) == derived_key.replace("_", " ").title()

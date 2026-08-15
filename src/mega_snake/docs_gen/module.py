@@ -2,7 +2,7 @@
 
 import click
 
-from mega_snake.docs_gen.markdown_writer import generate_docs
+from mega_snake.docs_gen.generate_docs import generate_docs
 from mega_snake.util.cli_group import CliGroup
 from mega_snake.util.util import cli_metadata, wrapper_decorator
 

@@ -8,14 +8,34 @@ from typing import Iterable
 
 import click
 
-from mega_snake.docs_gen.introspect import IntrospectedCommand, iter_introspected_commands
-from mega_snake.util.util import cli_metadata
+from mega_snake.docs_gen.introspect import IntrospectedCommand
 
 GROUP_HEADING = "# Available Commands"
+CELL_LINE_BREAK = "<br>"
+BACKTICK = "`"
+
+
+def _to_single_cell_line(text: str) -> str:
+    """Fold a multi-line value into one Markdown table row.
+
+    A table row ends at the first newline, so any help text with manual line breaks (the choice
+    lists of ``--filter-by`` and ``--type-msg``) would tear the table apart. Paragraph breaks
+    survive as two ``<br>`` because ``normalize_help`` separates paragraphs with a blank line.
+
+    Parameters:
+        text: The raw cell text, possibly spanning several lines.
+
+    Raises:
+        None
+
+    Returns:
+        str: The folded single-line cell text.
+    """
+    return CELL_LINE_BREAK.join(text.splitlines())
 
 
 def _escape_markdown_cell(text: str) -> str:
-    """Escape text so it can be safely rendered inside a Markdown table.
+    """Escape prose so it can be safely rendered inside a Markdown table.
 
     Parameters:
         text: The raw text to escape.
@@ -26,7 +46,31 @@ def _escape_markdown_cell(text: str) -> str:
     Returns:
         str: The escaped table cell text.
     """
-    return text.replace("\\", "\\\\").replace("|", "\\|")
+    return _to_single_cell_line(text.replace("\\", "\\\\").replace("|", "\\|"))
+
+
+def _render_code_cell(text: str) -> str:
+    """Render text as an inline code span that survives a Markdown table.
+
+    Backslashes are left untouched: a code span renders them literally, so escaping them here
+    would print a doubled backslash. Pipes still need escaping, since a table row is split on them
+    before any inline parsing happens. The fence grows past the longest backtick run in the text,
+    which is the standard way to embed backticks in a code span.
+
+    Parameters:
+        text: The raw text to render as code.
+
+    Raises:
+        None
+
+    Returns:
+        str: The fenced, table-safe code span.
+    """
+    longest_run: int = max((len(run) for run in re.findall(rf"{BACKTICK}+", text)), default=0)
+    fence: str = BACKTICK * (longest_run + 1)
+    padding: str = " " if text.startswith(BACKTICK) or text.endswith(BACKTICK) else ""
+    content: str = _to_single_cell_line(text.replace("|", "\\|"))
+    return f"{fence}{padding}{content}{padding}{fence}"
 
 
 def _render_fragment(fragment_body: str) -> str:
@@ -79,9 +123,7 @@ def render_markdown(commands: Iterable[IntrospectedCommand]) -> str:
                     ]
                 )
                 for option in command.options:
-                    lines.append(
-                        f"| `{_escape_markdown_cell(option.name)}` | {_escape_markdown_cell(option.description)} |"
-                    )
+                    lines.append(f"| {_render_code_cell(option.name)} | {_escape_markdown_cell(option.description)} |")
                 lines.append("")
             if command.fragment_body:
                 lines.extend([_render_fragment(command.fragment_body), ""])
@@ -134,44 +176,3 @@ def write_or_check_document(output_path: Path, markdown: str, check: bool) -> No
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8", newline="\n") as handle:
         handle.write(markdown)
-
-
-@click.command(
-    name="generate-docs",
-    short_help="Generate the Markdown command reference from CLI metadata and fragments.",
-    help="Generates the Markdown command reference by introspecting the registered CLI commands,"
-    " rendering their help and options, and appending the command-specific fragment bodies.",
-)
-@cli_metadata(flags={"no_init"})
-@click.option(
-    "--output",
-    type=click.Path(dir_okay=False, path_type=Path),
-    default=Path("COMMANDS.md"),
-    show_default=True,
-    help="Write the generated command reference to this file.",
-)
-@click.option(
-    "--check",
-    is_flag=True,
-    default=False,
-    help="Render in memory, compare with the output file, and exit with an error when it is stale.",
-)
-def generate_docs(output: Path, check: bool) -> None:
-    """Generate or validate the Markdown command reference.
-
-    Parameters:
-        output: The target Markdown file path.
-        check: Whether to validate the file instead of writing it.
-
-    Raises:
-        click.ClickException: If --check finds that the output file is stale.
-
-    Returns:
-        None
-    """
-    from mega_snake.__main__ import cli
-
-    markdown: str = render_markdown(iter_introspected_commands(cli))
-    write_or_check_document(output, markdown, check)
-    if not check:
-        click.echo(f"Generated {output}")

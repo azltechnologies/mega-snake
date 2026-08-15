@@ -12,7 +12,7 @@ Builds a consolidated GraphQL schema and introspection JSON from schema files in
 
 | Option | Description |
 | --- | --- |
-| `--help` | Show this message and exit. |
+| `-h, --help` | Show this message and exit. |
 
 Frontend tooling (Apollo and most IDE plugins) cannot work from the raw SDL alone — it needs a full
 introspection result to provide autocompletion and type checking. That is why this command emits two
@@ -40,7 +40,7 @@ Creates or updates the local configuration file used for developer-specific shel
 | Option | Description |
 | --- | --- |
 | `-o, --override` | Override the current local configuration file with a new one |
-| `--help` | Show this message and exit. |
+| `-h, --help` | Show this message and exit. |
 
 Developers usually have machine-specific tokens, paths and aliases that must never be committed.
 This command generates a shell-specific file (`.sh` or `.ps1`) that is **ignored by Git** and sourced
@@ -65,7 +65,7 @@ Creates or updates Maven tasks and log watchers in the current code-workspace wh
 | Option | Description |
 | --- | --- |
 | `-o, --override` | Recreate existing Maven tasks and log watchers |
-| `--help` | Show this message and exit. |
+| `-h, --help` | Show this message and exit. |
 
 Adds the task definitions under the `tasks` section of the current `.code-workspace` file —
 `clean install`, `test`, `verify`, `dependency:tree` and `spring-boot:run` — together with the
@@ -87,7 +87,7 @@ Detects installed Gradle versions and sets the default Gradle version for the wo
 | Option | Description |
 | --- | --- |
 | `-o, --override` | Override the current Gradle version |
-| `--help` | Show this message and exit. |
+| `-h, --help` | Show this message and exit. |
 
 Writes `java.import.gradle.home` and the `GRADLE_HOME` entry of `terminal.integrated.env.<os>` in the
 `.code-workspace` file, keeping the Gradle the IDE imports with and the one your integrated terminal
@@ -109,7 +109,7 @@ Detects installed Java versions and sets the default Java version for the worksp
 | Option | Description |
 | --- | --- |
 | `-o, --override` | Override the current Java version |
-| `--help` | Show this message and exit. |
+| `-h, --help` | Show this message and exit. |
 
 Writes `java.configuration.runtimes` and the `JAVA_HOME` entry of `terminal.integrated.env.<os>` in
 the `.code-workspace` file, so the IDE's language server and the integrated terminal always agree on
@@ -131,7 +131,7 @@ Detects Maven installation (or uses --maven-home) and sets Maven paths for VS Co
 | Option | Description |
 | --- | --- |
 | `-m, --maven-home TEXT` | Explicit Maven home directory |
-| `--help` | Show this message and exit. |
+| `-h, --help` | Show this message and exit. |
 
 Sets `M2_HOME` in both the workspace terminal settings and the local shell config, and points VS
 Code's Maven executable path at the detected installation.
@@ -151,7 +151,7 @@ Sets up the VS Code workspace with recommended extensions, default settings, tas
 
 | Option | Description |
 | --- | --- |
-| `--help` | Show this message and exit. |
+| `-h, --help` | Show this message and exit. |
 
 The "zero-config start" command: a single run should leave the IDE ready to code, so it is the one
 to reach for on a freshly cloned repository.
@@ -180,7 +180,7 @@ Scans the project's locked dependencies for known vulnerabilities against the OS
 | --- | --- |
 | `--dry-run` | Scan and print findings without creating GitHub issues. |
 | `--ecosystem [python\|java\|node\|osv]` | Force the ecosystem/auditor instead of auto-detecting it from the project's lockfiles. |
-| `--help` | Show this message and exit. |
+| `-h, --help` | Show this message and exit. |
 
 The ecosystem is detected from the project's lockfiles, first match wins:
 
@@ -217,7 +217,7 @@ Creates a diff tree of changes and a commit list of the current branch against m
 | `-c, --commit-hash TEXT` | Commit hash to compare against instead of master |
 | `-d, --delete-original-files` | Delete the generated copy of the original files in the diff tree |
 | `-s, --scope [c\|s\|u]` | Changes to include: (c)ommitted only [default], committed and (s)taged, or also (u)nstaged and untracked  [default: c] |
-| `--help` | Show this message and exit. |
+| `-h, --help` | Show this message and exit. |
 
 Useful for code reviews, progress comments on a ticket, and release notes: it answers "what did I
 touch since master?" without scrolling through `git log`.
@@ -251,7 +251,7 @@ Generates the Markdown command reference by introspecting the registered CLI com
 | --- | --- |
 | `--output FILE` | Write the generated command reference to this file.  [default: COMMANDS.md] |
 | `--check` | Render in memory, compare with the output file, and exit with an error when it is stale. |
-| `--help` | Show this message and exit. |
+| `-h, --help` | Show this message and exit. |
 
 Useful when you want a single, drift-resistant command reference: the generator pulls the public
 CLI shape from Click itself and only uses these fragments for the extra narrative that `--help`
@@ -278,7 +278,7 @@ Iterates over the remote branches asking the user which merged branches to delet
 
 | Option | Description |
 | --- | --- |
-| `--help` | Show this message and exit. |
+| `-h, --help` | Show this message and exit. |
 
 Consumes the report produced by `remote-branches-details` (and can re-run it first to refresh the
 data), then deletes the branches you select and prunes the local references pointing at them.
@@ -301,14 +301,8 @@ Creates a detailed list of remote branches filtered by type
 
 | Option | Description |
 | --- | --- |
-| `-f, --filter-by [m\|u\|a]` | filter branches by merge status against main branch:
-
-'M' - merged branches
-
-'U' - unmerged branches
-
-'A' - all branches (default) |
-| `--help` | Show this message and exit. |
+| `-f, --filter-by [m\|u\|a]` | filter branches by merge status against main branch:<br><br>'M' - merged branches<br><br>'U' - unmerged branches<br><br>'A' - all branches (default) |
+| `-h, --help` | Show this message and exit. |
 
 A branch counts as merged when it was merged, fast-forwarded, **rebased**, or **squashed** into the
 main branch — the last two are detected by patch id, so branches that were squash-merged through a
@@ -337,9 +331,14 @@ Creates a GitHub release and tag: the new tag is derived from the latest release
 
 | Option | Description |
 | --- | --- |
-| `--help` | Show this message and exit. |
+| `-h, --help` | Show this message and exit. |
 
-`release_type` selects how the release is published:
+The release type decides how visible the release is once published. A **pre-release** is announced
+as unfinished, so it never becomes the version GitHub offers by default — the usual choice for a
+build meant for testing. A **latest** release is the opposite: it takes over the `latest` pointer
+and becomes what users land on, which is why the command asks for confirmation first. A plain
+**release** publishes without touching that pointer, so an older version stays the recommended one;
+if GitHub moves it anyway, the command puts it back where it was.
 
 Publishing is delegated to the [`gh`](https://cli.github.com) CLI, which means it reuses the GitHub
 authentication you already have — there is no token to configure here.
@@ -361,7 +360,7 @@ Analyze certificates in a Java KeyStore (JKS) file and report their validity sta
 | --- | --- |
 | `-p, --password TEXT` | Custom password for the JKS file  [required] |
 | `-v, --verbose` | Enable verbose output |
-| `--help` | Show this message and exit. |
+| `-h, --help` | Show this message and exit. |
 
 Lists every alias in the keystore with its validity dates and raises a warning for the expired ones,
 so you find out before a local dev environment breaks on an expired SSL certificate.
@@ -384,7 +383,7 @@ Prints to stdout the path of the local configuration file (.sh or .ps1 depending
 
 | Option | Description |
 | --- | --- |
-| `--help` | Show this message and exit. |
+| `-h, --help` | Show this message and exit. |
 
 Resolves the local configuration file created by `init-local-config`, picking the `.sh` or `.ps1`
 variant according to the active shell.
@@ -412,20 +411,8 @@ Prints a message to the console in a custom format and logs it into the workspac
 | --- | --- |
 | `-p, --prologue TEXT` | An optional starting message. |
 | `-e, --epilog TEXT` | An optional ending message. |
-| `-t, --type-msg [s\|i\|w\|e\|a\|t]` | The type of message to be printed:
-
-'S' - Success
-
-'I' - Information -- default
-
-'W' - Warning
-
-'E' - Error
-
-'A' - Advice -- use for Debugging
-
-'T' - Tip |
-| `--help` | Show this message and exit. |
+| `-t, --type-msg [s\|i\|w\|e\|a\|t]` | The type of message to be printed:<br><br>'S' - Success<br><br>'I' - Information -- default<br><br>'W' - Warning<br><br>'E' - Error<br><br>'A' - Advice -- use for Debugging<br><br>'T' - Tip |
+| `-h, --help` | Show this message and exit. |
 
 Exposes the internal logging mechanism to the shell. It exists so that the packaged shell scripts
 (`config_setup.sh` / `config_setup.ps1`) print success, warning and error messages in exactly the
@@ -445,7 +432,7 @@ Prints to stdout the path of the packaged shell initialization script (config_se
 
 | Option | Description |
 | --- | --- |
-| `--help` | Show this message and exit. |
+| `-h, --help` | Show this message and exit. |
 
 Add the matching line to your shell profile — this is what makes `mgsnake` shell integration active
 in every new session.
