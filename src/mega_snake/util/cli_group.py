@@ -7,6 +7,7 @@ from typing import Any, Iterable, Iterator, Optional
 import click
 from importlib.resources import files
 from rich_click import RichGroup
+from rich_click.rich_help_formatter import RichHelpFormatter
 
 from mega_snake.constants import APP_NAME, DOCS_DIR, DOCS_FILE_SUFFIX, MODULE_NAME, RESOURCES_DIR
 
@@ -231,6 +232,12 @@ class CliGroup(RichGroup):
 
     def format_commands(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
         """Render command names with aliases without mutating the registry.
+
+        Note: rich-click renders the group help through its own ``rich_format_help`` pipeline, so
+        this override is only reached by plain-Click rendering paths (a ``click.HelpFormatter``,
+        or a future version that restores the classic pipeline). It is kept non-destructive on
+        purpose: the previous implementation rewrote ``self.commands`` keys while rendering, which
+        broke every later lookup by name.
 
         Parameters:
             ctx: The active click context.

@@ -18,10 +18,7 @@ from mega_snake.remote_branches.details_remote_branches import execute as remote
     name="remote-branches-cleanup",
     short_help="Deletes merged branches from the remote repository.",
     help="Iterates over the remote branches asking the user which merged branches to delete",
-    epilog=(
-        "Requires user input to delete branches. "
-        "It doesn't have any options, just execute it and follow the prompts.\n"
-    ),
+    epilog="usage: mgsnake remote-branches-cleanup",
 )
 def remote_branches_cleanup() -> None:
     """

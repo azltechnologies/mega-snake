@@ -7,4 +7,5 @@ before running a destructive command against your remote.
 
 ## Notes
 
-Deletion is `git push origin --delete <branch>` and cannot be undone from here. Requires a remote.
+It takes no options: run it and follow the prompts. Deletion is `git push origin --delete <branch>`
+and cannot be undone from here. Requires a remote.

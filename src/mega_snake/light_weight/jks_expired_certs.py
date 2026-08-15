@@ -15,18 +15,21 @@ from mega_snake.util.util import run_operation, get_command_return_code
     epilog="""
     usage: mgsnake expired-certs-jks <jks_path> [OPTIONS]\n
     Args:\n
-        jks_path: str - Path to the Java KeyStore file to analyze\n
-    OPTIONS:\n
-        -p | --password: str - Custom password for the JKS file (default: changeit)\n
-        -v | --verbose: bool - Print the full certificate details of expired certificates\n
-    Examples:\n
-      mgsnake expired-certs-jks /path/to/keystore.jks\n
-      mgsnake expired-certs-jks /path/to/keystore.jks --password mypassword
+        jks_path: str - Path to the Java KeyStore file to analyze.
     """,
 )
 @click.argument("jks_path", type=click.Path(exists=True))
-@click.option("--password", "-p", help="Custom password for the JKS file", required=True, default="changeit")
-@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
+@click.option(
+    "--password",
+    "-p",
+    help="Custom password for the JKS file",
+    required=True,
+    default="changeit",
+    show_default=True,
+)
+@click.option(
+    "--verbose", "-v", is_flag=True, help="Print the full certificate details of the expired certificates"
+)
 def expired_certs(jks_path: str, password: str, verbose: bool) -> None:
     """Check for expired certificates in a Java KeyStore (JKS) file.
 

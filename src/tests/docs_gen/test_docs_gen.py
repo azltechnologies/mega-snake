@@ -2,13 +2,17 @@
 
 import inspect
 from pathlib import Path
+import re
 
 from click.testing import CliRunner
 import pytest
 
 from mega_snake import __main__ as app_main
 from mega_snake.docs_gen.introspect import iter_introspected_commands, normalize_help
-from mega_snake.docs_gen.markdown_writer import _render_code_cell, render_markdown
+from mega_snake.docs_gen.markdown_writer import _render_code_cell, _render_epilog, render_markdown
+
+# Shorter strings are too generic to prove a real duplication between an epilog and a fragment.
+MIN_DUPLICATE_SENTENCE_LEN = 30
 
 
 def test_iter_documented_commands_skips_hidden_alias_duplicates() -> None:
@@ -57,6 +61,86 @@ def test_every_documented_command_uses_explicit_help(entry) -> None:
     assert entry.command.help != inspect.getdoc(entry.command.callback), (
         f"{entry.name} inherits its help from the callback docstring; declare help= explicitly."
     )
+
+
+@pytest.mark.parametrize("entry", list(iter_introspected_commands(app_main.cli)), ids=lambda entry: entry.name)
+def test_epilog_never_repeats_generated_content(entry) -> None:
+    """The rendered epilog must not restate the synopsis or the options table.
+
+    Epilogs in this repo predate the generator and used to re-document every flag by hand. Those
+    paragraphs are dropped by normalize_epilog; this guards against a new one creeping back in.
+    """
+    assert "usage:" not in entry.epilog.lower(), f"{entry.name}: the synopsis already states the usage line"
+    for option in entry.options:
+        flag: str = option.name.split(",")[0].split()[0]
+        assert not any(
+            paragraph.strip().startswith(flag) for paragraph in entry.epilog.split("\n\n")
+        ), f"{entry.name}: the options table already documents {flag}"
+
+
+@pytest.mark.parametrize("entry", list(iter_introspected_commands(app_main.cli)), ids=lambda entry: entry.name)
+def test_fragment_never_repeats_the_epilog(entry) -> None:
+    """A fragment must add to the epilog, never restate it (copilot-instructions section 6.3)."""
+    fragment_sentences = {
+        sentence.strip().casefold().rstrip(".")
+        for sentence in re.split(r"[.\n]", entry.fragment_body)
+        if len(sentence.strip()) > MIN_DUPLICATE_SENTENCE_LEN
+    }
+    epilog_sentences = {
+        sentence.strip().casefold().rstrip(".")
+        for sentence in re.split(r"[.\n]", entry.epilog)
+        if len(sentence.strip()) > MIN_DUPLICATE_SENTENCE_LEN
+    }
+
+    assert not fragment_sentences & epilog_sentences, (
+        f"{entry.name}: these sentences appear in both the epilog and the fragment: "
+        f"{fragment_sentences & epilog_sentences}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("command_name", "argument_name"),
+    [
+        ("create-release", "tag_suffix"),
+        ("create-release", "branch"),
+        ("expired-certs-jks", "jks_path"),
+        ("msg", "message"),
+        ("shell-path", "shell"),
+        ("graphql-schema", "schema_path"),
+    ],
+)
+def test_positional_arguments_are_documented_from_the_epilog(command_name: str, argument_name: str) -> None:
+    """Click tabulates options but never positional arguments, so the epilog is their only source.
+
+    Dropping the epilog entirely (as the generator first did) silently lost every argument
+    description in the reference.
+    """
+    commands = {command.name: command for command in iter_introspected_commands(app_main.cli)}
+
+    assert f"{argument_name}:" in commands[command_name].epilog
+
+
+def test_epilog_argument_entries_render_as_a_list_without_type_noise() -> None:
+    """Argument entries become bullets, and the Python type annotation is dropped."""
+    markdown = render_markdown(list(iter_introspected_commands(app_main.cli)))
+
+    assert "- `branch` — branch to create the release from." in markdown
+    assert "Optional[str] -" not in markdown
+    assert "char -" not in markdown
+
+
+@pytest.mark.parametrize(
+    ("epilog", "expected"),
+    [
+        ("name: str - does a thing", "- `name` — does a thing"),
+        ("Just prose.", "Just prose."),
+        ("name: str - a thing\n\nTrailing prose.", "- `name` — a thing\n\nTrailing prose."),
+        ("Leading prose.\n\nname: str - a thing", "Leading prose.\n- `name` — a thing"),
+    ],
+)
+def test_render_epilog_mixes_arguments_and_prose(epilog: str, expected: str) -> None:
+    """Argument entries become bullets while surrounding prose stays as paragraphs."""
+    assert _render_epilog(epilog) == expected
 
 
 def test_generate_docs_renders_fragment_sections_at_command_depth() -> None:

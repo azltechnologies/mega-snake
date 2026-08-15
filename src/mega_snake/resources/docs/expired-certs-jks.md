@@ -1,6 +1,13 @@
 Lists every alias in the keystore with its validity dates and raises a warning for the expired ones,
 so you find out before a local dev environment breaks on an expired SSL certificate.
 
+## Examples
+
+```bash
+mgsnake expired-certs-jks /path/to/keystore.jks
+mgsnake expired-certs-jks /path/to/keystore.jks --password mypassword
+```
+
 ## Notes
 
 Parsing relies on `keytool -v -list` and expects its standard English date format

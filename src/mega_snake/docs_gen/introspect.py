@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+import re
 import textwrap
 from typing import Iterator, Optional
 
@@ -9,6 +10,11 @@ import click
 
 from mega_snake.constants import APP_NAME
 from mega_snake.util.cli_group import CliGroup
+
+# Epilog paragraphs the generator already emits elsewhere: the usage line becomes the synopsis and
+# the option entries become the options table, so republishing them would duplicate the reference.
+EPILOG_USAGE_PREFIX = "usage:"
+EPILOG_SECTION_HEADERS = frozenset({"options", "args", "arguments", "allowed values"})
 
 
 @dataclass(frozen=True)
@@ -41,6 +47,7 @@ class IntrospectedCommand:
         summary: The normalized long help text.
         synopsis: The command synopsis.
         options: The normalized option rows.
+        epilog: The normalized epilog text, without the paragraphs the generator already emits.
         fragment_path: The resolved docs fragment path.
         fragment_body: The docs fragment body, or an empty string when missing.
 
@@ -57,6 +64,7 @@ class IntrospectedCommand:
     summary: str
     synopsis: str
     options: tuple[CommandOptionDoc, ...]
+    epilog: str
     fragment_path: Path
     fragment_body: str
 
@@ -82,6 +90,79 @@ def normalize_help(text: Optional[str]) -> str:
         if stripped_lines:
             paragraphs.append(" ".join(stripped_lines))
     return "\n\n".join(paragraphs)
+
+
+def _is_generated_paragraph(paragraph: str, option_signatures: frozenset[str]) -> bool:
+    """Tell whether an epilog paragraph merely repeats generated content.
+
+    The epilogs in this codebase predate the generator and re-document by hand what is now emitted
+    from the Click metadata: a ``usage:`` line (the synopsis), an ``OPTIONS:``/``Args:`` header, and
+    one entry per flag (the options table). Those paragraphs are dropped; anything else is prose
+    only a human wrote and must survive.
+
+    Detection is anchored on the command's own parameters rather than on the paragraph's shape, so
+    a paragraph counts as an option entry only when it actually opens with one of the flags this
+    command declares.
+
+    Parameters:
+        paragraph: A single normalized epilog paragraph.
+        option_signatures: Every option flag declared by the command (e.g. ``-c``, ``--scope``).
+
+    Raises:
+        None
+
+    Returns:
+        bool: True when the paragraph duplicates generated content.
+    """
+    stripped: str = paragraph.strip()
+    if not stripped:
+        return True
+    lowered: str = stripped.lower()
+    if lowered.startswith(EPILOG_USAGE_PREFIX) or lowered.rstrip(":") in EPILOG_SECTION_HEADERS:
+        return True
+    first_token: str = re.split(r"[\s:|,]", stripped, maxsplit=1)[0]
+    return first_token in option_signatures
+
+
+def normalize_epilog(epilog: Optional[str], option_signatures: frozenset[str]) -> str:
+    """Normalize an epilog, dropping the paragraphs the generator already emits.
+
+    Parameters:
+        epilog: The raw epilog text.
+        option_signatures: Every option flag declared by the command.
+
+    Raises:
+        None
+
+    Returns:
+        str: The remaining hand-written prose, or an empty string.
+    """
+    paragraphs: list[str] = [
+        paragraph
+        for paragraph in normalize_help(epilog).split("\n\n")
+        if not _is_generated_paragraph(paragraph, option_signatures)
+    ]
+    return "\n\n".join(paragraphs).strip()
+
+
+def _get_option_signatures(command: click.Command) -> frozenset[str]:
+    """Collect every flag declared by a command, used to spot duplicated epilog entries.
+
+    Parameters:
+        command: The command being inspected.
+
+    Raises:
+        None
+
+    Returns:
+        frozenset[str]: The command's option flags (both short and long forms).
+    """
+    return frozenset(
+        option
+        for parameter in command.params
+        if isinstance(parameter, click.Option)
+        for option in parameter.opts + parameter.secondary_opts
+    )
 
 
 def _build_command_context(root: CliGroup, command: click.Command, command_name: str) -> click.Context:
@@ -172,6 +253,7 @@ def iter_introspected_commands(root: CliGroup) -> Iterator[IntrospectedCommand]:
             summary=normalize_help(entry.command.help),
             synopsis=_get_synopsis(root, entry.command, entry.name),
             options=_get_option_docs(root, entry.command, entry.name),
+            epilog=normalize_epilog(entry.command.epilog, _get_option_signatures(entry.command)),
             fragment_path=entry.fragment_path,
             fragment_body=fragment_body,
         )

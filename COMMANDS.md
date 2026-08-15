@@ -14,6 +14,8 @@ Builds a consolidated GraphQL schema and introspection JSON from schema files in
 | --- | --- |
 | `-h, --help` | Show this message and exit. |
 
+- `schema_path` — Directory containing the schema files; all files in it (subdirectories included) are merged into the consolidated schema
+
 Frontend tooling (Apollo and most IDE plugins) cannot work from the raw SDL alone — it needs a full
 introspection result to provide autocompletion and type checking. That is why this command emits two
 files rather than one: the consolidated `.graphql` schema, and the `.json` introspection payload
@@ -289,7 +291,8 @@ before running a destructive command against your remote.
 
 ### Notes
 
-Deletion is `git push origin --delete <branch>` and cannot be undone from here. Requires a remote.
+It takes no options: run it and follow the prompts. Deletion is `git push origin --delete <branch>`
+and cannot be undone from here. Requires a remote.
 
 ### `remote-branches-details`
 
@@ -333,6 +336,11 @@ Creates a GitHub release and tag: the new tag is derived from the latest release
 | --- | --- |
 | `-h, --help` | Show this message and exit. |
 
+- `tag_suffix` — suffix to add to the tag
+- `release_type` — 'p' (prerelease) | 'l' (latest) | 'r' (regular release)
+- `notes` — release notes
+- `branch` — branch to create the release from. Default is the current branch.
+
 The release type decides how visible the release is once published. A **pre-release** is announced
 as unfinished, so it never becomes the version GitHub offers by default — the usual choice for a
 build meant for testing. A **latest** release is the opposite: it takes over the `latest` pointer
@@ -358,12 +366,21 @@ Analyze certificates in a Java KeyStore (JKS) file and report their validity sta
 
 | Option | Description |
 | --- | --- |
-| `-p, --password TEXT` | Custom password for the JKS file  [required] |
-| `-v, --verbose` | Enable verbose output |
+| `-p, --password TEXT` | Custom password for the JKS file  [default: changeit; required] |
+| `-v, --verbose` | Print the full certificate details of the expired certificates |
 | `-h, --help` | Show this message and exit. |
+
+- `jks_path` — Path to the Java KeyStore file to analyze.
 
 Lists every alias in the keystore with its validity dates and raises a warning for the expired ones,
 so you find out before a local dev environment breaks on an expired SSL certificate.
+
+### Examples
+
+```bash
+mgsnake expired-certs-jks /path/to/keystore.jks
+mgsnake expired-certs-jks /path/to/keystore.jks --password mypassword
+```
 
 ### Notes
 
@@ -409,10 +426,12 @@ Prints a message to the console in a custom format and logs it into the workspac
 
 | Option | Description |
 | --- | --- |
-| `-p, --prologue TEXT` | An optional starting message. |
-| `-e, --epilog TEXT` | An optional ending message. |
+| `-p, --prologue TEXT` | An optional starting message printed before the message. |
+| `-e, --epilog TEXT` | An optional ending message printed after the message. |
 | `-t, --type-msg [s\|i\|w\|e\|a\|t]` | The type of message to be printed:<br><br>'S' - Success<br><br>'I' - Information -- default<br><br>'W' - Warning<br><br>'E' - Error<br><br>'A' - Advice -- use for Debugging<br><br>'T' - Tip |
 | `-h, --help` | Show this message and exit. |
+
+- `message` — The message to print and log.
 
 Exposes the internal logging mechanism to the shell. It exists so that the packaged shell scripts
 (`config_setup.sh` / `config_setup.ps1`) print success, warning and error messages in exactly the
@@ -433,6 +452,8 @@ Prints to stdout the path of the packaged shell initialization script (config_se
 | Option | Description |
 | --- | --- |
 | `-h, --help` | Show this message and exit. |
+
+- `shell` — The shell to be initialized.
 
 Add the matching line to your shell profile — this is what makes `mgsnake` shell integration active
 in every new session.
