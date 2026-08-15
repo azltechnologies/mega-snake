@@ -30,6 +30,23 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Pick model from trigger body
+        id: model
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          body=$(printf '%s\n%s\n' "$PR_BODY" "$PR_TITLE" | tr '[:upper:]' '[:lower:]')
+          if printf '%s' "$body" | grep -Eq '@claude[[:space:]]+opus\b'; then
+            echo "model=opus" >> "$GITHUB_OUTPUT"
+          elif printf '%s' "$body" | grep -Eq '@claude[[:space:]]+sonnet\b'; then
+            echo "model=sonnet" >> "$GITHUB_OUTPUT"
+          elif printf '%s' "$body" | grep -Eq '@claude[[:space:]]+haiku\b'; then
+            echo "model=haiku" >> "$GITHUB_OUTPUT"
+          else
+            echo "model=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run Claude Code Review
         id: claude-review
         uses: anthropics/claude-code-action@v1
@@ -50,6 +67,6 @@ jobs:
           # Read-only review tools: the inline-comment MCP tool plus the `gh` reads
           # the prompt relies on. No plugin/subagents, so no Task tool is involved.
           claude_args: |
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)" ${{ steps.model.outputs.model != '' && format('--model {0}', steps.model.outputs.model) || '' }}
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
