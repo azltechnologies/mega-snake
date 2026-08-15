@@ -193,6 +193,28 @@ def test_ws_advice(mk_logger: MagicMock) -> None:
     mk_logger.debug.assert_called_once_with("Test advice message", stacklevel=2)
 
 
+def test_ws_advice_writes_to_stderr_only(mk_logger: MagicMock, capsys: pytest.CaptureFixture) -> None:
+    """ws_advice must keep stdout clean so captured command output stays parseable."""
+    mk_logger.level = logging.DEBUG
+
+    ws_advice("Test advice message")
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "Test advice message" in captured.err
+
+
+def test_ws_advice_forced_writes_to_stderr_only(mk_logger: MagicMock, capsys: pytest.CaptureFixture) -> None:
+    """The `force` path must respect the same stdout/stderr split."""
+    mk_logger.level = logging.INFO
+
+    ws_advice("Forced advice message", force=True)
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "Forced advice message" in captured.err
+
+
 def test_ws_tip(mk_logger: MagicMock) -> None:
     """Test ws_tip function"""
     msg_blue = "Test tip message"
