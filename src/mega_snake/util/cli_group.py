@@ -79,58 +79,6 @@ class CliGroup(RichGroup):
         group_key: str = module_parts[1] if len(module_parts) > 1 else module_parts[0]
         return cls._derive_group_title(group_key)
 
-    @staticmethod
-    def _get_docs_directory() -> Path:
-        """Resolve the packaged docs fragment directory.
-
-        Parameters:
-            None
-
-        Raises:
-            None
-
-        Returns:
-            Path: The docs fragment directory path.
-        """
-        return Path(str(files("mega_snake").joinpath("resources", "docs")))
-
-    @staticmethod
-    def _get_callback_metadata(callback: Any) -> dict[str, Any]:
-        """Read custom metadata previously attached to a callback.
-
-        Parameters:
-            callback: The click callback or wrapper object.
-
-        Raises:
-            None
-
-        Returns:
-            dict[str, Any]: The attached metadata dictionary, or an empty one.
-        """
-        return getattr(callback, "flags", {})
-
-    def _apply_documentation_metadata(self, cmd: click.Command) -> None:
-        """Resolve documentation metadata onto the command object.
-
-        Parameters:
-            cmd: The command being registered.
-
-        Raises:
-            None
-
-        Returns:
-            None
-        """
-        metadata = self._get_callback_metadata(cmd.callback)
-        fragment_name: str = getattr(cmd, ATTR_DOCS, "") or metadata.get(ATTR_DOCS) or cmd.name or ""
-        group_name: str = (
-            getattr(cmd, ATTR_GROUP, "")
-            or metadata.get(ATTR_GROUP)
-            or self._derive_group_name_from_callback(cmd.callback)
-        )
-        setattr(cmd, ATTR_DOCS, fragment_name)
-        setattr(cmd, ATTR_GROUP, group_name if " " in group_name else self._derive_group_title(group_name))
-
     def __add_alias_commands(self, cmd: click.Command, aliases: Optional[list[str]] = None) -> None:
         """Register hidden alias commands for the given real command.
 
@@ -164,7 +112,8 @@ class CliGroup(RichGroup):
         aliases: Optional[Iterable[str]] = None,
         panel: Optional[str] = None,
     ) -> None:
-        """Register a command after resolving its documentation metadata.
+        """Resolve documentation metadata onto the command object then
+        register a command after resolving its documentation metadata.
 
         Parameters:
             cmd: The command to register.
@@ -178,7 +127,16 @@ class CliGroup(RichGroup):
         Returns:
             None
         """
-        self._apply_documentation_metadata(cmd)
+        # Read custom metadata previously attached to a callback
+        metadata = getattr(cmd.callback, "flags", {})
+        fragment_name: str = getattr(cmd, ATTR_DOCS, "") or metadata.get(ATTR_DOCS) or cmd.name or ""
+        group_name: str = (
+            getattr(cmd, ATTR_GROUP, "")
+            or metadata.get(ATTR_GROUP)
+            or self._derive_group_name_from_callback(cmd.callback)
+        )
+        setattr(cmd, ATTR_DOCS, fragment_name)
+        setattr(cmd, ATTR_GROUP, group_name if " " in group_name else self._derive_group_title(group_name))
         super().add_command(cmd, name, aliases=aliases, panel=panel)
 
     def add_command_with_alias(self, cmd: click.Command, aliases: Optional[list[str]] = None) -> None:
@@ -241,7 +199,8 @@ class CliGroup(RichGroup):
         Returns:
             Iterator[DocumentedCommand]: All non-hidden commands with resolved docs metadata.
         """
-        docs_dir: Path = self._get_docs_directory()
+        # Resolve the packaged docs fragment directory
+        docs_dir: Path = Path(str(files("mega_snake").joinpath("resources", "docs")))
         entries: list[DocumentedCommand] = []
         for name, command in self.commands.items():
             if command.hidden:
