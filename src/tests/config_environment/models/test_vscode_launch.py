@@ -5,6 +5,7 @@ from types import SimpleNamespace, MethodType
 import inspect
 from unittest.mock import patch, MagicMock
 import pytest
+from mega_snake.config_environment.models.project_stack import ProjectStack
 from mega_snake.config_environment.models.vscode_launch import VscodeLaunch, LAUNCH_VERSION_QUERY
 
 VERSION_TEST = "1.2.3"
@@ -88,6 +89,21 @@ def test_to_dict() -> None:
                 assert result["args"] == member.args
         for key, value in member.extra_args.items():
             assert result[key] == value
+        # the stack only decides whether the configuration is written, it is not part of it
+        assert "stack" not in result
+
+
+def test_stack() -> None:
+    """Test that every launch configuration declares the stack it belongs to"""
+    for member in VscodeLaunch:
+        assert isinstance(member.stack, ProjectStack)
+    assert VscodeLaunch.DEBUG_JAVA.stack is ProjectStack.JAVA
+    for member in (
+        VscodeLaunch.DEBUG_PYTHON_FILE,
+        VscodeLaunch.DEBUG_PYTHON_MODULE,
+        VscodeLaunch.DEBUG_PYTHON_SNAKE,
+    ):
+        assert member.stack is ProjectStack.PYTHON
 
 
 def test_add_launch_config(_launch_config_query: MagicMock) -> None:
