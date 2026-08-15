@@ -16,6 +16,9 @@ dependencies = [
     "json-spec==0.12.0",
     "jsoncomment==0.4.2",
     "pyperclip==1.11.0",
+    # Direct dependency, not just a rich-click transitive one: 'mgsnake man' imports rich.markdown
+    # to render the reference for the terminal.
+    "rich==15.0.0",
     "rich-click==1.9.8",
     "types-colorama==0.4.15.20260508",
     "virtualenv==21.7.4",

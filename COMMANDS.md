@@ -268,6 +268,49 @@ Writes a Markdown command reference to the target file (default: `COMMANDS.md`).
 This command is intentionally `no_init`: it does not require `MEGA_SNAKE_SHELL`, a workspace, or a
 git repository, and it resolves the packaged fragments through `importlib.resources`.
 
+### man
+
+Renders the command reference in the terminal and pages it, showing the whole document or a single command when one is named. The content is built from the live CLI metadata and the packaged fragments, so it never depends on a generated file being present.
+
+**Synopsis:** `mgsnake man [OPTIONS] [COMMAND]`
+
+| Option | Description |
+| --- | --- |
+| `-h, --help` | Show this message and exit. |
+
+- `command` — command name or alias to display. Defaults to the full reference.
+
+`--help` answers "what are the flags?"; this answers "how does this command actually work?". It is
+the reading form of the same reference published as `COMMANDS.md`, without leaving the terminal and
+without a browser.
+
+Nothing is installed into `/usr/share/man` and `mandb` is never invoked. `uv tool install` and
+`pipx` place the package in an isolated environment and copy nothing to the system man path, so
+`man mgsnake` would simply not resolve. Paging the document from inside the CLI is what makes this
+work identically on Linux, macOS and PowerShell, where `man` does not exist at all.
+
+#### Examples
+
+```bash
+# The whole reference, grouped by module
+mgsnake man
+
+# One command
+mgsnake man diff-tree
+
+# Aliases work too — this is the same page as above
+mgsnake man dt
+```
+
+#### Notes
+
+The document is rendered in memory from the live Click metadata and the packaged fragments, never
+read from `COMMANDS.md`. That file lives in the repository and is not shipped inside the wheel, so
+reading it would leave installed users with a command that only works in a source checkout.
+
+Paging goes through the shell's pager (`less` on Unix, honouring `PAGER`). Styling is dropped
+automatically when the pager cannot display it.
+
 ## Git & Release Management
 
 ### remote-branches-cleanup

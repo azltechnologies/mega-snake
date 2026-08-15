@@ -109,6 +109,7 @@ def test_fragment_never_repeats_the_epilog(entry) -> None:
         ("msg", "message"),
         ("shell-path", "shell"),
         ("graphql-schema", "schema_path"),
+        ("man", "command"),
     ],
 )
 def test_positional_arguments_are_documented_from_the_epilog(command_name: str, argument_name: str) -> None:
