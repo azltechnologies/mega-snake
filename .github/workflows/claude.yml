@@ -33,6 +33,25 @@ jobs:
       - name: Set up environment
         uses: ./.github/actions/setup-env
 
+      - name: Pick model from trigger body
+        id: model
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          REVIEW_BODY: ${{ github.event.review.body }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+        run: |
+          body=$(printf '%s\n%s\n%s\n%s\n' "$COMMENT_BODY" "$REVIEW_BODY" "$ISSUE_BODY" "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]')
+          if printf '%s' "$body" | grep -Eq '@claude[[:space:]]+opus\b'; then
+            echo "model=opus" >> "$GITHUB_OUTPUT"
+          elif printf '%s' "$body" | grep -Eq '@claude[[:space:]]+sonnet\b'; then
+            echo "model=sonnet" >> "$GITHUB_OUTPUT"
+          elif printf '%s' "$body" | grep -Eq '@claude[[:space:]]+haiku\b'; then
+            echo "model=haiku" >> "$GITHUB_OUTPUT"
+          else
+            echo "model=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
@@ -51,5 +70,6 @@ jobs:
           # or https://code.claude.com/docs/en/cli-reference for available options
           # Allow Claude to run the project's dev toolchain and Git/GitHub commands so it can
           # validate changes (tests, lint, type-check) and manage PRs without manual approval.
-          claude_args: '--allowed-tools Bash(uv:*),Bash(pytest:*),Bash(ruff:*),Bash(mypy:*),Bash(gh:*),Bash(git:*)'
+          claude_args: |
+            --allowed-tools Bash(uv:*),Bash(pytest:*),Bash(ruff:*),Bash(mypy:*),Bash(gh:*),Bash(git:*) ${{ steps.model.outputs.model != '' && format('--model {0}', steps.model.outputs.model) || '' }}
 
