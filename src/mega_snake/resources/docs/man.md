@@ -4,8 +4,9 @@ without a browser.
 
 Nothing is installed into `/usr/share/man` and `mandb` is never invoked. `uv tool install` and
 `pipx` place the package in an isolated environment and copy nothing to the system man path, so
-`man mgsnake` would simply not resolve. Paging the document from inside the CLI is what makes this
-work identically on Linux, macOS and PowerShell, where `man` does not exist at all.
+`man mgsnake` would simply not resolve. Carrying the reader inside the CLI is what makes the
+reference available on every platform this tool supports, including PowerShell, where a system
+`man` does not exist at all.
 
 ## Examples
 
@@ -28,3 +29,8 @@ reading it would leave installed users with a command that only works in a sourc
 
 Paging goes through the shell's pager (`less` on Unix, honouring `PAGER`). Styling is dropped
 automatically when the pager cannot display it.
+
+On Windows the document is printed in full instead of being paged. Click 8.4.x cannot write text to
+the temporary-file pager it selects for an interactive Windows console, so the command falls back to
+plain output rather than failing. The content is identical; only the scrolling is the terminal's job
+there.
