@@ -435,14 +435,25 @@ exact class of bug that never shows up in development. The fragments *are* packa
 nothing to the system man path, so `man mgsnake` cannot resolve. Paging from inside the CLI is also the only form
 that works on PowerShell, where `man` does not exist.
 
-Three details that are easy to get wrong when touching this command:
+Four details that are easy to get wrong when touching this command:
 
-- **`<br>` must be folded back into spaces before rendering.** The Markdown writer emits `CELL_LINE_BREAK` so
-  multi-line option help survives a table row; rich drops HTML tags outright, which would glue the choice lists of
-  `--type-msg` and `--filter-by` into one unreadable run. Import the constant, never the literal.
-- **Aliases resolve to the real command.** The hidden alias commands are separate click objects that
-  `iter_documented_commands()` skips, so `man dt` maps `dt` → `diff-tree` through the `ATTR_ALIAS` list rather than
-  looking the alias command up.
+- **Paging is wrapped in a fallback, and the fallback is load-bearing.** `click.echo_via_pager` raises `TypeError` on
+  the interactive Windows path of click 8.4.x: `_pager_contextmanager` picks `_tempfilepager`, which yields a binary
+  `NamedTemporaryFile`, and `get_pager_file` only wraps a stream exposing a `.buffer`, so `str` reaches a binary
+  handle. There is no fixed click release (8.4.2 is the latest) and pinning backwards drops below what rich-click
+  resolves, so `_page_or_echo` catches `TypeError`/`UnicodeEncodeError` and prints plainly instead. **Catch only those
+  two** — widening it hides real failures, and a test pins that. Do not "cover" this with a `# pragma`: the regression
+  test forces click's Windows context manager on any platform, which is the only honest way to exercise it.
+- **`<br>` must be folded back into spaces before rendering, in table rows only.** The Markdown writer emits
+  `CELL_LINE_BREAK` so multi-line option help survives a table row; rich drops HTML tags outright, which would glue
+  the choice lists of `--type-msg` and `--filter-by` into one unreadable run. Folding the whole document instead would
+  also rewrite a literal `<br>` a human wrote in fragment prose or inside a fenced code block. Import the constant,
+  never the literal.
+- **Aliases resolve to the real command, and never shadow one.** The hidden alias commands are separate click objects
+  that `iter_documented_commands()` skips, so `man dt` maps `dt` → `diff-tree` through the `ATTR_ALIAS` list rather
+  than looking the alias command up. Real names are seeded into the lookup first and aliases only `setdefault` into
+  the gaps: several existing aliases (`audit`, `release`, `env`, `tree`) are plausible names for a future command, and
+  without that precedence whichever entry came last would win.
 - **ANSI is emitted unconditionally** (`Console(force_terminal=True)`). Click's pager strips it again when the pager
   cannot display color, so this keeps the styling where it works without breaking where it does not.
 
