@@ -30,6 +30,9 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Set up environment
+        uses: ./.github/actions/setup-env
+
       - name: Pick model from trigger body
         id: model
         env:
