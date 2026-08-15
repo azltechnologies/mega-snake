@@ -13,12 +13,30 @@ from mega_snake.util.util import run_operation
     name="graphql-schema",
     short_help="Creates a GraphQL schema file in the working directory.",
     help="Builds a consolidated GraphQL schema and introspection JSON from schema files in a directory.",
-    epilog="usage: mgsnake graphql-schema <schema_path>",
+    epilog="""usage: mgsnake graphql-schema <schema_path>\n
+    Args:\n
+        schema_path: str - Directory containing the schema files; all files in it (subdirectories
+            included) are merged into the consolidated schema\n
+    """,
 )
 @click.argument("schema_path", type=click.STRING)
 def create_graphql_schema(schema_path: str) -> None:
     """
-    Creates a GraphQL schema file in the working directory.
+    Creates the consolidated GraphQL schema files in the working directory.
+
+    Validates that schema_path is a non-empty directory, removes any previous output, and then
+    merges every file under it into a single schema written as both SDL (.graphql) and an
+    introspection JSON (.json), opening both files in VS Code.
+
+    Args:
+        schema_path (str): Directory containing the schema files to merge.
+
+    Raises:
+        NotADirectoryError: If schema_path is not a directory.
+        FileNotFoundError: If schema_path is empty.
+
+    Returns:
+        None
     """
     schema_abs: str = os.path.abspath(schema_path)
     # verify that the schema path exists and is a directory
