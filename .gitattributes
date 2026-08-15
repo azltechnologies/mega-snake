@@ -1,0 +1,4 @@
+# Generated documentation is byte-compared by `mgsnake generate-docs --check` in CI. The writer always
+# emits LF (`newline="\n"`), so letting git rewrite the checkout to CRLF on Windows would make the check
+# fail there and pass on Linux for no real difference.
+COMMANDS.md text eol=lf

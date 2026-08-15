@@ -29,3 +29,10 @@ jobs:
     - name: Run mypy
       run: |
         uv run mypy --show-column-numbers --no-error-summary src/mega_snake
+
+    # Catches a committed COMMANDS.md that no longer matches the code. This is a different failure
+    # from the one the test suite catches: the tests fail when a command has no docs fragment, this
+    # step fails when the generated file was not regenerated after changing command metadata.
+    - name: Check generated command docs are up to date
+      run: |
+        uv run mgsnake generate-docs --check
