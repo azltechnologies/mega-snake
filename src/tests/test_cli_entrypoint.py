@@ -15,10 +15,11 @@ from mega_snake import __main__ as app_main
 from mega_snake.util.formatting import WorkspaceError
 
 
-def test_cli_skips_initialization_for_shell_path_subcommand() -> None:
-    """shell-path should bypass app property initialization."""
+@pytest.mark.parametrize("command_name", ["shell-path", "generate-docs"])
+def test_cli_skips_initialization_for_no_init_subcommands(command_name: str) -> None:
+    """no_init commands should bypass app property initialization."""
     ctx = click.Context(app_main.cli)
-    ctx.invoked_subcommand = "shell-path"
+    ctx.invoked_subcommand = command_name
     ctx.obj = {}
 
     with ctx.scope():

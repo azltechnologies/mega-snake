@@ -8,6 +8,7 @@ from mega_snake import __main__ as app_main
 @pytest.mark.parametrize(
     ("command_name", "aliases"),
     [
+        ("generate-docs", []),
         ("working-env", ["cwe", "env"]),
         ("set-java", ["java", "sj"]),
         ("set-gradle", ["gradle", "sg"]),

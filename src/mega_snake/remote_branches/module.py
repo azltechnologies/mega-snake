@@ -13,7 +13,7 @@ def main() -> None:
     """remote branches related commands"""
 
 
-@cli_metadata(flags={"skip"})
+@cli_metadata(flags={"skip"}, docs_group="Git & Release Management")
 def wrapper(_ctx, *_args, **_kwargs) -> None:
     """Pre-flight check for the remote_branches commands.
 
