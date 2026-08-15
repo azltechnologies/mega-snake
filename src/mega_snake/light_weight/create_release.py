@@ -25,8 +25,9 @@ NUM_RETRIES = 3
         tag_suffix: str - suffix to add to the tag\n
         release_type: char -\n
             'p' : --prerelease\n
-            'l' : --latest (asks for confirmation first)\n
-            'r' : --latest=false (regular release; keeps the current latest, restoring it if GitHub moves it)\n
+            'l' : --latest (asks for confirmation first before replacing the current latest)\n
+            'r' : --latest=false (regular release; keeps the current latest untouched, restoring it if GitHub moves 
+                                    the pointer anyway)\n
         notes: Optional[str] - release notes\n
         branch: Optional[str] - branch to create the release from. Default is the current branch.
     """,

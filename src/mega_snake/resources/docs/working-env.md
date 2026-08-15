@@ -2,8 +2,8 @@ The "zero-config start" command: a single run should leave the IDE ready to code
 to reach for on a freshly cloned repository.
 
 On top of what the synopsis lists, it also sets up log watchers and GitHub query definitions, and it
-runs the Java and Gradle configuration steps for you — `set-java` and `set-gradle` are only needed
-afterwards when you want to switch versions.
+ runs the Java, Gradle and Maven configuration steps for you — `set-java`, `set-gradle` and
+ `set-maven` are only needed afterwards when you want to switch versions.
 
 ## Notes
 
