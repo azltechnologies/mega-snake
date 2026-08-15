@@ -20,12 +20,10 @@ SH_SHELLS: list[str] = ["bash", "zsh"]
     short_help="Prints the current location of the script file to be sourced.",
     help="Prints to stdout the path of the packaged shell initialization script"
     " (config_setup.sh or config_setup.ps1) to be sourced from the shell profile.",
-    epilog=f"""
+    epilog="""
     usage: mgsnake shell-path <shell>\n
     Args:\n
-        shell: str - The shell to be initialized\n
-            allowed values:\n
-                {" | ".join(SHELL_OPT)}
+        shell: str - The shell to be initialized.
     """,
 )
 @cli_metadata(flags={"no_init"})
@@ -60,11 +58,7 @@ def shell_path(shell: str) -> None:
     short_help="Prints the current location of the local configuration file.",
     help="Prints to stdout the path of the local configuration file"
     " (.sh or .ps1 depending on the active shell).",
-    epilog="""
-    usage: mgsnake get-local-config-path\n
-    Prints only the path, so its stdout can be consumed via command substitution
-    (as config_setup does).
-    """,
+    epilog="usage: mgsnake get-local-config-path",
 )
 def get_local_config_path() -> None:
     """

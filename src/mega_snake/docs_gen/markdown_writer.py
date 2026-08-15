@@ -73,6 +73,35 @@ def _render_code_cell(text: str) -> str:
     return f"{fence}{padding}{content}{padding}{fence}"
 
 
+def _render_epilog(epilog: str) -> str:
+    """Render the surviving epilog prose as Markdown.
+
+    What is left after ``normalize_epilog`` is mostly per-argument documentation, since Click
+    tabulates options but never positional arguments. Those entries read as ``name: type - text``,
+    so they become a bullet list; anything else stays a plain paragraph.
+
+    Parameters:
+        epilog: The normalized epilog text.
+
+    Raises:
+        None
+
+    Returns:
+        str: The rendered Markdown block.
+    """
+    rendered: list[str] = []
+    for paragraph in epilog.split("\n\n"):
+        if re.match(r"^[\w-]+:\s", paragraph):
+            name, _, description = paragraph.partition(":")
+            # Drop the leading type annotation ("str - ", "char - "): the synopsis already shows
+            # which arguments exist, and the prose is what the reader needs here.
+            text: str = re.sub(r"^\s*\w+(\[[\w\s,\[\]]+\])?\s+-\s+", "", description).strip()
+            rendered.append(f"- `{name.strip()}` — {text}")
+        else:
+            rendered.append(f"\n{paragraph}\n" if rendered else paragraph)
+    return "\n".join(rendered).strip()
+
+
 def _render_fragment(fragment_body: str) -> str:
     """Promote fragment headings to the command-section depth used by the writer.
 
@@ -125,6 +154,8 @@ def render_markdown(commands: Iterable[IntrospectedCommand]) -> str:
                 for option in command.options:
                     lines.append(f"| {_render_code_cell(option.name)} | {_escape_markdown_cell(option.description)} |")
                 lines.append("")
+            if command.epilog:
+                lines.extend([_render_epilog(command.epilog), ""])
             if command.fragment_body:
                 lines.extend([_render_fragment(command.fragment_body), ""])
     return "\n".join(lines).rstrip() + "\n"

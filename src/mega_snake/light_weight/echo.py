@@ -15,23 +15,27 @@ from mega_snake.util.formatting import Color
     help="Prints a message to the console in a custom format and logs it into the workspace configuration log file.",
     epilog="""
     usage: mgsnake msg <message> [OPTIONS]\n
-    OPTIONS:\n
-        -p | --prologue: Optional[str] - An optional starting message printed before the message\n
-        -e | --epilog: Optional[str] - An optional ending message printed after the message\n
-        -t | --type-msg: str - The type of message to be printed\n
-            allowed values:\n
-                S | I | W | E | A | T
-                    S - Success
-                    I - Information -- default
-                    W - Warning
-                    E - Error
-                    A - Advice -- use for Debugging
-                    T - Tip
+    Args:\n
+        message: str - The message to print and log.
     """,
 )
 @click.argument("message", type=click.STRING)
-@click.option("--prologue", "-p", type=click.STRING, required=False, default=None, help="An optional starting message.")
-@click.option("--epilog", "-e", type=click.STRING, required=False, default=None, help="An optional ending message.")
+@click.option(
+    "--prologue",
+    "-p",
+    type=click.STRING,
+    required=False,
+    default=None,
+    help="An optional starting message printed before the message.",
+)
+@click.option(
+    "--epilog",
+    "-e",
+    type=click.STRING,
+    required=False,
+    default=None,
+    help="An optional ending message printed after the message.",
+)
 @click.option(
     "--type-msg",
     "-t",

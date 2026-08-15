@@ -20,12 +20,7 @@ def get_output_file() -> str:
     name="remote-branches-details",
     short_help="Gets details of remote branches",
     help="Creates a detailed list of remote branches filtered by type",
-    epilog="""The branch details are created within the workspace_temp path.\n
-    usage: mgsnake remote-branches-details [OPTIONS]\n
-    OPTIONS:\n
-        -f | --filter-by: Optional[str] - filter branches by merge status against main branch:
-            (A)ll [default] | (M)erged | (U)nmerged\n
-    """,
+    epilog="usage: mgsnake remote-branches-details [OPTIONS]",
 )
 @click.option(
     "--filter-by",
