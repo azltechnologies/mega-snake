@@ -153,7 +153,19 @@ Generates a visual tree representation of changed files.
 the same pre-flight check as the command.
 
 **Implementation Details:**
-- Uses `git diff-tree -r {main_branch} {current_branch}` to get raw file lists.
+- Uses `git diff --raw --no-renames {diff_target}` to get raw file lists. `_get_diff_target` builds `diff_target`
+  from the `-s | --scope` flag, which selects how much of the work is included: `c` (default, committed only) →
+  `{main_branch} {current_branch}`, `s` (committed + staged) → `--cached {main_branch}`, `u` (committed + staged +
+  unstaged) → `{main_branch}`. Rename detection is disabled so the raw output keeps one entry per path in every scope,
+  which is what the tree reconstruction expects.
+- Untracked files are invisible to `git diff`, so `_get_untracked_files` adds them (via
+  `git ls-files --others --exclude-standard`) as `FileType.ADDED` — for the `u` scope only.
+- The same `diff_target` drives the binary-file detection (`git diff --numstat`) and the `diff_changes.txt` patch, so
+  the three outputs always describe the same set of changes.
+- `diff_commit.txt` cannot follow `diff_target` (uncommitted work has no commits), so `_get_pending_changes_report`
+  prepends the pending files to it instead: `Unstaged files:` (`git diff --name-only` plus the untracked ones) and
+  then `Staged files:` (`git diff --cached --name-only`), each one only when the scope covers it **and** it has
+  files. Sections go above the newest commit, keeping the whole file newest-first.
 - categorizes files using `FileType.from_symbol(symbol)`.
 - Reconstructs a dummy directory structure in `workspace_temp/diff_tree_dummy_repo`.
 - Uses `directory_tree` library to generating the visual text tree.
@@ -180,6 +192,19 @@ Analyzes remote branches to suggest cleanup candidates.
 - **'M' (Merged)**: Branches that have been merged into `master`.
 - **'U' (Unmerged)**: Branches with unique commits not in `master`.
 - **'A' (All)**: Both.
+
+**Merge detection (`RemoteBranch.from_branch`)** — a branch counts as merged when *any* of these holds, checked in
+order and against `remotes/{remote}/{main_branch}` (never the possibly stale local branch):
+1. **Ancestry**: `git branch -a --contains <tip>` lists the main branch. Only catches real merges and fast-forwards.
+2. **Rebase merge** (`_is_rebase_merged`): `git cherry <main_ref> <branch>` marks **every** branch commit with `-`,
+   meaning each one is already applied on main by patch id under a different hash.
+3. **Squash merge** (`_is_squash_merged`): the branch tree is turned into a synthetic commit parented on the
+   merge-base (`git commit-tree`), so it carries the same combined patch id as the squashed commit, and `git cherry`
+   is asked about that one commit.
+
+Steps 2 and 3 are **not** interchangeable: a rebase replays the commits individually, so no single commit on main
+matches the combined diff; a squash collapses them, so none of the originals matches. Checking only one of the two
+silently misses the other style. Both are skipped when there is no merge-base, and for the main branch itself.
 
 It creates `workspace_temp/remote_branches.txt` containing detailed metadata (author, last commit date, ahead/behind count) for every branch.
 

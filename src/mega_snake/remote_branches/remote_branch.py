@@ -5,7 +5,7 @@ import re
 from typing import Optional
 from datetime import datetime, timezone
 from mega_snake.util.util import run_operation
-from mega_snake.util.formatting import ws_advice
+from mega_snake.util.formatting import ws_advice, ws_info
 
 
 @dataclasses.dataclass
@@ -100,11 +100,16 @@ class RemoteBranch:
     @classmethod
     def from_branch(cls, branch: str, filter_by: str, main_branch: str, remote: str) -> Optional["RemoteBranch"]:
         """
-        Get the remote branch info from a branch
+        Initialize a RemoteBranch instance from a branch name, filtering by merge status against the main branch.
+        First, it parses the branch name to extract the local branch name. Then, it retrieves the commit information
+        for the branch, checks if the branch is merged into the main branch, and finally constructs a RemoteBranch
+        instance if the branch meets the specified filter criteria.
 
         Args:
-            branch: str
-            filter_by: str
+            branch: str: The full reference name of the remote branch (e.g., 'remotes/origin/feature-branch').
+            filter_by: str: Filter criteria ('M' for merged, 'U' for unmerged).
+            main_branch: str: The name of the main branch (e.g., 'main').
+            remote: str: The name of the remote repository (e.g., 'origin').
 
         Returns:
             RemoteBranch
@@ -126,17 +131,113 @@ class RemoteBranch:
         ).stdout.strip()
         if not within_branches:
             raise LookupError(f"Commit {commit.commit_hash} not found in any branch")
-        pattern: str = rf"\s*remotes/{remote}/{main_branch}\s*$"
+        main_ref: str = f"remotes/{remote}/{main_branch}"
+        pattern: str = rf"\s*{main_ref}\s*$"
         merged_on_main: bool = bool(re.search(pattern, within_branches, re.MULTILINE))
+        main_common_ancestor: str = run_operation(
+            f"git merge-base {branch} {main_ref}", "Getting main common ancestor"
+        ).stdout.strip()
+        if not merged_on_main and local_branch != main_branch:
+            merged_on_main = cls.is_squash_or_rebase_merged(branch, main_ref, main_common_ancestor)
         if filter_by == "M" and not merged_on_main:
             return None
         if filter_by == "U" and merged_on_main and local_branch != main_branch:
             return None
         mail: str = run_operation(f"git log -1 --pretty='format:%ae'  {branch}", "Getting commit author").stdout.strip()
-        main_common_ancestor: str = run_operation(
-            f"git merge-base {branch} {main_branch}", "Getting main common ancestor"
-        ).stdout.strip()
         return cls(local_branch, merged_on_main, commit, mail, main_common_ancestor)
+
+    @staticmethod
+    def is_squash_or_rebase_merged(branch: str, main_ref: str, main_common_ancestor: str) -> bool:
+        """
+        Determine whether a branch's changes were already integrated into the main branch
+        through a squash or rebase merge, where the branch tip commit itself is no longer an
+        ancestor of the main branch.
+        Without a common ancestor there is no shared history to compare against, so the branch is
+        reported as not merged. Otherwise both integration styles are checked, because they leave
+        opposite traces in the history and one check cannot stand in for the other: a rebase replays
+        every branch commit individually on main, while a squash collapses all of them into a single
+        commit whose patch matches none of the originals.
+
+        Parameters:
+            branch: The remote branch reference to check.
+            main_ref: The fully qualified main branch reference to compare against.
+            main_common_ancestor: The common ancestor commit between branch and main_ref.
+
+        Raises:
+            None
+
+        Returns:
+            bool: True if the branch's changes are already applied to main_ref, False otherwise.
+        """
+        if not main_common_ancestor:
+            return False
+        if RemoteBranch._is_rebase_merged(branch, main_ref):
+            ws_info(f"Branch {branch} appears to be rebase merged into {main_ref}")
+            return True
+        if RemoteBranch._is_squash_merged(branch, main_ref, main_common_ancestor):
+            ws_info(f"Branch {branch} appears to be squash merged into {main_ref}")
+            return True
+        return False
+
+    @staticmethod
+    def _is_rebase_merged(branch: str, main_ref: str) -> bool:
+        """
+        Check whether every commit of the branch is already applied on the main branch.
+
+        ``git cherry`` compares the branch commits against the main branch by patch id, marking with
+        "-" the ones already present there even when they were introduced by a different commit,
+        which is exactly what a rebase merge produces. The branch counts as merged only when every
+        commit is marked that way. An empty output means the branch has no commits of its own, a case
+        the ancestry check already covers, so it is deliberately not treated as merged here.
+
+        Parameters:
+            branch: The remote branch reference to check.
+            main_ref: The fully qualified main branch reference to compare against.
+
+        Raises:
+            None
+
+        Returns:
+            bool: True if all the branch commits are already applied on main_ref, False otherwise.
+        """
+        cherry_output: str = run_operation(
+            f"git cherry {main_ref} {branch}", "Checking if every branch commit is already applied to main"
+        ).stdout.strip()
+        if not cherry_output:
+            return False
+        return all(line.startswith("-") for line in cherry_output.splitlines())
+
+    @staticmethod
+    def _is_squash_merged(branch: str, main_ref: str, main_common_ancestor: str) -> bool:
+        """
+        Check whether the combined diff of the branch is already applied on the main branch.
+
+        A squash merge produces a single commit holding the whole branch diff, so no individual branch
+        commit matches it. To compare like with like, the branch tip tree is turned into a synthetic
+        commit parented on the common ancestor, which gives it the same patch id as the squashed commit
+        on main, and ``git cherry`` is asked whether that patch is already there. The synthetic commit is
+        never referenced, so it stays dangling and is reclaimed by the next garbage collection.
+
+        Parameters:
+            branch: The remote branch reference to check.
+            main_ref: The fully qualified main branch reference to compare against.
+            main_common_ancestor: The common ancestor commit between branch and main_ref.
+
+        Raises:
+            None
+
+        Returns:
+            bool: True if the combined branch diff is already applied on main_ref, False otherwise.
+        """
+        tree: str = run_operation(f"git rev-parse {branch}^{{tree}}", "Getting branch tree").stdout.strip()
+        synthetic_commit: str = run_operation(
+            f"git commit-tree {tree} -p {main_common_ancestor} -m squash-check",
+            "Creating synthetic commit to compare branch changes against main",
+        ).stdout.strip()
+        cherry_output: str = run_operation(
+            f"git cherry {main_ref} {synthetic_commit}", "Checking if branch changes are already applied to main"
+        ).stdout.strip()
+        return cherry_output.startswith("-")
 
     def __lt__(self: "RemoteBranch", other: "RemoteBranch") -> bool:
         """Compare two RemoteBranch instances by their commit timestamp."""
