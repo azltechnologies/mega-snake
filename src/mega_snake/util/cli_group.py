@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator, Optional
+from typing import Any, Iterable, Iterator, Optional
 
 import click
 from importlib.resources import files
@@ -61,6 +61,24 @@ class CliGroup(RichGroup):
         """
         return group_name.replace("_", " ").replace("-", " ").title()
 
+    @classmethod
+    def _derive_group_name_from_callback(cls, callback: Any) -> str:
+        """Resolve a documentation group title from a callback module path.
+
+        Parameters:
+            callback: The callback whose module path should be inspected.
+
+        Raises:
+            None
+
+        Returns:
+            str: A human-readable group title derived from the callback module path.
+        """
+        module_name: str = getattr(callback, "__module__", "commands")
+        module_parts: list[str] = module_name.split(".")
+        group_key: str = module_parts[1] if len(module_parts) > 1 else module_parts[0]
+        return cls._derive_group_title(group_key)
+
     @staticmethod
     def _get_docs_directory() -> Path:
         """Resolve the packaged docs fragment directory.
@@ -105,7 +123,11 @@ class CliGroup(RichGroup):
         """
         metadata = self._get_callback_metadata(cmd.callback)
         fragment_name: str = getattr(cmd, ATTR_DOCS, "") or metadata.get(ATTR_DOCS) or cmd.name or ""
-        group_name: str = getattr(cmd, ATTR_GROUP, "") or metadata.get(ATTR_GROUP) or cmd.callback.__module__.split(".")[1]
+        group_name: str = (
+            getattr(cmd, ATTR_GROUP, "")
+            or metadata.get(ATTR_GROUP)
+            or self._derive_group_name_from_callback(cmd.callback)
+        )
         setattr(cmd, ATTR_DOCS, fragment_name)
         setattr(cmd, ATTR_GROUP, group_name if " " in group_name else self._derive_group_title(group_name))
 
@@ -135,12 +157,20 @@ class CliGroup(RichGroup):
                 )
                 super().add_command(alias_cmd, alias)
 
-    def add_command(self, cmd: click.Command, name: Optional[str] = None) -> None:
+    def add_command(
+        self,
+        cmd: click.Command,
+        name: Optional[str] = None,
+        aliases: Optional[Iterable[str]] = None,
+        panel: Optional[str] = None,
+    ) -> None:
         """Register a command after resolving its documentation metadata.
 
         Parameters:
             cmd: The command to register.
             name: Optional explicit command name override.
+            aliases: Optional aliases forwarded to rich-click.
+            panel: Optional rich-click panel forwarded unchanged.
 
         Raises:
             None
@@ -149,7 +179,7 @@ class CliGroup(RichGroup):
             None
         """
         self._apply_documentation_metadata(cmd)
-        super().add_command(cmd, name)
+        super().add_command(cmd, name, aliases=aliases, panel=panel)
 
     def add_command_with_alias(self, cmd: click.Command, aliases: Optional[list[str]] = None) -> None:
         """Register a command and its hidden aliases.
@@ -218,7 +248,7 @@ class CliGroup(RichGroup):
                 continue
             fragment_name: str = getattr(command, ATTR_DOCS, command.name or name)
             fragment_file: str = fragment_name if fragment_name.endswith(".md") else f"{fragment_name}.md"
-            group_name: str = getattr(command, ATTR_GROUP, self._derive_group_title(command.callback.__module__.split(".")[1]))
+            group_name: str = getattr(command, ATTR_GROUP, self._derive_group_name_from_callback(command.callback))
             entries.append(
                 DocumentedCommand(
                     name=name,

@@ -19,7 +19,8 @@ def test_main_group() -> None:
 def test_wrapper_has_skip_flag() -> None:
     """The wrapper should be flagged for light-weight (skip) initialization, so a missing
     working path folder doesn't crash the CLI before the wrapper's own check can run."""
-    assert module.wrapper.flags == {"flags": {"skip"}}
+    assert module.wrapper.flags["flags"] == {"skip"}
+    assert module.wrapper.flags["docs_group"] == "Git & Release Management"
 
 
 def test_wrapper_delegates_to_the_shared_utilities() -> None:
