@@ -5,6 +5,7 @@ from unittest.mock import patch, MagicMock
 import inspect
 import pytest
 from mega_snake.config_environment.models.log_viewer_watcher import LogWatcher, SUBSTITUTE_LOG_DATE_TAG
+from mega_snake.config_environment.models.project_stack import ProjectStack
 
 DATE_PATTERN = "_YYYY-MM-DD"
 LOG_TEST_SETTING = "logViewer.tests"
@@ -13,10 +14,14 @@ DICT_RESULT = {"title": "my title", "pattern": "my pattern", "autoScroll": True}
 
 
 def dict_side_effect(instance: LogWatcher, _wk: str) -> dict[str, str]:
-    """Side effect for jq.compile"""
+    """Side effect for jq.compile
+
+    The 'stack' field is left out on purpose: it groups the watcher by technology and is never
+    serialized into the workspace file.
+    """
     command_signature = inspect.signature(LogWatcher.__init__).parameters
     result = {}
-    for k in (k for k, _p in command_signature.items() if k != "self"):
+    for k in (k for k, _p in command_signature.items() if k not in ("self", "stack")):
         result[k] = vars(instance)[k]
     return result
 
@@ -58,6 +63,20 @@ def test_to_dict() -> None:
         assert result["title"] == member.title
         assert result["pattern"] == f"{param}/{member.pattern}"
         assert result["autoScroll"] is True
+        # the stack only decides whether the watcher is written, it is not part of the settings
+        assert "stack" not in result
+
+
+def test_stack() -> None:
+    """Test that every watcher declares the stack it belongs to"""
+    for member in LogWatcher:
+        assert isinstance(member.stack, ProjectStack)
+    assert LogWatcher.GRADLE_BUILD.stack is ProjectStack.GRADLE
+    assert LogWatcher.JAVA_DEBUG.stack is ProjectStack.JAVA
+    assert LogWatcher.MAVEN_TEST.stack is ProjectStack.MAVEN
+    assert LogWatcher.PYTHON_SNAKE.stack is ProjectStack.PYTHON
+    # a watcher that is useful for any project falls back to the shared stack
+    assert LogWatcher.GENERIC.stack is ProjectStack.COMMON
 
 
 def test_get_pattern_date(get_input_call: MagicMock) -> None:

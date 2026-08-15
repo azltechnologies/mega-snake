@@ -3,6 +3,7 @@
 from typing import Generator
 from unittest.mock import patch, MagicMock
 import pytest
+from mega_snake.config_environment.models.project_stack import ProjectStack
 from mega_snake.config_environment.models.vscode_task import VscodeTask, TASKS_VERSION_QUERY
 
 VERSION_TEST = "1.2.3"
@@ -35,6 +36,20 @@ def test_enum_members() -> None:
         assert member.args is not None
         assert member.problem_matcher is not None
         assert member.extra_args is not None
+        assert isinstance(member.stack, ProjectStack)
+
+
+def test_stack() -> None:
+    """Test that every task belongs to a JVM stack, so none is written for other projects"""
+    # every task shipped today drives Gradle, Maven or a Java process
+    assert not [member for member in VscodeTask if member.stack is ProjectStack.COMMON]
+    assert VscodeTask.GRADLE_BUILD.stack is ProjectStack.GRADLE
+    assert VscodeTask.JAVA_REMOTE_DEBUG.stack is ProjectStack.JAVA
+    assert VscodeTask.MAVEN_CLEAN_INSTALL.stack is ProjectStack.MAVEN
+    # the debug pipeline depends on the Gradle build tasks, so it belongs to the Gradle stack
+    for member in (VscodeTask.DEBUG_BUILD, VscodeTask.DEBUG_BUILD_NO_TEST, VscodeTask.DEBUG_NO_BUILD):
+        assert member.stack is ProjectStack.GRADLE
+    assert VscodeTask.RUN_JAVA_DEBUG.stack is ProjectStack.GRADLE
 
 
 def test_add_logger_args() -> None:
@@ -69,6 +84,8 @@ def test_to_dict() -> None:
             assert result["args"] == member.args
         for key, value in member.extra_args.items():
             assert result[key] == value
+        # the stack only decides whether the task is written, it is not part of the task definition
+        assert "stack" not in result
 
 
 def test_add_tasks_version() -> None:

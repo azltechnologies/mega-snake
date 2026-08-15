@@ -5,6 +5,7 @@ from types import SimpleNamespace, MethodType
 import inspect
 from unittest.mock import patch, MagicMock
 import pytest
+from mega_snake.config_environment.models.project_stack import ProjectStack
 from mega_snake.config_environment.models.vscode_input import VscodeInput
 
 INPUT_TEST_SETTING = "inputTests"
@@ -55,6 +56,17 @@ def test_to_dict() -> None:
             assert result["default"] == member.input_default
         if member.input_description:
             assert result["description"] == member.input_description
+        # the stack only decides whether the input is written, it is not part of the input definition
+        assert "stack" not in result
+
+
+def test_stack() -> None:
+    """Test that every input declares the stack it belongs to"""
+    for member in VscodeInput:
+        assert isinstance(member.stack, ProjectStack)
+    # the build selector drives the Gradle debug tasks, the timestamp is useful everywhere
+    assert VscodeInput.SELECT_BUILD.stack is ProjectStack.GRADLE
+    assert VscodeInput.TODAY_TIMESTAMP.stack is ProjectStack.COMMON
 
 
 def test_get_input_call() -> None:

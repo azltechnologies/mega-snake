@@ -175,7 +175,11 @@
             "sandcastle.vscode-open",
             "solomonkinard.git-blame",
             "vscjava.vscode-gradle",
-            "vscjava.vscode-java-pack"
+            "vscjava.vscode-java-pack",
+            "ms-python.python",
+            "ms-python.debugpy",
+            "dbaeumer.vscode-eslint",
+            "esbenp.prettier-vscode"
         ]
     },
     "tasks": {

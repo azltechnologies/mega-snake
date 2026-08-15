@@ -4,6 +4,7 @@ from enum import Enum, auto
 import json
 from typing import Any, Optional, TYPE_CHECKING
 import jq
+from mega_snake.config_environment.models.project_stack import ProjectStack
 
 if TYPE_CHECKING:
     from mega_snake.config_environment.models.vscode_task import VscodeTask
@@ -40,6 +41,7 @@ class VscodeInput(Enum):
         {"task": JAVA_DEBUG_PREFIX},
         None,
         InputType.TASK,
+        ProjectStack.GRADLE,
     )
 
     input_id: str
@@ -50,6 +52,7 @@ class VscodeInput(Enum):
     input_default: Optional[str]
     input_description: Optional[str]
     enum_type: InputType
+    stack: ProjectStack
 
     def __init__(
         self,
@@ -59,6 +62,7 @@ class VscodeInput(Enum):
         input_args: Optional[dict[str, str]],
         input_description: str,
         enum_type: InputType,
+        stack: ProjectStack = ProjectStack.COMMON,
     ) -> None:
         """Initialize a VscodeInput enum member with all required VS Code input configuration fields."""
         self.input_id = input_id
@@ -69,6 +73,7 @@ class VscodeInput(Enum):
         self.input_default = None
         self.input_description = input_description
         self.enum_type = enum_type
+        self.stack = stack
 
     def to_dict(self) -> dict[str, Any]:
         """Converts the enum to a dictionary."""
