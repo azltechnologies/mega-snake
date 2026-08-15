@@ -6,8 +6,6 @@ from unittest.mock import MagicMock
 from click.testing import CliRunner
 import click
 import pytest
-from rich_click.rich_help_configuration import RichHelpConfiguration
-from rich_click.rich_help_formatter import RichHelpFormatter
 from mega_snake.util.cli_group import ATTR_GROUP, CliGroup
 
 ATTR_ALIAS = "aliases"
@@ -147,61 +145,6 @@ def test_help_lists_commands_with_their_aliases() -> None:
     assert "moreCommands" in result.output
     assert "mc" in result.output
     assert set(clo.commands) == {*(cmd.name for cmd in cli.commands.values()), "moreCommands", "mc", "mC"}
-
-
-def test_format_commands_renders_aliases_without_mutating_the_registry() -> None:
-    """The classic-Click fallback must list aliases and leave self.commands untouched.
-
-    rich-click renders group help through its own pipeline, so this override is only reached with a
-    plain click.HelpFormatter. It is still exercised here because the previous implementation
-    rewrote the registry keys while rendering, breaking every later lookup by name.
-    """
-    ctx = click.Context(cli, info_name="cli", **cli.context_settings)
-    formatter = click.HelpFormatter(width=100)
-    original_keys = set(cli.commands)
-
-    cli.format_commands(ctx, formatter)
-    output = formatter.getvalue()
-
-    assert "do | stuff | things" in output
-    assert "hello" in output
-    assert set(cli.commands) == original_keys
-
-
-def test_format_commands_enables_rich_markup_for_a_rich_formatter() -> None:
-    """With a rich-click formatter the override still opts into rich markup before rendering.
-
-    rich-click never routes group help through format_commands (it uses rich_format_help), and its
-    RichHelpFormatter.write_dl is a stub that only warns -- hence the expected RuntimeWarning. This
-    override is therefore a fallback for plain-Click rendering, not the code that draws the help
-    panel users actually see.
-    """
-    formatter = RichHelpFormatter(config=RichHelpConfiguration())
-    formatter.config.text_markup = "ansi"
-
-    with pytest.warns(RuntimeWarning, match="Not implemented"):
-        cli.format_commands(click.Context(cli, info_name="cli", **cli.context_settings), formatter)
-
-    assert formatter.config.text_markup == "rich"
-
-
-def test_format_commands_writes_nothing_without_visible_commands() -> None:
-    """A group whose commands are all hidden must not emit an empty Commands section."""
-
-    @click.group(cls=CliGroup)
-    def empty_group() -> None:
-        """Group with no visible commands."""
-
-    @click.command(name="secret", hidden=True)
-    def secret() -> None:
-        """Hidden command."""
-
-    empty_group.add_command(secret)
-    formatter = click.HelpFormatter(width=100)
-
-    empty_group.format_commands(click.Context(empty_group, info_name="empty"), formatter)
-
-    assert formatter.getvalue() == ""
 
 
 def test_add_command_keeps_an_explicit_group_title_verbatim() -> None:

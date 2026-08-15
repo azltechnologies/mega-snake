@@ -7,7 +7,6 @@ from typing import Any, Iterable, Iterator, Optional
 import click
 from importlib.resources import files
 from rich_click import RichGroup
-from rich_click.rich_help_formatter import RichHelpFormatter
 
 from mega_snake.constants import APP_NAME, DOCS_DIR, DOCS_FILE_SUFFIX, MODULE_NAME, RESOURCES_DIR
 
@@ -229,42 +228,3 @@ class CliGroup(RichGroup):
                 )
             )
         yield from sorted(entries, key=lambda entry: (entry.group.casefold(), entry.name))
-
-    def format_commands(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
-        """Render command names with aliases without mutating the registry.
-
-        Note: rich-click renders the group help through its own ``rich_format_help`` pipeline, so
-        this override is only reached by plain-Click rendering paths (a ``click.HelpFormatter``,
-        or a future version that restores the classic pipeline). It is kept non-destructive on
-        purpose: the previous implementation rewrote ``self.commands`` keys while rendering, which
-        broke every later lookup by name.
-
-        Parameters:
-            ctx: The active click context.
-            formatter: The help formatter used by click/rich-click.
-
-        Raises:
-            None
-
-        Returns:
-            None
-        """
-        if isinstance(formatter, RichHelpFormatter):
-            formatter.config.text_markup = "rich"
-
-        commands: list[tuple[str, click.Command]] = []
-        for subcommand in self.list_commands(ctx):
-            command = self.get_command(ctx, subcommand)
-            if command is None or command.hidden:
-                continue
-            aliases: list[str] = getattr(command, ATTR_ALIAS, [])
-            display_name: str = subcommand if not aliases else f"{subcommand} | {' | '.join(aliases)}"
-            commands.append((display_name, command))
-
-        if not commands:
-            return
-
-        limit = formatter.width - 6 - max(len(command_name) for command_name, _command in commands)
-        rows = [(command_name, command.get_short_help_str(limit)) for command_name, command in commands]
-        with formatter.section("Commands"):
-            formatter.write_dl(rows)

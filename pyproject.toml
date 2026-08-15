@@ -48,7 +48,10 @@ build-backend = "hatchling.build"
 packages = ["src/mega_snake"]
 
 [tool.mypy]
-python_version = ">=3.12"
+# Must be an exact 'x.y' version: mypy rejects a range and silently falls back to the running
+# interpreter. Pin it to the lowest version 'requires-python' supports, so type checking catches
+# what would break on the oldest interpreter we claim to run on.
+python_version = "3.12"
 disable_error_code = ["import-untyped"]
 mypy_path = "./out"
 exclude = [
