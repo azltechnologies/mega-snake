@@ -106,8 +106,10 @@ def diff_tree(commit_hash: Optional[str], delete_original_files: bool, scope: st
         f" git log --pretty=format:'%ad %H%n%B' --date=short {current_branch}...{main_branch}",
         "Writing commit list to file",
     ).stdout.strip()
+    # the pending work goes above the most recent commit, so the file reads newest first
+    pending_changes: str = _get_pending_changes_report(scope, untracked_files)
     with open(diff_commit_file, "w", encoding="utf-8") as diff_commit:
-        diff_commit.write(commits)
+        diff_commit.write(f"{pending_changes}{commits}")
     run_operation(f"code {diff_commit_file}", "opening diff commit file")
     ws_success(f"Commit list created at {diff_commit_file}")
     # write all the changes to a file
@@ -160,8 +162,69 @@ def _get_untracked_files(scope: str) -> list[str]:
     """
     if scope != "u":
         return []
-    untracked: str = run_operation("git ls-files --others --exclude-standard", "getting untracked files").stdout.strip()
-    return untracked.split("\n") if untracked else []
+    return _get_paths("git ls-files --others --exclude-standard", "getting untracked files")
+
+
+def _get_paths(command: str, description: str) -> list[str]:
+    """
+    Runs a git command listing one path per line and returns those paths.
+
+    An empty output means no path at all, which is why it cannot simply be split: doing so would
+    yield a single empty path and report a change that does not exist.
+
+    Args:
+        command: str
+        description: str
+
+    Returns:
+        list[str]: The listed paths, empty when the command reported none.
+    """
+    output: str = run_operation(command, description).stdout.strip()
+    return output.split("\n") if output else []
+
+
+def _get_pending_changes_report(scope: str, untracked_files: list[str]) -> str:
+    """
+    Builds the report of the changes that are not part of any commit yet.
+
+    The commit list only knows about committed work, so the uncommitted part of the scope would
+    otherwise be missing from it entirely. Each section is only reported when the scope covers it
+    and when it actually has files, so a clean working tree never adds noise to the file. Sections
+    are ordered from the furthest from being committed to the closest, matching the newest-first
+    reading order of the commit list that follows them.
+
+    Args:
+        scope: str
+        untracked_files: list[str]
+
+    Returns:
+        str: The report to prepend to the commit list, empty when there is nothing pending.
+    """
+    sections: list[str] = []
+    if scope == "u":
+        unstaged: list[str] = _get_paths("git diff --name-only", "getting unstaged files")
+        sections.append(_format_pending_section("Unstaged files", unstaged + untracked_files))
+    if scope in ("s", "u"):
+        staged: list[str] = _get_paths("git diff --cached --name-only", "getting staged files")
+        sections.append(_format_pending_section("Staged files", staged))
+    return "".join(sections)
+
+
+def _format_pending_section(title: str, files: list[str]) -> str:
+    """
+    Formats one section of the pending changes report.
+
+    Args:
+        title: str
+        files: list[str]
+
+    Returns:
+        str: The formatted section, empty when there is no file to report.
+    """
+    if not files:
+        return ""
+    listed_files: str = "\n".join(f"- {file}" for file in files)
+    return f"{title}:\n{listed_files}\n\n"
 
 
 def _get_binary_files(diff_target: str) -> set[str]:
