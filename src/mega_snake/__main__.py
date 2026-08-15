@@ -12,6 +12,8 @@ from .light_weight.module import main as create_release, add_wrapper as create_r
 from .remote_branches.module import main as remote_branches, add_wrapper as remote_branches_result_callback
 from .config_environment.module import main as config_environment, add_wrapper as config_env_result_callback
 from .dependency_audit.module import main as dependency_audit, add_wrapper as dependency_audit_result_callback
+from .state.module import main as state, add_wrapper as state_result_callback
+from .jira_api.module import main as jira_api, add_wrapper as jira_api_result_callback
 from .constants import LOGGING_OPT, SHELL_OPT, APP_NAME, MODULE_NAME
 from .util.formatting import get_traceback
 from .util.props import init_app_properties
@@ -171,6 +173,8 @@ MODULES: list[tuple[CliGroup, Callable]] = [
     (config_environment, config_env_result_callback),
     (remote_branches, remote_branches_result_callback),
     (dependency_audit, dependency_audit_result_callback),
+    (state, state_result_callback),
+    (jira_api, jira_api_result_callback),
 ]
 
 for group, add_wrapper in MODULES:

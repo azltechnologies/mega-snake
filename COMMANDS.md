@@ -190,6 +190,82 @@ Because it writes the local environment files, a successful run exits with statu
 `mgsnake` shell function installed by the init script (see `shell-path`) reads that status and
 re-sources them, so the environment it just configured applies to the current session.
 
+## Configuration
+
+### config
+
+Reads and writes the persistent settings mgsnake remembers between runs, in two scopes: `repo` (stored inside the current clone's git directory) and `global` (stored in the user's config directory). Reads resolve through `environment variable > repo > global`, so an exported variable always wins and existing environment-based workflows keep working. Credential-shaped names are refused: secrets stay in environment variables only.
+
+**Synopsis:** `mgsnake config [OPTIONS] COMMAND [ARGS]...`
+
+| Option | Description |
+| --- | --- |
+| `-h, --help` | Show this message and exit. |
+
+The repository already had three configuration layers and not one of them could be written to:
+`config.properties` ships inside the wheel and is replaced on every install, `AppProperties` is a
+per-process singleton kept deliberately immutable, and the local config/env files are a shell
+prelude the CLI writes once and never reads back. This command is the missing middle piece — state
+the CLI both writes and reads — and it is what lets the Jira commands stop asking for a project key
+on every single call.
+
+Subcommands:
+
+| Subcommand | What it does |
+|---|---|
+| `get KEY` | Prints the resolved value. Only the value reaches stdout, so `$(mgsnake config get jira.project_key)` is safe. Exits 1 when nothing defines it. |
+| `set KEY VALUE [--global]` | Stores the setting, atomically. |
+| `unset KEY [--global]` | Removes it from that one scope only. |
+| `list [--scope repo\|global\|all]` | Prints `key=value` lines of what is on disk. |
+| `export [--shell] [--scope]` | Prints export statements, meant to be evaluated from the shell profile. |
+
+#### Output
+
+Two files, one per scope, both plain sorted JSON:
+
+- `<git-dir>/mgsnake/state.json` — the `repo` scope, the default target of `set` and `unset`. Living
+  inside `.git` means it is never committed without touching `.gitignore` or `.git/info/exclude`, it
+  is per-clone, and it dies with the clone. `workspace_temp` was rejected for this: it is explicitly
+  disposable, and state that evaporates is not state.
+- `~/.config/mgsnake/state.json` (`%APPDATA%\mgsnake\state.json` on Windows) — the `global` scope.
+
+Writes go through a temporary file in the same directory followed by a rename, so an interrupted run
+cannot leave behind a half-written file that would then break every other command.
+
+#### Examples
+
+```bash
+mgsnake config set jira.domain azltech.atlassian.net --global
+mgsnake config set jira.email dev@example.com --global
+mgsnake config set jira.project_key TAROTAPP
+
+mgsnake jira-board            # no arguments needed any more
+
+eval "$(mgsnake config export --shell bash)"
+```
+
+#### Notes
+
+Reads resolve through **environment variable → repo → global**. The environment sits on top on
+purpose: every workflow that exported `JIRA_DOMAIN` and friends keeps working untouched, so
+adopting the store can be gradual.
+
+Credentials are refused, not warned about. Any name matching `token`, `secret`, `password`,
+`passwd`, `credential` or `api_key` fails with an error and nothing is written. `JIRA_API_TOKEN` and
+`GITHUB_TOKEN` stay in the environment: a plaintext credential in a state file is worse than an
+exported variable precisely because it persists and is forgotten.
+
+Names must be lowercase and dotted (`jira.field.story_points`), which is what keeps the file
+navigable instead of turning into a flat junk drawer.
+
+The whole group runs before any initialization, so it works outside a configured environment and
+even before `MEGA_SNAKE_SHELL` exists. Outside a git repository the `repo` scope simply does not
+exist: reads fall back to the global one, and writes say so and suggest `--global`.
+
+Settings the Jira commands read: `jira.domain`, `jira.email`, `jira.project_key`, `jira.board_id`,
+`jira.field.story_points` and `jira.field.sprint`. The last three are written by the commands
+themselves as a cache; removing them just forces a fresh resolution.
+
 ## Dependency Audit
 
 ### scan-dependencies
@@ -485,6 +561,211 @@ A remote is not required: without one, the command asks for the local main branc
 local branches against it. A `--format` option to customize the columns and output shape is
 planned; for now the table is fixed. `remote-branches-cleanup` builds this same inventory in memory
 for its interactive deletion — this report is for inspection.
+
+## Jira
+
+### jira-board
+
+Resolves a Jira project key to its Agile board and prints `{"boardId": ..., "cloudDomain": ...}` to stdout, and nothing else, so the output can be captured with command substitution. The board id is cached in the current clone once resolved, so later runs answer without any HTTP call. `boardId` is an integer, not a string as the shell version emitted it.
+
+**Synopsis:** `mgsnake jira-board [OPTIONS] [PROJECT_KEY]`
+
+**Aliases:** `jb`
+
+| Option | Description |
+| --- | --- |
+| `--refresh` | Ignore the cached board id and resolve it from Jira again. Use it after the project's boards changed, or to pick a different board when the project has several. |
+| `-h, --help` | Show this message and exit. |
+
+- `project_key` — Jira project key. Defaults to the stored jira.project_key.
+
+Resolving a board takes two round trips — project key to project id, then project id to board — and
+the answer almost never changes. That is why the result is cached per clone: the first run pays for
+the lookup and every later one answers from disk, with no HTTP call and, therefore, no credentials
+needed at all.
+
+#### Output
+
+Nothing on disk except the cache entry: `jira.board_id` is written to the repository scope of the
+state store (see `config`), but only when the resolved project matches the stored
+`jira.project_key`. Passing a different project key explicitly neither reads nor writes that cache,
+so one clone's board can never be served for somebody else's project.
+
+#### Examples
+
+```bash
+mgsnake jira-board                       # uses the stored project key
+mgsnake jira-board TAROTAPP | jq .boardId
+mgsnake jira-board --refresh             # after the project's boards changed
+```
+
+#### Notes
+
+**Breaking change.** `boardId` is now a number. The shell version emitted it through `jq --arg`, so
+it was the string `"1"`, while `getSprintInfo` turned around and used it as a number — the two
+disagreed with each other. Any `jq` filter comparing it against a string needs adjusting.
+
+An unknown project is an error naming the key. The shell version let `jq -r '.id'` return the string
+`null`, asked Jira for `?projectKeyOrId=null`, and printed `{"boardId": "null"}` without a word.
+
+When a project has several boards you are asked which one, and the answer is cached. The prompt goes
+to stderr so it cannot corrupt a captured stdout — although in a `$(...)` capture you will not see
+it, so run the command once on its own (or with `--refresh`) to make the choice.
+
+Requires `jira.domain`, `jira.email` and `JIRA_API_TOKEN`; see the `config` reference. On a corporate
+machine with a TLS-inspecting proxy, point `REQUESTS_CA_BUNDLE` at the corporate CA bundle.
+
+### jira-issues
+
+Downloads every issue of a Jira project's Agile board (epics, stories, tasks, subtasks), projects them into the compact schema the Jira skills consume, flags the ones that belong to an active sprint, and writes the result as a JSON array. The story points and sprint custom fields are resolved by name for the current Jira instance instead of being hardcoded, so the output is correct on any tenant. Progress goes to the console; only the file receives the data.
+
+**Synopsis:** `mgsnake jira-issues [OPTIONS] [PROJECT_KEY]`
+
+**Aliases:** `ji`
+
+| Option | Description |
+| --- | --- |
+| `-o, --output TEXT` | Destination file. Defaults to jira_board_issues.json inside the working path. |
+| `--refresh-board` | Ignore the cached board id and resolve it from Jira again before downloading. |
+| `-q, --quiet` | Silence the progress messages. |
+| `-h, --help` | Show this message and exit. |
+
+- `project_key` — Jira project key. Defaults to the stored jira.project_key.
+
+The whole board goes to a file rather than through the MCP server on purpose: the skills need to
+slice the same dataset many times over (by epic, by assignee, by status, by sprint), and paying for
+a fresh remote round trip per question is both slow and rate-limited. One download, then `jq`.
+
+#### Output
+
+A JSON array written atomically to `workspace_temp/jira_board_issues.json`, or to `--output`. Every
+entry has this shape:
+
+```jsonc
+{
+  "id": "10001",
+  "link": "https://<domain>/rest/api/2/issue/10001",
+  "key": "TAROTAPP-1",
+  "fields": {
+    "summary": …, "statuscategorychangedate": …, "created": …, "resolutiondate": …,
+    "lastViewed": …, "updated": …, "description": …,
+    "issuetype": { "name": …, "subtask": …, "entityId": …, "hierarchyLevel": … },
+    "parent": { "id": …, "key": … },
+    "project": { "id": …, "key": …, "name": … },
+    "status": { "id": …, "name": …, "statusCategory": { "id": …, "key": …, "name": … } },
+    "workratio": …, "issuerestriction": …,
+    "priority": { "id": …, "name": … },
+    "labels": [ … ],
+    "storyPoints": …,
+    "assignee": { "accountId": …, "displayName": …, "emailAddress": …, "timeZone": … },
+    "creator":  { … same shape … },
+    "reporter": { … same shape … },
+    "votes": { "votes": …, "hasVoted": … },
+    "attachment": [ { "id": …, "filename": …, "mimeType": …, "size": …, "contentUrl": …, "author": { … } } ],
+    "attachmentsCount": …,
+    "comment": [ { "id": …, "created": …, "updated": …, "jsdPublic": …, "body": …, "author": { … }, "updateAuthor": { … } } ],
+    "commentCount": …,
+    "sprint": [ { "id": …, "name": …, "state": …, "startDate": …, "endDate": …, "completeDate": … } ]
+  },
+  "activeSprint": true
+}
+```
+
+A nested object that Jira returned as `null` becomes an object whose values are all `null`, never
+`null` itself — `parent` above all, since `.fields.parent.key == null` is the documented way to find
+orphaned stories and it throws the moment `parent` itself is null.
+
+#### Examples
+
+```bash
+mgsnake jira-issues                              # stored project key, default destination
+mgsnake jira-issues TAROTAPP -o /tmp/board.json
+mgsnake jira-issues --quiet                      # for scripts and CI
+
+# What is in the current sprint, with points and assignee
+jq -r '.[] | select(.activeSprint)
+        | "\(.key)\t\(.fields.storyPoints // "-")\t\(.fields.assignee.displayName // "unassigned")\t\(.fields.summary)"' \
+   workspace_temp/jira_board_issues.json
+
+# Stories with no epic
+jq -r '.[] | select(.fields.parent.key == null) | .key' workspace_temp/jira_board_issues.json
+
+# Points per assignee in the active sprint
+jq '[.[] | select(.activeSprint)] | group_by(.fields.assignee.displayName)
+     | map({assignee: .[0].fields.assignee.displayName, points: (map(.fields.storyPoints // 0) | add)})' \
+   workspace_temp/jira_board_issues.json
+```
+
+#### Notes
+
+The story points and sprint custom fields are looked up by name (`Story Points`, or
+`Story point estimate` on team-managed projects, and `Sprint`) and cached per clone. Their ids are
+allocated per Jira instance, so the hardcoded `customfield_10016`/`customfield_10020` of the shell
+version projected `null` on any other tenant without saying anything. If the names cannot be found
+at all, those ids are used as a last resort and a warning says so.
+
+If the values you get differ from the old script's, the new ones are the correct ones.
+
+The download reads the board's own filter, so "every issue of the board" means exactly what Jira
+means by it — including issues that live outside the project when the filter says so.
+
+Progress goes to the console and the data only to the file, so `--quiet` is safe to combine with
+anything. Every failure exits 1 with the reason on stderr.
+
+On a corporate machine with a TLS-inspecting proxy the request layer will not see the corporate root
+CA, because it validates against its own bundled certificate store rather than the system one. Point
+`REQUESTS_CA_BUNDLE` at the corporate bundle:
+
+```bash
+export REQUESTS_CA_BUNDLE=/etc/ssl/certs/corporate-ca-bundle.crt
+```
+
+Never disable verification instead.
+
+### jira-sprint
+
+Prints the active sprints of a Jira project's Agile board to stdout as a JSON array, and nothing else, so the output can be captured with command substitution. The array is always an array: one active sprint yields a one-element list, and a board with none (kanban, or a sprint that was never started) yields an empty list and a successful exit.
+
+**Synopsis:** `mgsnake jira-sprint [OPTIONS] [PROJECT_KEY]`
+
+**Aliases:** `js`
+
+| Option | Description |
+| --- | --- |
+| `-h, --help` | Show this message and exit. |
+
+- `project_key` — Jira project key. Defaults to the stored jira.project_key.
+
+Answers "what is the team working on right now?" for the board behind a project, in the shape the
+Jira skills consume.
+
+#### Output
+
+Nothing on disk. The board lookup it performs first may populate the cached `jira.board_id`, exactly
+as `jira-board` does.
+
+Each entry carries `id`, `name`, `startDate`, `endDate`, `cloudDomain` and `boardId` — the same keys
+the shell version produced, with `boardId` now a number.
+
+#### Examples
+
+```bash
+mgsnake jira-sprint | jq '.[0].name'
+mgsnake jira-sprint TAROTAPP | jq -r '.[] | "\(.id) \(.name)"'
+```
+
+#### Notes
+
+**Breaking change.** The result is a JSON array. `getSprintInfo.sh` piped `.values[]` through `jq`
+without wrapping it, so a single active sprint came out as a bare object and two came out as two
+concatenated objects — which is not a JSON document at all and blows up in `json.load`. Filters that
+assumed a single object need `jq '.[0]'`.
+
+A board with no active sprint (a kanban board, or a sprint that was never started) prints `[]` and
+exits 0. That is an answer, not a failure.
+
+Boards are per project, so this always resolves the board first; with a warm cache that costs no
+extra request.
 
 ## Light Weight
 

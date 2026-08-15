@@ -8,6 +8,7 @@ import re
 from typing import Optional, Tuple, Union
 import subprocess
 import platform
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Callable
@@ -52,6 +53,50 @@ def load_json_with_comments(file_path: str) -> dict:
             return {}
         parser = JsonComment(json)
         return parser.loads(json_str)
+
+
+def write_json_atomically(path: Path, payload: Any, sort_keys: bool = False) -> None:
+    """Serialize a JSON payload and put it in place in a single, uninterruptible step.
+
+    The temporary file is created in the destination directory so ``os.replace`` is a rename within
+    one filesystem, which is atomic. Anything that fails before the rename leaves the previous file
+    byte for byte as it was and removes the temporary file rather than leaking it into the
+    directory. ``newline="\\n"`` keeps the bytes identical on Windows.
+
+    Parameters:
+        path: The destination file.
+        payload: Any JSON-serializable value.
+        sort_keys: Whether to sort object keys. Leave it False for payloads whose key order is part
+            of a published contract.
+
+    Raises:
+        OSError: If the file cannot be created or replaced.
+        TypeError: If the payload is not JSON-serializable.
+
+    Returns:
+        None
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = tempfile.NamedTemporaryFile(  # pylint: disable=consider-using-with
+        mode="w",
+        dir=path.parent,
+        prefix=f"{path.name}.",
+        suffix=".tmp",
+        delete=False,
+        encoding="utf-8",
+        newline="\n",
+    )
+    temp_path: Path = Path(handle.name)
+    replaced: bool = False
+    try:
+        with handle:
+            json.dump(payload, handle, indent=2, sort_keys=sort_keys, ensure_ascii=False)
+            handle.write("\n")
+        os.replace(temp_path, path)
+        replaced = True
+    finally:
+        if not replaced:
+            temp_path.unlink(missing_ok=True)
 
 
 def _as_text(stream: Optional[Union[str, bytes]]) -> str:
@@ -349,6 +394,33 @@ def cli_metadata(**metadata) -> Callable:
     return decorator
 
 
+def _rebuild_command(command: click.Command) -> click.Command:
+    """Rebuild a command as the same class, so wrapping it cannot change what it is.
+
+    Wrapping copies the command through ``click.Command.__init__``'s signature, which is the reason
+    §2.3 of the contributor guide insists custom attributes be re-applied by hand afterwards. A
+    ``click.Group`` carries one more thing that signature does not mention: its ``commands``. Copying
+    a group through the plain ``Command`` constructor would silently return a leaf command with no
+    subcommands, so ``mgsnake config get`` would stop resolving the moment the group is registered
+    through a module wrapper like every other command.
+
+    Parameters:
+        command: The command (or group) to copy.
+
+    Raises:
+        None
+
+    Returns:
+        click.Command: A fresh instance of the same class carrying the same constructor arguments.
+    """
+    attribute_names: set[str] = {
+        name for name in inspect.signature(click.Command.__init__).parameters if name != "self"
+    }
+    if isinstance(command, click.Group):
+        attribute_names.add("commands")
+    return type(command)(**{name: getattr(command, name) for name in attribute_names if hasattr(command, name)})
+
+
 def wrapper_decorator(sub_wrapper: Callable) -> Callable:
     """Decorator to wrap a command with additional logic"""
 
@@ -392,9 +464,7 @@ def wrapper_decorator(sub_wrapper: Callable) -> Callable:
         update_flags(sub_wrapper)
         update_flags(command.callback)
 
-        command_signature = inspect.signature(click.Command.__init__).parameters
-
-        comm = click.Command(**{k: getattr(command, k) for k, _p in command_signature.items() if k != "self"})
+        comm = _rebuild_command(command)
         comm.callback = wrapper  # Override the callback with our wrapper
         for attr_name in preserved_attrs:
             if value := getattr(command, attr_name, None):

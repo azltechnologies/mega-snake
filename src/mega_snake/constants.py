@@ -47,6 +47,22 @@ LOAD_ENV_HELPER: str = "__mgsnake_load_env"
 
 REMOTE_BRANCHES_OPT: list[str] = ["M", "U", "A"]
 
+# Jira integration. The store keys are shared by every jira_api module (and quoted back to the user
+# in error messages as `mgsnake config set <key>`), so they live here rather than in one of them.
+# Credentials are deliberately absent from this list: they are read from the environment only.
+JIRA_DOMAIN_KEY: str = "jira.domain"
+JIRA_EMAIL_KEY: str = "jira.email"
+JIRA_PROJECT_KEY_KEY: str = "jira.project_key"
+JIRA_BOARD_ID_KEY: str = "jira.board_id"
+JIRA_STORY_POINTS_FIELD_KEY: str = "jira.field.story_points"
+JIRA_SPRINT_FIELD_KEY: str = "jira.field.sprint"
+
+JIRA_TOKEN_ENV: str = "JIRA_API_TOKEN"
+# Only the auth header used to read JIRA_MCP_TOKEN while the other three scripts read
+# JIRA_API_TOKEN. The two are unified on JIRA_API_TOKEN; this one stays as a deprecated fallback.
+JIRA_DEPRECATED_TOKEN_ENV: str = "JIRA_MCP_TOKEN"
+GITHUB_TOKEN_ENV: str = "GITHUB_TOKEN"
+
 LOGGING_NAME_TO_LEVEL = {
     "ERROR": ERROR,
     "WARNING": WARNING,

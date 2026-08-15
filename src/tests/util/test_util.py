@@ -19,6 +19,7 @@ from mega_snake.util.util import (
     get_typed_validated_input,
     cli_metadata,
     wrapper_decorator,
+    write_json_atomically,
     GIT_EXCLUDE_FILE,
 )
 from mega_snake.util.formatting import (
@@ -367,6 +368,59 @@ def test_wrapper_decorator() -> None:
     assert result.exception is None
     assert isinstance(wrapped_command, click.Command)
     assert exit_code == 21
+
+
+def test_wrapper_decorator_keeps_a_group_a_group() -> None:
+    """Wrapping must not turn a `click.Group` into a leaf command.
+
+    The rebuild copies a command through `click.Command.__init__`'s signature, which knows nothing
+    about `commands`. Before this was handled, registering the nested `config` group through its
+    module wrapper silently produced a command with no subcommands, so `mgsnake config get` stopped
+    resolving.
+    """
+
+    def wrapper(_ctx: click.Context, *_args, **_kwargs) -> None:
+        """No-op pre-flight."""
+
+    @click.group(name="parent")
+    def parent() -> None:
+        """Parent group."""
+
+    @parent.command(name="child")
+    def child() -> None:
+        """Child command."""
+        click.echo("child ran")
+
+    wrapped = wrapper_decorator(wrapper)(parent)
+
+    assert isinstance(wrapped, click.Group)
+    assert set(wrapped.commands) == {"child"}
+    result = CliRunner().invoke(wrapped, ["child"])
+    assert result.exit_code == 0
+    assert "child ran" in result.output
+
+
+def test_write_json_atomically_writes_the_payload(tmp_path: Path) -> None:
+    """The happy path writes readable JSON and preserves the caller's key order."""
+    destination = tmp_path / "nested" / "payload.json"
+
+    write_json_atomically(destination, [{"b": 1, "a": 2}])
+
+    assert destination.read_text(encoding="utf-8").startswith('[\n  {\n    "b": 1')
+
+
+def test_write_json_atomically_leaves_the_previous_file_intact_on_failure(tmp_path: Path) -> None:
+    """A failed serialization must neither corrupt the target nor leak the temporary file."""
+    destination = tmp_path / "payload.json"
+    destination.write_text("[]\n", encoding="utf-8")
+    original_bytes = destination.read_bytes()
+
+    with patch("json.dump", side_effect=RuntimeError("interrupted")):
+        with pytest.raises(RuntimeError):
+            write_json_atomically(destination, [{"a": 1}])
+
+    assert destination.read_bytes() == original_bytes
+    assert [entry.name for entry in tmp_path.iterdir()] == ["payload.json"]
 
 
 @pytest.fixture(name="mk_util_ws_success")
