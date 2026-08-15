@@ -114,7 +114,7 @@ def _render_fragment(fragment_body: str) -> str:
     Returns:
         str: The rewritten fragment body.
     """
-    return re.sub(r"^##\s+", "### ", fragment_body, flags=re.MULTILINE)
+    return re.sub(r"^##\s+", "#### ", fragment_body, flags=re.MULTILINE)
 
 
 def render_markdown(commands: Iterable[IntrospectedCommand]) -> str:
@@ -137,7 +137,7 @@ def render_markdown(commands: Iterable[IntrospectedCommand]) -> str:
     for group_name in sorted(grouped_commands, key=str.casefold):
         lines.extend([f"## {group_name}", ""])
         for command in grouped_commands[group_name]:
-            lines.extend([f"### `{command.name}`", ""])
+            lines.extend([f"### {command.name}", ""])
             if command.summary:
                 lines.extend([command.summary, ""])
             lines.extend([f"**Synopsis:** `{command.synopsis}`", ""])

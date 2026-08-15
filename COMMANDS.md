@@ -2,7 +2,7 @@
 
 ## Config Environment
 
-### `graphql-schema`
+### graphql-schema
 
 Builds a consolidated GraphQL schema and introspection JSON from schema files in a directory.
 
@@ -21,17 +21,17 @@ introspection result to provide autocompletion and type checking. That is why th
 files rather than one: the consolidated `.graphql` schema, and the `.json` introspection payload
 those tools consume.
 
-### Output
+#### Output
 
 Writes `schema.graphql` (consolidated SDL) and `schema.json` (introspection) to the
 `workspace_temp` folder and opens both in VS Code.
 
-### Notes
+#### Notes
 
 Every file under the given directory — subdirectories included — is merged, so the directory is
 the unit of composition, not an entry-point file. Keep only schema files in it.
 
-### `init-local-config`
+### init-local-config
 
 Creates or updates the local configuration file used for developer-specific shell settings.
 
@@ -51,12 +51,12 @@ room for per-machine configuration.
 
 Custom shell function definitions are supported, not just environment variables.
 
-### Notes
+#### Notes
 
 Reload it in the current session with `mgsnake_reload`, defined by the shell init script (see
 `shell-path`).
 
-### `maven-project-setup`
+### maven-project-setup
 
 Creates or updates Maven tasks and log watchers in the current code-workspace when pom.xml is present.
 
@@ -73,12 +73,12 @@ Adds the task definitions under the `tasks` section of the current `.code-worksp
 `clean install`, `test`, `verify`, `dependency:tree` and `spring-boot:run` — together with the
 matching log watchers, so each task's output lands in a watched log file.
 
-### Notes
+#### Notes
 
 Requires a `pom.xml` in the current directory. Existing tasks and watchers are left alone unless
 `--override` is passed.
 
-### `set-gradle`
+### set-gradle
 
 Detects installed Gradle versions and sets the default Gradle version for the workspace and shell config.
 
@@ -95,12 +95,12 @@ Writes `java.import.gradle.home` and the `GRADLE_HOME` entry of `terminal.integr
 `.code-workspace` file, keeping the Gradle the IDE imports with and the one your integrated terminal
 calls on the same version.
 
-### Notes
+#### Notes
 
 As with `set-java`, the `.code-workspace` file is read with a comment-preserving loader, so your
 annotations are not stripped.
 
-### `set-java`
+### set-java
 
 Detects installed Java versions and sets the default Java version for the workspace and shell config.
 
@@ -117,12 +117,12 @@ Writes `java.configuration.runtimes` and the `JAVA_HOME` entry of `terminal.inte
 the `.code-workspace` file, so the IDE's language server and the integrated terminal always agree on
 which JDK is in use. It also configures the Java formatter settings.
 
-### Notes
+#### Notes
 
 The `.code-workspace` file is JSON with comments. It is read with a comment-preserving loader, so
 the annotations you leave in it survive the update.
 
-### `set-maven`
+### set-maven
 
 Detects Maven installation (or uses --maven-home) and sets Maven paths for VS Code and local shell config.
 
@@ -138,12 +138,12 @@ Detects Maven installation (or uses --maven-home) and sets Maven paths for VS Co
 Sets `M2_HOME` in both the workspace terminal settings and the local shell config, and points VS
 Code's Maven executable path at the detected installation.
 
-### Notes
+#### Notes
 
 Intended for `pom.xml`-based projects. Run `maven-project-setup` afterwards to add the matching VS
 Code task definitions.
 
-### `working-env`
+### working-env
 
 Sets up the VS Code workspace with recommended extensions, default settings, tasks, launch configurations, and git exclusions. Also configures Java, Gradle, and Maven when applicable.
 
@@ -162,7 +162,7 @@ On top of what the synopsis lists, it also sets up log watchers and GitHub query
  runs the Java, Gradle and Maven configuration steps for you — `set-java`, `set-gradle` and
  `set-maven` are only needed afterwards when you want to switch versions.
 
-### Notes
+#### Notes
 
 Requires a valid Git repository. Developer-specific overrides are loaded before the defaults are
 written, so anything you set through `init-local-config` wins over the values this command
@@ -170,7 +170,7 @@ generates.
 
 ## Dependency Audit
 
-### `scan-dependencies`
+### scan-dependencies
 
 Scans the project's locked dependencies for known vulnerabilities against the OSV advisory database, then files a GitHub issue for each new finding (package, installed version, recommended version, severity and advisory link), skipping findings that were already reported. The ecosystem (Python/uv, Java/Gradle/Maven, Node, or a generic OSV-Scanner audit) is auto-detected from the project's lockfiles, or can be forced with `--ecosystem`.
 
@@ -199,14 +199,14 @@ ecosystem.
 
 Any repo can reuse this by consuming `mgsnake`, regardless of its stack.
 
-### Notes
+#### Notes
 
 Issue de-duplication is by exact title and considers closed issues too, so a vulnerability you
 already triaged and closed is not filed again on the next run.
 
 ## Diff Tree
 
-### `diff-tree`
+### diff-tree
 
 Creates a diff tree of changes and a commit list of the current branch against master or a specified commit hash
 
@@ -224,7 +224,7 @@ Creates a diff tree of changes and a commit list of the current branch against m
 Useful for code reviews, progress comments on a ticket, and release notes: it answers "what did I
 touch since master?" without scrolling through `git log`.
 
-### Output
+#### Output
 
 Writes three files to `workspace_temp/diff_tree/` and opens them in VS Code:
 
@@ -236,14 +236,14 @@ The tree and the patch follow `--scope`. The commit list cannot, since uncommitt
 commits, so pending files are prepended instead as `Unstaged files:` and `Staged files:` sections
 above the newest commit — each one only when the scope covers it.
 
-### Notes
+#### Notes
 
 The output directory is wiped and recreated on every run. No remote is required: when the
 repository has none, the comparison falls back to the current local branch.
 
 ## Documentation
 
-### `generate-docs`
+### generate-docs
 
 Generates the Markdown command reference by introspecting the registered CLI commands, rendering their help and options, and appending the command-specific fragment bodies.
 
@@ -259,18 +259,18 @@ Useful when you want a single, drift-resistant command reference: the generator 
 CLI shape from Click itself and only uses these fragments for the extra narrative that `--help`
 should not duplicate.
 
-### Output
+#### Output
 
 Writes a Markdown command reference to the target file (default: `COMMANDS.md`).
 
-### Notes
+#### Notes
 
 This command is intentionally `no_init`: it does not require `MEGA_SNAKE_SHELL`, a workspace, or a
 git repository, and it resolves the packaged fragments through `importlib.resources`.
 
 ## Git & Release Management
 
-### `remote-branches-cleanup`
+### remote-branches-cleanup
 
 Iterates over the remote branches asking the user which merged branches to delete
 
@@ -289,12 +289,12 @@ Rather than passing objects between commands in memory, the two commands communi
 `workspace_temp/remote_branches.txt`. That file is the point: you can inspect it — and edit it —
 before running a destructive command against your remote.
 
-### Notes
+#### Notes
 
 It takes no options: run it and follow the prompts. Deletion is `git push origin --delete <branch>`
 and cannot be undone from here. Requires a remote.
 
-### `remote-branches-details`
+### remote-branches-details
 
 Creates a detailed list of remote branches filtered by type
 
@@ -313,18 +313,18 @@ PR are correctly reported as merged instead of lingering as unmerged noise.
 
 Comparison is always against the remote main branch, never the possibly stale local copy.
 
-### Output
+#### Output
 
 Creates `workspace_temp/remote_branches.txt` with per-branch details: author, last commit date, and
 ahead/behind counts.
 
-### Notes
+#### Notes
 
 Requires a remote. Feed the output to `remote-branches-cleanup` to act on it.
 
 ## Light Weight
 
-### `create-release`
+### create-release
 
 Creates a GitHub release and tag: the new tag is derived from the latest release tag plus the given suffix, and the publication is delegated to the gh CLI.
 
@@ -351,12 +351,12 @@ if GitHub moves it anyway, the command puts it back where it was.
 Publishing is delegated to the [`gh`](https://cli.github.com) CLI, which means it reuses the GitHub
 authentication you already have — there is no token to configure here.
 
-### Notes
+#### Notes
 
 Light-weight: it runs from anywhere, no workspace required. When `branch` is omitted the release is
 cut from the current branch.
 
-### `expired-certs-jks`
+### expired-certs-jks
 
 Analyze certificates in a Java KeyStore (JKS) file and report their validity status
 
@@ -375,14 +375,14 @@ Analyze certificates in a Java KeyStore (JKS) file and report their validity sta
 Lists every alias in the keystore with its validity dates and raises a warning for the expired ones,
 so you find out before a local dev environment breaks on an expired SSL certificate.
 
-### Examples
+#### Examples
 
 ```bash
 mgsnake expired-certs-jks /path/to/keystore.jks
 mgsnake expired-certs-jks /path/to/keystore.jks --password mypassword
 ```
 
-### Notes
+#### Notes
 
 Parsing relies on `keytool -v -list` and expects its standard English date format
 (`Mon Jan 01 00:00:00 UTC 2026`), which depends on the system locale and the installed Java
@@ -390,7 +390,7 @@ version. An alias without date information is warned about and skipped; a date i
 format aborts the run with an error rather than reporting a wrong status. For expired
 certificates the command prints the `keytool` commands to delete and re-import them.
 
-### `get-local-config-path`
+### get-local-config-path
 
 Prints to stdout the path of the local configuration file (.sh or .ps1 depending on the active shell).
 
@@ -405,7 +405,7 @@ Prints to stdout the path of the local configuration file (.sh or .ps1 depending
 Resolves the local configuration file created by `init-local-config`, picking the `.sh` or `.ps1`
 variant according to the active shell.
 
-### Notes
+#### Notes
 
 Its stdout is consumed by command substitution inside `config_setup.sh`:
 
@@ -416,7 +416,7 @@ local_config_file=$(mgsnake get-local-config-path)
 so the command prints the path and nothing else. Diagnostics go to stderr precisely so this stays
 parseable at any log level.
 
-### `msg`
+### msg
 
 Prints a message to the console in a custom format and logs it into the workspace configuration log file.
 
@@ -437,11 +437,11 @@ Exposes the internal logging mechanism to the shell. It exists so that the packa
 (`config_setup.sh` / `config_setup.ps1`) print success, warning and error messages in exactly the
 same format as the Python commands, instead of each one inventing its own `echo`.
 
-### Notes
+#### Notes
 
 The message is both printed to the console and written to the workspace log file.
 
-### `shell-path`
+### shell-path
 
 Prints to stdout the path of the packaged shell initialization script (config_setup.sh or config_setup.ps1) to be sourced from the shell profile.
 
@@ -458,7 +458,7 @@ Prints to stdout the path of the packaged shell initialization script (config_se
 Add the matching line to your shell profile — this is what makes `mgsnake` shell integration active
 in every new session.
 
-### Examples
+#### Examples
 
 For bash/zsh, in `~/.bashrc` or `~/.zshrc`:
 
@@ -472,7 +472,7 @@ For PowerShell, in your profile (`$PROFILE`):
 . (mgsnake shell-path pwsh)
 ```
 
-### Notes
+#### Notes
 
 Sourcing that script sets `MEGA_SNAKE_SHELL` and defines `mgsnake_reload`. Because the profile calls
 this command *before* that variable exists, it is the one command that runs with no initialization

@@ -13,6 +13,8 @@ from mega_snake.docs_gen.markdown_writer import _render_code_cell, _render_epilo
 
 # Shorter strings are too generic to prove a real duplication between an epilog and a fragment.
 MIN_DUPLICATE_SENTENCE_LEN = 30
+# Document hierarchy: # document > ## group > ### command > #### fragment section.
+COMMAND_HEADING_LEVEL = 3
 
 
 def test_iter_documented_commands_skips_hidden_alias_duplicates() -> None:
@@ -143,14 +145,56 @@ def test_render_epilog_mixes_arguments_and_prose(epilog: str, expected: str) -> 
     assert _render_epilog(epilog) == expected
 
 
-def test_generate_docs_renders_fragment_sections_at_command_depth() -> None:
-    """Fragment headings should be rendered below the command heading level."""
-    commands = list(iter_introspected_commands(app_main.cli))
-    markdown = render_markdown(commands)
+def test_generate_docs_renders_fragment_sections_below_the_command_heading() -> None:
+    """A fragment's ## section must land one level *under* its command heading.
 
-    assert "### `generate-docs`" in markdown
-    assert "### Output" in markdown
-    assert "\n## Output\n" not in markdown
+    The document nests as: # document > ## group > ### command > #### fragment section. Assertions
+    are anchored to the start of a line, since a bare substring check would pass at any deeper
+    level too ("### Output" is contained in "#### Output").
+    """
+    markdown = render_markdown(list(iter_introspected_commands(app_main.cli)))
+    headings = markdown.splitlines()
+
+    assert "### generate-docs" in headings
+    assert "#### Output" in headings
+    assert "### Output" not in headings
+    assert "## Output" not in headings
+
+
+def test_fragment_sections_never_outrank_their_command() -> None:
+    """Every fragment section heading must be deeper than the command heading it belongs to.
+
+    Guards the whole document instead of one sample: walking it in order, no heading between two
+    command headings may sit at ### or above.
+    """
+    command_names = {command.name for command in iter_introspected_commands(app_main.cli)}
+    markdown = render_markdown(list(iter_introspected_commands(app_main.cli)))
+    inside_command = False
+
+    for line in markdown.splitlines():
+        if not line.startswith("#"):
+            continue
+        level = len(line) - len(line.lstrip("#"))
+        title = line.lstrip("#").strip()
+        if level < COMMAND_HEADING_LEVEL:
+            # A new group heading legitimately closes the previous command's section.
+            inside_command = False
+            continue
+        if level == COMMAND_HEADING_LEVEL:
+            assert title in command_names, f"'{title}' sits at command level but is not a command"
+            inside_command = True
+            continue
+        if inside_command:
+            assert level > COMMAND_HEADING_LEVEL, f"'{title}' sits at level {level}, not nested under its command"
+
+
+def test_command_headings_are_plain_names() -> None:
+    """Command headings must not be wrapped in backticks, so they read as titles, not as code."""
+    markdown = render_markdown(list(iter_introspected_commands(app_main.cli)))
+    headings = [line for line in markdown.splitlines() if line.startswith("### ")]
+
+    assert headings
+    assert not any(line.startswith("### `") for line in headings)
 
 
 def test_generate_docs_writes_the_reference_file(tmp_path: Path) -> None:

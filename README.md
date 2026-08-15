@@ -90,7 +90,8 @@ Then restart your terminal or source the configuration file to activate the `mgs
       mgsnake --log-level DEBUG remote-branches-details
       ```
 
-   > **Note**: Each command has its own help. Use `mgsnake <command> --help` for specific details.
+   > **Note**: Each command has its own help. Use `mgsnake <command> --help` (or the shorter `-h`) for specific
+   > details.
 
 ### Prefer command aliases for daily use
 
@@ -107,6 +108,21 @@ mgsnake cwe
 ## Available Commands
 
 [See COMMANDS.md for the full list of available commands and their usage.](COMMANDS.md)
+
+That file is **generated**, not hand-written: `mgsnake generate-docs` introspects the registered commands (synopsis,
+aliases, options, defaults) and appends a per-command prose fragment from `src/mega_snake/resources/docs/`. This way
+the option tables can never drift away from the code.
+
+```bash
+# Regenerate the reference after changing any command
+mgsnake generate-docs
+
+# Verify it is up to date (exits non-zero and prints a diff when stale)
+mgsnake generate-docs --check
+```
+
+`generate-docs` runs anywhere: it needs no workspace, no Git repository and no shell setup. If you contribute a
+command or change its options, regenerate `COMMANDS.md` and commit it along with your change.
 
 ## Automated dependency vulnerability scanning
 
