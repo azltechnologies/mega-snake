@@ -16,7 +16,7 @@ from .constants import LOGGING_OPT, SHELL_OPT, APP_NAME, MODULE_NAME
 from .util.formatting import get_traceback
 from .util.props import init_app_properties
 from .util.formatting import WorkspaceError, ws_advice
-from .util.cli_group import CliGroup
+from .util.cli_group import ATTR_METADATA, META_FLAGS, CliGroup
 
 
 def get_version() -> str:
@@ -111,8 +111,8 @@ def cli(ctx: click.Context, log_level: str) -> None:
             if not cmd:
                 raise click.ClickException(f"Command '{cmd_name}' not found")
             # check if the command has cli_metadata
-            metadata = getattr(cmd.callback, "flags", {})
-            flags: Optional[set[str]] = metadata.get("flags")
+            metadata = getattr(cmd.callback, ATTR_METADATA, {})
+            flags: Optional[set[str]] = metadata.get(META_FLAGS)
             if flags and "no_init" in flags:
                 return
             ws_advice(f"Invoking subcommand: {cmd_name}")

@@ -10,6 +10,12 @@ APP_NAME: str = "mgsnake"
 MODULE_NAME: str = "mega_snake"
 INTERPRETER_PATH: str = ".venv/bin/python3.13"
 
+# Packaged documentation fragments and the generated command reference
+RESOURCES_DIR: str = "resources"
+DOCS_DIR: str = "docs"
+DOCS_FILE_SUFFIX: str = ".md"
+DOCS_OUTPUT_FILE: str = "COMMANDS.md"
+
 REMOTE_BRANCHES_OPT: list[str] = ["M", "U", "A"]
 
 LOGGING_NAME_TO_LEVEL = {

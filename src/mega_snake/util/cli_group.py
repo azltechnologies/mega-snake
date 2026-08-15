@@ -7,13 +7,19 @@ from typing import Any, Iterable, Iterator, Optional
 import click
 from importlib.resources import files
 from rich_click import RichGroup
-from rich_click.rich_help_formatter import RichHelpFormatter
 
-from mega_snake.constants import APP_NAME
+from mega_snake.constants import APP_NAME, DOCS_DIR, DOCS_FILE_SUFFIX, MODULE_NAME, RESOURCES_DIR
 
+# Attribute set on a callback by @cli_metadata, holding every metadata keyword it was given.
+ATTR_METADATA = "flags"
+# Metadata keys, which double as the attribute names resolved onto the command object.
 ATTR_ALIAS = "aliases"
 ATTR_DOCS = "docs_fragment"
 ATTR_GROUP = "docs_group"
+# Metadata key holding the initialization flags read by the CLI entry point (hence the double
+# nesting: `@cli_metadata(flags={"skip"})` produces `callback.flags == {"flags": {"skip"}}`).
+META_FLAGS = "flags"
+DEFAULT_GROUP_KEY = "commands"
 
 
 @dataclass(frozen=True)
@@ -74,7 +80,7 @@ class CliGroup(RichGroup):
         Returns:
             str: A human-readable group title derived from the callback module path.
         """
-        module_name: str = getattr(callback, "__module__", "commands")
+        module_name: str = getattr(callback, "__module__", DEFAULT_GROUP_KEY)
         module_parts: list[str] = module_name.split(".")
         group_key: str = module_parts[1] if len(module_parts) > 1 else module_parts[0]
         return cls._derive_group_title(group_key)
@@ -115,6 +121,11 @@ class CliGroup(RichGroup):
         """Resolve documentation metadata onto the command object then
         register a command after resolving its documentation metadata.
 
+        An explicitly declared group title (through ``@cli_metadata(docs_group=...)`` or an
+        attribute already set on the command) is used verbatim, since whoever wrote it chose how it
+        should read. Only a title *derived* from the module path is reformatted into a display
+        title, because there the raw value is an identifier such as ``remote_branches``.
+
         Parameters:
             cmd: The command to register.
             name: Optional explicit command name override.
@@ -128,15 +139,11 @@ class CliGroup(RichGroup):
             None
         """
         # Read custom metadata previously attached to a callback
-        metadata = getattr(cmd.callback, "flags", {})
+        metadata = getattr(cmd.callback, ATTR_METADATA, {})
         fragment_name: str = getattr(cmd, ATTR_DOCS, "") or metadata.get(ATTR_DOCS) or cmd.name or ""
-        group_name: str = (
-            getattr(cmd, ATTR_GROUP, "")
-            or metadata.get(ATTR_GROUP)
-            or self._derive_group_name_from_callback(cmd.callback)
-        )
+        explicit_group: str = getattr(cmd, ATTR_GROUP, "") or metadata.get(ATTR_GROUP) or ""
         setattr(cmd, ATTR_DOCS, fragment_name)
-        setattr(cmd, ATTR_GROUP, group_name if " " in group_name else self._derive_group_title(group_name))
+        setattr(cmd, ATTR_GROUP, explicit_group or self._derive_group_name_from_callback(cmd.callback))
         super().add_command(cmd, name, aliases=aliases, panel=panel)
 
     def add_command_with_alias(self, cmd: click.Command, aliases: Optional[list[str]] = None) -> None:
@@ -200,13 +207,15 @@ class CliGroup(RichGroup):
             Iterator[DocumentedCommand]: All non-hidden commands with resolved docs metadata.
         """
         # Resolve the packaged docs fragment directory
-        docs_dir: Path = Path(str(files("mega_snake").joinpath("resources", "docs")))
+        docs_dir: Path = Path(str(files(MODULE_NAME).joinpath(RESOURCES_DIR, DOCS_DIR)))
         entries: list[DocumentedCommand] = []
         for name, command in self.commands.items():
             if command.hidden:
                 continue
             fragment_name: str = getattr(command, ATTR_DOCS, command.name or name)
-            fragment_file: str = fragment_name if fragment_name.endswith(".md") else f"{fragment_name}.md"
+            fragment_file: str = (
+                fragment_name if fragment_name.endswith(DOCS_FILE_SUFFIX) else f"{fragment_name}{DOCS_FILE_SUFFIX}"
+            )
             group_name: str = getattr(command, ATTR_GROUP, self._derive_group_name_from_callback(command.callback))
             entries.append(
                 DocumentedCommand(
@@ -214,7 +223,7 @@ class CliGroup(RichGroup):
                     command=command,
                     aliases=tuple(getattr(command, ATTR_ALIAS, [])),
                     group=group_name,
-                    fragment_name=fragment_name.removesuffix(".md"),
+                    fragment_name=fragment_name.removesuffix(DOCS_FILE_SUFFIX),
                     fragment_path=docs_dir / fragment_file,
                 )
             )

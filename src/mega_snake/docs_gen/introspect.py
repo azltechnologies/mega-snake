@@ -87,6 +87,11 @@ def normalize_help(text: Optional[str]) -> str:
 def _build_command_context(root: CliGroup, command: click.Command, command_name: str) -> click.Context:
     """Create the Click context used for usage/help introspection.
 
+    The group's ``context_settings`` are applied by hand because ``click.Context.__init__`` never
+    reads them: only ``Command.make_context`` does, and that is not the path taken here. Without
+    them the context falls back to Click's defaults and the generated document would describe a
+    different CLI than the one the user runs -- ``--help`` instead of ``-h, --help``, for instance.
+
     Parameters:
         root: The top-level CLI group.
         command: The command being inspected.
@@ -98,8 +103,8 @@ def _build_command_context(root: CliGroup, command: click.Command, command_name:
     Returns:
         click.Context: The command context chained to the top-level CLI.
     """
-    parent_ctx = click.Context(root, info_name=APP_NAME)
-    return click.Context(command, info_name=command_name, parent=parent_ctx)
+    parent_ctx = click.Context(root, info_name=APP_NAME, **root.context_settings)
+    return click.Context(command, info_name=command_name, parent=parent_ctx, **command.context_settings)
 
 
 def _get_synopsis(root: CliGroup, command: click.Command, command_name: str) -> str:

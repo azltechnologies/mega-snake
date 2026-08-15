@@ -15,7 +15,7 @@ import click
 from colorama import init, Fore, Back, Style
 from jsoncomment import JsonComment
 from mega_snake.util.formatting import ws_advice, ws_info, ws_success, ws_warning
-from mega_snake.util.cli_group import ATTR_ALIAS, ATTR_DOCS, ATTR_GROUP
+from mega_snake.util.cli_group import ATTR_ALIAS, ATTR_DOCS, ATTR_GROUP, ATTR_METADATA
 from mega_snake.util.props import get_property
 
 OS = platform.system()
@@ -357,9 +357,9 @@ def cli_metadata(**metadata) -> Callable:
     """
 
     def decorator(f: Callable) -> Callable:
-        if not hasattr(f, "flags"):
-            setattr(f, "flags", {})
-        getattr(f, "flags").update(metadata)
+        if not hasattr(f, ATTR_METADATA):
+            setattr(f, ATTR_METADATA, {})
+        getattr(f, ATTR_METADATA).update(metadata)
         return f
 
     return decorator
@@ -383,7 +383,7 @@ def wrapper_decorator(sub_wrapper: Callable) -> Callable:
         Returns:
             None
         """
-        metadata: dict[str, Any] = getattr(source, "flags", {})
+        metadata: dict[str, Any] = getattr(source, ATTR_METADATA, {})
         for attr_name in (ATTR_DOCS, ATTR_GROUP):
             if value := metadata.get(attr_name):
                 setattr(target, attr_name, value)
@@ -400,10 +400,10 @@ def wrapper_decorator(sub_wrapper: Callable) -> Callable:
 
         def update_flags(source) -> None:
             """Update flags from the source object to the wrapper"""
-            if source_flags := getattr(source, "flags", {}):
-                if not hasattr(wrapper, "flags"):
-                    setattr(wrapper, "flags", {})
-                getattr(wrapper, "flags").update(source_flags)
+            if source_flags := getattr(source, ATTR_METADATA, {}):
+                if not hasattr(wrapper, ATTR_METADATA):
+                    setattr(wrapper, ATTR_METADATA, {})
+                getattr(wrapper, ATTR_METADATA).update(source_flags)
 
         update_flags(sub_wrapper)
         update_flags(command.callback)
