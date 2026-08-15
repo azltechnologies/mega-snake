@@ -16,6 +16,13 @@ dependencies = [
     "json-spec==0.12.0",
     "jsoncomment==0.4.2",
     "pyperclip==1.11.0",
+    # Used by the jira_api module only, and imported *inside* the function that builds the HTTP
+    # session, never at module level. That keeps the ~100 ms import off every non-Jira command,
+    # while the Jira commands pay it right before a network call that costs multiples of it.
+    # 'test_requests_is_not_imported_at_module_import_time' pins this; do not hoist the import.
+    # Retry (backoff, Retry-After, which statuses to replay) and connection pooling are delegated to
+    # it and to urllib3 on purpose: hand-rolling either is where the bugs live.
+    "requests==2.34.2",
     # Direct dependency, not just a rich-click transitive one: 'mgsnake man' imports rich.markdown
     # to render the reference for the terminal.
     "rich==15.0.0",
@@ -34,6 +41,10 @@ dev = [
     "pytest-html>=4.1.1",
     "ruff>=0.1.0",
     "pip-audit>=2.7.0",
+    # Stubs only mypy consumes, hence dev and not runtime. 'requests' ships no inline types, and
+    # this project sets disable_error_code = ["import-untyped"], so without the stubs mypy would not
+    # complain — it would simply stop type checking every call into the HTTP client.
+    "types-requests==2.33.0.20260712",
     # Floor is load-bearing: twine <= 6.0 parses distribution metadata through 'pkginfo', which only
     # knows Metadata-Version up to 2.2 and silently yields empty fields for anything newer instead of
     # failing on the version itself. Hatchling emits 2.5, so an older twine reports the symptom

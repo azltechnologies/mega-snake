@@ -1,0 +1,167 @@
+[
+  {
+    "id": "10001",
+    "self": "https://example.atlassian.net/rest/api/2/issue/10001",
+    "key": "TAROTAPP-1",
+    "expand": "renderedFields,names,changelog",
+    "fields": {
+      "summary": "Implement the login screen",
+      "statuscategorychangedate": "2026-08-01T10:00:00.000+0000",
+      "created": "2026-07-20T09:00:00.000+0000",
+      "resolutiondate": null,
+      "lastViewed": "2026-08-10T12:00:00.000+0000",
+      "updated": "2026-08-11T08:30:00.000+0000",
+      "description": "As a user I want to log in.",
+      "issuetype": {
+        "name": "Story",
+        "subtask": false,
+        "entityId": "e-1",
+        "hierarchyLevel": 0,
+        "iconUrl": "https://example.atlassian.net/story.png"
+      },
+      "parent": {"id": "10000", "key": "TAROTAPP-0", "fields": {"summary": "Authentication"}},
+      "project": {"id": "10001", "key": "TAROTAPP", "name": "Tarot App", "projectTypeKey": "software"},
+      "status": {
+        "id": "3",
+        "name": "In Progress",
+        "description": "This issue is being worked on",
+        "statusCategory": {"id": 4, "key": "indeterminate", "name": "In Progress", "colorName": "yellow"}
+      },
+      "workratio": -1,
+      "issuerestriction": {"issuerestrictions": {}, "shouldDisplay": false},
+      "priority": {"id": "3", "name": "Medium", "iconUrl": "https://example.atlassian.net/medium.svg"},
+      "labels": ["frontend", "auth"],
+      "customfield_99999": 5,
+      "customfield_10016": 999,
+      "assignee": {
+        "accountId": "acc-1",
+        "displayName": "Dev One",
+        "emailAddress": "dev1@example.com",
+        "timeZone": "Europe/Madrid",
+        "active": true
+      },
+      "creator": {
+        "accountId": "acc-2",
+        "displayName": "Dev Two",
+        "emailAddress": "dev2@example.com",
+        "timeZone": "Europe/Madrid",
+        "active": true
+      },
+      "reporter": {
+        "accountId": "acc-2",
+        "displayName": "Dev Two",
+        "emailAddress": "dev2@example.com",
+        "timeZone": "Europe/Madrid",
+        "active": true
+      },
+      "votes": {"votes": 2, "hasVoted": false, "self": "https://example.atlassian.net/votes"},
+      "attachment": [
+        {
+          "id": "20001",
+          "filename": "mockup.png",
+          "mimeType": "image/png",
+          "size": 1024,
+          "content": "https://example.atlassian.net/rest/api/2/attachment/content/20001",
+          "created": "2026-07-21T09:00:00.000+0000",
+          "author": {
+            "accountId": "acc-1",
+            "displayName": "Dev One",
+            "emailAddress": "dev1@example.com",
+            "timeZone": "Europe/Madrid"
+          }
+        }
+      ],
+      "comment": {
+        "comments": [
+          {
+            "id": "30001",
+            "created": "2026-08-02T11:00:00.000+0000",
+            "updated": "2026-08-02T11:30:00.000+0000",
+            "jsdPublic": true,
+            "body": "Looks good to me.",
+            "author": {
+              "accountId": "acc-2",
+              "displayName": "Dev Two",
+              "emailAddress": "dev2@example.com",
+              "timeZone": "Europe/Madrid"
+            },
+            "updateAuthor": {
+              "accountId": "acc-1",
+              "displayName": "Dev One",
+              "emailAddress": "dev1@example.com",
+              "timeZone": "Europe/Madrid"
+            }
+          }
+        ],
+        "total": 1,
+        "maxResults": 1,
+        "startAt": 0
+      },
+      "customfield_88888": [
+        {
+          "id": 42,
+          "name": "Sprint 1",
+          "state": "active",
+          "startDate": "2026-08-01T00:00:00.000Z",
+          "endDate": "2026-08-15T00:00:00.000Z",
+          "completeDate": null,
+          "boardId": 17
+        }
+      ],
+      "customfield_10020": [{"id": 1, "name": "Historic sprint", "state": "closed"}]
+    }
+  },
+  {
+    "id": "10000",
+    "self": "https://example.atlassian.net/rest/api/2/issue/10000",
+    "key": "TAROTAPP-0",
+    "fields": {
+      "summary": "Authentication",
+      "statuscategorychangedate": "2026-07-01T10:00:00.000+0000",
+      "created": "2026-06-30T09:00:00.000+0000",
+      "resolutiondate": "2026-08-05T18:00:00.000+0000",
+      "lastViewed": null,
+      "updated": "2026-08-05T18:00:00.000+0000",
+      "description": null,
+      "issuetype": {"name": "Epic", "subtask": false, "hierarchyLevel": 1},
+      "parent": null,
+      "project": {"id": "10001", "key": "TAROTAPP", "name": "Tarot App"},
+      "status": {"id": "10001", "name": "Done", "statusCategory": {"id": 3, "key": "done", "name": "Done"}},
+      "workratio": -1,
+      "issuerestriction": null,
+      "priority": null,
+      "labels": [],
+      "customfield_99999": null,
+      "assignee": null,
+      "creator": {
+        "accountId": "acc-2",
+        "displayName": "Dev Two",
+        "emailAddress": "dev2@example.com",
+        "timeZone": "Europe/Madrid"
+      },
+      "reporter": {
+        "accountId": "acc-2",
+        "displayName": "Dev Two",
+        "emailAddress": "dev2@example.com",
+        "timeZone": "Europe/Madrid"
+      },
+      "votes": {"votes": 0, "hasVoted": false},
+      "attachment": null,
+      "comment": null,
+      "customfield_88888": null
+    }
+  },
+  {
+    "id": "10002",
+    "self": "https://example.atlassian.net/rest/api/2/issue/10002",
+    "key": "TAROTAPP-2",
+    "fields": {
+      "summary": "Wire the login form to the API",
+      "issuetype": {"name": "Sub-task", "subtask": true},
+      "parent": {"id": "10001", "key": "TAROTAPP-1"},
+      "project": {"id": "10001", "key": "TAROTAPP", "name": "Tarot App"},
+      "status": {"id": "1", "name": "To Do"},
+      "labels": ["backend"]
+    }
+  }
+]

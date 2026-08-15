@@ -22,6 +22,10 @@ from mega_snake import __main__ as app_main
         ("create-release", ["release", "cr"]),
         ("expired-certs-jks", ["ecj"]),
         ("scan-dependencies", ["sdep", "audit"]),
+        ("config", []),
+        ("jira-board", ["jb"]),
+        ("jira-sprint", ["js"]),
+        ("jira-issues", ["ji"]),
     ],
 )
 def test_cli_exposes_kebab_case_names_with_short_aliases(command_name: str, aliases: list[str]) -> None:
