@@ -13,20 +13,40 @@ from mega_snake.util.util import run_operation, get_command_return_code
     short_help="Check for expired certificates in a JKS file",
     help="Analyze certificates in a Java KeyStore (JKS) file and report their validity status",
     epilog="""
-    Usage: mgsnake expired-certs-jks JKS_PATH [--password PASSWORD]
-
-    Examples:
-      mgsnake expired-certs-jks /path/to/keystore.jks
+    usage: mgsnake expired-certs-jks <jks_path> [OPTIONS]\n
+    Args:\n
+        jks_path: str - Path to the Java KeyStore file to analyze\n
+    OPTIONS:\n
+        -p | --password: str - Custom password for the JKS file (default: changeit)\n
+        -v | --verbose: bool - Print the full certificate details of expired certificates\n
+    Examples:\n
+      mgsnake expired-certs-jks /path/to/keystore.jks\n
       mgsnake expired-certs-jks /path/to/keystore.jks --password mypassword
-    Options:
-        --password, -p: Custom password for the JKS file (default: changeit)
     """,
 )
 @click.argument("jks_path", type=click.Path(exists=True))
 @click.option("--password", "-p", help="Custom password for the JKS file", required=True, default="changeit")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
 def expired_certs(jks_path: str, password: str, verbose: bool) -> None:
-    """Check for expired certificates in a Java KeyStore (JKS) file."""
+    """Check for expired certificates in a Java KeyStore (JKS) file.
+
+    Lists every alias via keytool, parses its validity dates, and reports each certificate as
+    valid or expired; for expired ones it prints the keytool commands to replace them (and the
+    full certificate details when verbose is set). Aliases without date information are warned
+    about and skipped.
+
+    Args:
+        jks_path (str): Path to the Java KeyStore file to analyze.
+        password (str): Password for the JKS file.
+        verbose (bool): Print the full certificate details of expired certificates.
+
+    Raises:
+        RuntimeError: If keytool is unavailable, the keystore cannot be read, or a
+            certificate cannot be processed (e.g. an unparseable date format).
+
+    Returns:
+        None
+    """
 
     # Verify keytool is available
     if not shutil.which("keytool"):

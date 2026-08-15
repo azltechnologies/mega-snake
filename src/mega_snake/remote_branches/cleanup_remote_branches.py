@@ -20,12 +20,16 @@ from mega_snake.remote_branches.details_remote_branches import execute as remote
     help="Iterates over the remote branches asking the user which merged branches to delete",
     epilog=(
         "Requires user input to delete branches. "
-        "It doewsn't have any options, just execute it and follow the prompts.\n"
+        "It doesn't have any options, just execute it and follow the prompts.\n"
     ),
 )
 def remote_branches_cleanup() -> None:
     """
-    Deletes branches that have been merged into the main branch from the remote repository
+    Deletes branches that have been merged into the main branch from the remote repository.
+
+    Offers to re-run remote-branches-details first to refresh the data, reads the report from
+    workspace_temp/remote_branches.txt, asks which branches to delete, deletes them from the
+    remote, and prunes the local references.
     """
     remote: str = require_remote()
     prompt: str = "Do you want to rerun the remote-branches-details function?"

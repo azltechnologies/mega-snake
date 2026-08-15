@@ -14,11 +14,11 @@ from mega_snake.util.formatting import Color
     short_help="Prints message to the console and logs it.",
     help="Prints a message to the console in a custom format and logs it into the workspace configuration log file.",
     epilog="""
-    usage: mgsnake msg <message> [OPTIONS]   <type>\n
+    usage: mgsnake msg <message> [OPTIONS]\n
     OPTIONS:\n
-        epilog: an optional ending message as a second argument\n
-        type:
-            usage: [-t | --type] <type>\n
+        -p | --prologue: Optional[str] - An optional starting message printed before the message\n
+        -e | --epilog: Optional[str] - An optional ending message printed after the message\n
+        -t | --type-msg: str - The type of message to be printed\n
             allowed values:\n
                 S | I | W | E | A | T
                     S - Success
@@ -50,10 +50,14 @@ def echo(message: str, prologue: Optional[str], epilog: Optional[str], type_msg:
     """
     Prints a message to the console and logs it into the workspace configuration log file.
 
+    For the 'T' (Tip) type, the prologue, message and epilog are colored individually
+    (yellow, green and red); every other type prints them concatenated in its own format.
+
     Args:
         message (str): The message to be printed.
-        epilog (Optional[str]): An optional ending message as a second argument.
-        type (str): The type of message to be printed.
+        prologue (Optional[str]): An optional starting message printed before the message.
+        epilog (Optional[str]): An optional ending message printed after the message.
+        type_msg (str): The type of message to be printed (S, I, W, E, A or T).
 
     Returns:
         None
