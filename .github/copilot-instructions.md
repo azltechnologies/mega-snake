@@ -24,22 +24,56 @@
 
 The application uses a `click.Group` with a custom `CliGroup` class to support command aliases. The entry point `cli()` function initializes global application properties before any command runs.
 
-**Critical Pattern: Initialization & Light-weight Mode**
-The CLI checks for a `skip` flag in command metadata. If present, it bypasses heavy environment checks (like requiring a valid workspace folder), allowing "light-weight" commands (e.g., `create-release`) to run anywhere.
+**Critical Pattern: Initialization flags (`no_init` and `skip`)**
+Before invoking a subcommand, `cli()` reads the metadata attached by `@cli_metadata(...)` and decides *how much*
+initialization to run. There are exactly **three** initialization levels, driven by two flags:
+
+| Flag | Level | `init_app_properties` | Use it when |
+|---|---|---|---|
+| *(none)* | **Full** | Called; `working_path` must exist or the command fails | The command needs a valid workspace (`set-java`, `set-gradle`, …) |
+| `skip` | **Light-weight** | Called with `light_weight=True`; a missing `working_path` is tolerated | The command can run anywhere, but still wants properties/logging when available (`create-release`, `diff-tree`, …) |
+| `no_init` | **None** | **Never called** — `cli()` returns early | The command must work *before* the environment exists at all (`shell-path`) |
 
 ```python
 # src/mega_snake/__main__.py
 @click.pass_context
-def cli(ctx: click.Context, log_level: str, shell: str) -> None:
+def cli(ctx: click.Context, log_level: str) -> None:
     # ...
-    # Access metadata to check for 'skip' flag
     metadata = getattr(cmd.callback, "flags", {})
+    flags: Optional[set[str]] = metadata.get("flags")
+    if flags and "no_init" in flags:
+        return                      # No AppProperties at all, and no MEGA_SNAKE_SHELL check
+    ws_advice(f"Invoking subcommand: {cmd_name}")
     if flags and "skip" in flags:
-        # Light-weight mode: minimal initialization
-        init_app_properties(log_level, shell, light_weight=True)
+        light_weight = True         # AppProperties built, working_path validation deferred
+    # ...
+    init_app_properties(log_level, shell, light_weight)
 ```
 
-**What light-weight mode actually defers**
+**Note the double nesting**: `cli_metadata(**metadata)` stores its kwargs under the callback's `flags` attribute, so
+`@cli_metadata(flags={"skip"})` produces `callback.flags == {"flags": {"skip"}}`. That is why the entry point reads
+`metadata.get("flags")` and not `metadata` directly. `wrapper_decorator.update_flags` propagates these from both the
+module wrapper *and* the command callback onto the wrapping command, which is what makes a module-level
+`@cli_metadata(flags={"skip"})` apply to every command in the module.
+
+**When `no_init` is the only option**
+`no_init` exists for the **bootstrap problem**, not as a "lighter light-weight". Full and light-weight initialization
+both require `MEGA_SNAKE_SHELL`, and `cli()` raises `EnvironmentError` when it is unset. But that variable is exported
+by `config_setup.sh`, and the user's shell profile has to run `mgsnake shell-path bash` *to find that script in the
+first place* — so at that moment the variable does not exist yet. Returning early is the only way `shell-path` can
+answer. Consequences for any `no_init` command:
+
+- `AppProperties` is never constructed: `get_property()`, `working_path`, `log_file` and the `.code-workspace` are all
+  unavailable. Depend only on `importlib.resources` and the arguments.
+- Nothing is logged to file, and the `ws_*` helpers are pointless — `shell-path` deliberately uses `click.echo` because
+  its stdout is consumed by command substitution (`. "$(mgsnake shell-path bash)"`) and must stay clean.
+
+**Keep `no_init` stdout clean.** Anything a shell captures with `$(...)` must print *only* the value. `ws_advice` is
+level-gated (it checks `logger.level`), so it is silent when logging was never configured — but that is a property of
+the current initialization order, not a guarantee. Never add unconditional `ws_*` output to a command whose stdout is
+consumed by a script.
+
+**What light-weight mode (`skip`) actually defers**
 When `working_path` (e.g. `workspace_temp`) is missing, `AppProperties.__init__` raises `FileNotFoundError` *after* setting
 `resources_path`, `working_path`, `local_config_file`, `local_env_file`, `shell` and a best-effort `workspace_file`.
 `init_app_properties` swallows that error when `light_weight=True`, which leaves **unset**: the `_log_level` attribute,
