@@ -233,8 +233,9 @@ Automates GitHub releases, creating tags and proper GitHub Release entries.
 - `tag_suffix`: e.g., `v1.0.0-{suffix}`
 - `release_type`:
     - `p`: Prerelease (`--prerelease`)
-    - `l`: Latest (`--latest`)
-    - `r`: Replace Latest (Updates the `latest` tag to point to a new commit)
+    - `l`: Latest (`--latest`) — asks for confirmation before creating a new latest release
+    - `r`: Regular release (`--latest=false`) — publishes **without** taking the `latest` mark; if GitHub moves the
+      `latest` pointer anyway, the command restores it to the previous latest release
 
 **Logic:**
 It fetches the current tags, calculates the new tag based on the suffix, and relies on the `gh` CLI to publish the release.
@@ -544,3 +545,24 @@ pytest
 **If you delete a module:**
 - Remove its corresponding test file or test class
 - Verify overall coverage still meets 95% threshold
+
+### 6.3 Command Documentation Fragments (`resources/docs/`)
+
+Every CLI command has a Markdown fragment at `src/mega_snake/resources/docs/<command-name>.md`, named after the
+command's registered name (never after an alias). Fragments are the human-written half of the command reference:
+the synopsis, aliases and option list are owned by the Click metadata (`help=`, `short_help=`, `epilog=`, option
+`help=`), so a fragment must never duplicate what `--help` already says — it adds the "why", the outputs on disk,
+and the caveats.
+
+**MANDATORY maintenance rules — same spirit as the testing rules in §6.2:**
+
+1. **New command** → create its fragment in the same change.
+2. **Deleted command** → delete its fragment. **Renamed command** → rename the fragment to match the new name.
+3. **Modified command** (behavior, options, arguments, output files, side effects) → re-read its fragment **and**
+   its Click metadata, and update whichever no longer matches the code. A logic change is not complete while the
+   fragment or the help text still describes the old behavior.
+
+**Fragment format:**
+- Body only: no `#` title, no synopsis, no option table.
+- Allowed section headings, emitted in this order and each optional: `## Output`, `## Examples`, `## Notes`.
+- English, like all repo content (§6.1 rule 6).

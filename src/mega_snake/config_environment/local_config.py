@@ -26,11 +26,11 @@ def initial_load(override: bool) -> None:  # previously initialLoad
 
 def execute(override: bool) -> None:  # previously initialLoad
     """
-    Initializes the configuration system by creating a local config file if it doesn't exist,
-    then loads its contents into the environment.
+    Initializes the configuration system by creating the local environment file and the
+    shell-specific local config file when they don't exist (or when override is set).
 
     Args:
-        override (bool): A boolean value to override the current gradle version.
+        override (bool): A boolean value to overwrite the current local configuration files.
     """
     env_file = get_property("local_env_file")
     contents: str

@@ -1,6 +1,15 @@
-Creates a GitHub release and tag for the project.
+`release_type` selects how the release is published:
 
-- `tag_suffix`: Suffix for the new tag.
-- `release_type`: `p` (Pre-release), `l` (Latest), `r` (Replace latest/Release).
-- `notes`: (Optional) Release notes.
-- `branch`: (Optional) Branch to create release from (defaults to current).
+| Value | Meaning |
+|---|---|
+| `p` | Pre-release (`--prerelease`) |
+| `l` | Latest (`--latest`) — asks for confirmation before replacing the current latest |
+| `r` | Regular release (`--latest=false`) — keeps the current *latest* untouched, restoring it if GitHub moves the pointer anyway |
+
+Publishing is delegated to the [`gh`](https://cli.github.com) CLI, which means it reuses the GitHub
+authentication you already have — there is no token to configure here.
+
+## Notes
+
+Light-weight: it runs from anywhere, no workspace required. When `branch` is omitted the release is
+cut from the current branch.

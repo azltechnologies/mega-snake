@@ -20,10 +20,11 @@ def get_output_file() -> str:
     name="remote-branches-details",
     short_help="Gets details of remote branches",
     help="Creates a detailed list of remote branches filtered by type",
-    epilog="""The branch details are created within $WS_TEMP path.\n
+    epilog="""The branch details are created within the workspace_temp path.\n
     usage: mgsnake remote-branches-details [OPTIONS]\n
     OPTIONS:\n
-        -f | --filter-by: Optional[str] - filter branches by merge status against main branch\n
+        -f | --filter-by: Optional[str] - filter branches by merge status against main branch:
+            (A)ll [default] | (M)erged | (U)nmerged\n
     """,
 )
 @click.option(
@@ -41,17 +42,19 @@ def remote_branches_details(filter_by: str) -> None:
     Calls the execute function to create a detailed list of remote branches filtered by type
 
     Args:
-        filter_by: str | "A"
+        filter_by: str - (A)ll [default], (M)erged or (U)nmerged against the main branch
     """
     execute(filter_by)
 
 
 def execute(filter_by: str, remote: Optional[str] = None) -> None:
     """
-    Creates a detailed list of remote branches filtered by type
+    Creates a detailed list of remote branches filtered by type: fetches and prunes the remotes,
+    inspects every remote branch, and writes the report to workspace_temp/remote_branches.txt.
 
     Args:
-        filter_by: str | "A"
+        filter_by: str - (A)ll [default], (M)erged or (U)nmerged against the main branch
+        remote: Optional[str] - The remote to inspect; resolved via require_remote() when omitted
     """
     if filter_by not in REMOTE_BRANCHES_OPT:
         raise ValueError(

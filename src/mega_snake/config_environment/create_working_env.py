@@ -47,7 +47,8 @@ from mega_snake.util.util import (
     epilog="""This command will:
     - Create/update VSCode workspace file
     - Configure git exclusions for workspace files
-    - Set up Java and Gradle configurations
+    - Create/load the local developer configuration
+    - Set up Java, Gradle, and Maven configurations (when their build files are present)
     - Add recommended extensions
     - Configure default settings and file associations
     - Set up tasks and launch configurations
@@ -59,7 +60,10 @@ from mega_snake.util.util import (
 @cli_metadata(flags={"skip"})
 def create_working_env() -> None:  # previously untrackGradleProps
     """
-    Sets the workspace for the project.
+    Sets up the VS Code workspace for the project.
+
+    Verifies that git is installed and that the current directory is a git repository — offering
+    to continue without git otherwise — and then delegates the workspace configuration to _execute.
 
     Returns:
         None
@@ -91,7 +95,11 @@ def create_working_env() -> None:  # previously untrackGradleProps
 
 def _execute(git_repo: bool) -> None:  # previously untrackGradleProps
     """
-    Sets the workspace for the project.
+    Configures the workspace: git exclusions, local config load, Java/Gradle/Maven setup
+    (the last two only when their build files exist), and the default workspace settings.
+
+    Args:
+        git_repo (bool): Whether the current directory is a git repository.
 
     Returns:
         None

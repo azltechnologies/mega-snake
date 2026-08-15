@@ -17,17 +17,18 @@ NUM_RETRIES = 3
 @click.command(
     name="create-release",
     short_help="Creates a new release on GitHub with the given parameters.",
-    help="Creates a new release on GitHub with the given parameters.",
+    help="Creates a GitHub release and tag: the new tag is derived from the latest release tag plus"
+    " the given suffix, and the publication is delegated to the gh CLI.",
     epilog="""
-    usage: mgsnake create-release <tag_suffix> <release_type> [release_notes] [release_branch]\n
+    usage: mgsnake create-release <tag_suffix> <release_type> [notes] [branch]\n
     Args:\n
         tag_suffix: str - suffix to add to the tag\n
         release_type: char -\n
             'p' : --prerelease\n
-            'r' : --latest=false\n
-            'l' : --latest\n
-        notes: Optional[str] - release notes,
-        branch: str - branch to create the release from. Default is the current branch.
+            'l' : --latest (asks for confirmation first)\n
+            'r' : --latest=false (regular release; keeps the current latest, restoring it if GitHub moves it)\n
+        notes: Optional[str] - release notes\n
+        branch: Optional[str] - branch to create the release from. Default is the current branch.
     """,
 )
 @click.argument("tag-suffix", type=click.STRING, required=True)
@@ -38,11 +39,15 @@ def create_release(tag_suffix: str, release_type: str, notes: Optional[str], bra
     """
     Creates a new release on GitHub with the given parameters.
 
+    Builds the new tag from the latest release tag plus tag_suffix and publishes it via the gh
+    CLI. Type 'l' asks for confirmation before replacing the latest release; type 'r' publishes
+    without the latest mark and restores the previous latest release if GitHub moved it anyway.
+
     Args:
-        tag_suffix: str
-        release_type: int
-        notes: Optional[str]
-        branch: str
+        tag_suffix: str - Suffix to append to the new tag.
+        release_type: str - 'p' (prerelease), 'l' (latest) or 'r' (regular, keeps current latest).
+        notes: Optional[str] - Release notes; ignored when shorter than 6 characters.
+        branch: Optional[str] - Branch to create the release from; defaults to the current branch.
 
     Returns:
         None
