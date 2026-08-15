@@ -1,5 +1,6 @@
 """Tests for shell initialization helper commands."""
 
+import logging
 from pathlib import Path
 from unittest.mock import patch
 
@@ -7,6 +8,7 @@ from click.testing import CliRunner
 import pytest
 
 from mega_snake.light_weight import shell_init
+from mega_snake.util import formatting
 
 
 @pytest.mark.parametrize(
@@ -49,6 +51,24 @@ def test_get_local_config_path_prints_helper_value() -> None:
 
     with patch("mega_snake.light_weight.shell_init.get_local_file", return_value="/tmp/local-config.sh"):
         result = runner.invoke(shell_init.get_local_config_path)
+
+    assert result.exit_code == 0
+    assert result.output.strip() == "/tmp/local-config.sh"
+
+
+def test_get_local_config_path_stdout_stays_clean_at_debug_level() -> None:
+    """`config_setup.sh` reads this command with `$(...)`, so DEBUG advice must not reach stdout.
+
+    Regression guard: `ws_advice` is emitted by the CLI entry point and the result callback around
+    every subcommand. If it ever printed to stdout again, the captured value would become the
+    advice lines plus the path, and `mgsnake_reload` would source a non-existent file.
+    """
+    runner = CliRunner()
+
+    with patch("mega_snake.light_weight.shell_init.get_local_file", return_value="/tmp/local-config.sh"):
+        with patch.object(formatting.logger, "level", logging.DEBUG):
+            formatting.ws_advice("Invoking subcommand: get-local-config-path")
+            result = runner.invoke(shell_init.get_local_config_path)
 
     assert result.exit_code == 0
     assert result.output.strip() == "/tmp/local-config.sh"

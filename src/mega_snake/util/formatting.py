@@ -180,11 +180,27 @@ def _ws_error(error: BaseException, message: Optional[str] = None) -> None:
 
 
 def ws_advice(message: str, force: bool = False) -> None:
-    """Print an advice message if LOG_LEVEL is set to DEBUG"""
+    """Print an advice message to stderr if LOG_LEVEL is set to DEBUG.
+
+    Advice messages are pure diagnostics, so they go to stderr and never to stdout. Commands whose
+    stdout is captured by the shell (`get-local-config-path` is read with `$(...)` in
+    `config_setup.sh`) would otherwise have their value polluted by these lines whenever the CLI
+    runs at DEBUG level.
+
+    Parameters:
+        message: The advice message to print and log.
+        force: When True, print regardless of the current log level.
+
+    Raises:
+        None
+
+    Returns:
+        None
+    """
     # check if LOG_LEVEL is set to DEBUG
     log_level = logger.level
     if log_level == logging.DEBUG or force:
-        print(Fore.GREEN + Back.BLACK + message)
+        print(Fore.GREEN + Back.BLACK + message, file=sys.stderr)
         logger.debug(message, stacklevel=2)
 
 
