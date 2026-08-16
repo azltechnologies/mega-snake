@@ -217,7 +217,11 @@ def test_generate_docs_check_reports_stale_output(tmp_path: Path) -> None:
     result = CliRunner().invoke(app_main.cli, ["generate-docs", "--output", str(output_path), "--check"])
 
     assert result.exit_code == 1
-    assert "is out of date" in result.output
+    # rich word-wraps the error panel to the terminal width, so "is out of date" can land split
+    # across two lines with a "│" border in between; collapse panel borders and whitespace before
+    # matching so the assertion does not depend on the environment's column width.
+    normalized_output = re.sub(r"[\s│]+", " ", result.output)
+    assert "is out of date" in normalized_output
 
 
 def test_generate_docs_check_accepts_matching_output(tmp_path: Path) -> None:
