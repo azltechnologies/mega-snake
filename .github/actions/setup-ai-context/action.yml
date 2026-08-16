@@ -7,7 +7,9 @@ description: >-
 # Contract with `source-repo`
 # ---------------------------------------------------------------------------
 #
-# The context repository must contain an executable `install-ci.sh` at its root.
+# The context repository must contain an `install-ci.sh` at its root. It is run
+# as `bash install-ci.sh`, so the executable bit is neither required nor checked;
+# a shebang is enough, and nothing breaks on a checkout that loses file modes.
 # That script -- not this action -- owns the knowledge of the repository's own
 # layout: what goes into the user-level Claude configuration, what is published
 # for Copilot, and what is deliberately left behind.
@@ -19,11 +21,21 @@ description: >-
 #
 # The split matters: several repositories consume this action, and a change to
 # the context repository's structure has to be one commit in one place rather
-# than a pull request in each consumer. It also means this action executes code
-# fetched from `source-repo` at run time -- acceptable because that repository
-# already supplies the instructions steering an agent with write access, so it
-# is inside the same trust boundary. Pin `context-ref` to a tag if you ever want
-# that boundary to be reproducible rather than tracking a branch.
+# than a pull request in each consumer.
+#
+# The cost is a real escalation, and it deserves to be stated plainly rather than
+# softened: this action used to perform a fixed, small set of file operations on
+# the pulled context, and now hands it full shell execution. Combined with the
+# default `context-ref` (the source repository's default branch), a push there
+# runs in every consuming job on its next run -- including `claude-code-review`,
+# which holds `pull-requests: write`. There is no review gate.
+#
+# That is accepted here because `source-repo` already supplies the instructions
+# steering an agent with write access, so it was never outside the trust
+# boundary; the change is in blast radius, not in who is trusted. Pin
+# `context-ref` to a tag or SHA when that assumption stops holding -- for
+# instance if the context repository gains contributors who are not also
+# trusted on the consuming repositories.
 
 inputs:
   source-repo:
@@ -37,7 +49,10 @@ inputs:
   context-ref:
     description: >-
       Branch, tag or SHA to pull from `source-repo`. Left empty, the repository's
-      own default branch is used, so `main` is never assumed.
+      own default branch is used, so `main` is never assumed. Note what empty
+      means here: `install-ci.sh` is executed, so tracking a branch is unpinned
+      *code execution*, not merely unpinned file copying. Pin a tag or SHA to
+      make that reproducible.
     required: false
     default: ""
 
@@ -62,15 +77,20 @@ runs:
         path: ${{ env.CONTEXT_DIR }}
         persist-credentials: false
 
+    # No `env:` for CLAUDE_HOME / INSTRUCTIONS_DIR / CONTEXT_DIR: the step above
+    # wrote them to $GITHUB_ENV, and Actions exports those to every later step as
+    # real environment variables. Re-mapping them here would be duplication.
+    # `source-repo` is different -- it is an input, so it has to be carried in,
+    # and it goes through `env:` rather than being interpolated into the script,
+    # per GitHub's hardening guidance on expressions inside `run:`.
     - name: Install AI context
       shell: bash
       env:
-        CLAUDE_HOME: ${{ env.CLAUDE_HOME }}
-        INSTRUCTIONS_DIR: ${{ env.INSTRUCTIONS_DIR }}
+        SOURCE_REPO: ${{ inputs.source-repo }}
       run: |
-        installer="${{ env.CONTEXT_DIR }}/install-ci.sh"
+        installer="${CONTEXT_DIR}/install-ci.sh"
         if [ ! -f "$installer" ]; then
-          echo "::error::${{ inputs.source-repo }} has no install-ci.sh at its root; found: $(ls -A "${{ env.CONTEXT_DIR }}" 2>/dev/null | tr '\n' ' ')"
+          echo "::error::${SOURCE_REPO} has no install-ci.sh at its root; found: $(ls -A "${CONTEXT_DIR}" 2>/dev/null | tr '\n' ' ')"
           exit 1
         fi
         bash "$installer"
@@ -79,4 +99,4 @@ runs:
       if: always()
       shell: bash
       run: |
-        rm -rf "${{ env.CONTEXT_DIR }}"
+        rm -rf "${CONTEXT_DIR}"
