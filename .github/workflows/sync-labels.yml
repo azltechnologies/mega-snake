@@ -1,0 +1,37 @@
+# Keeps the repository's GitHub labels in sync with the canonical set defined in
+# .github/labels.yml. Creates any missing label and fixes color/description drift.
+# Never deletes a label that exists in the repo but not in the config: EndBug's
+# `delete-other-labels` defaults to 'false' and is deliberately left unset, since
+# removing a label could break references in open issues/PRs or other automation
+# (e.g. the "dependencies" and "github-actions" labels that dependabot.yml
+# attaches to every bump PR).
+#
+# The review labels this syncs (claude-cr / haiku-cr / sonnet-cr / opus-cr) are
+# what claude-code-review.yml keys its model selection off, so a missing label
+# there is a silently unusable review workflow.
+name: Label Sync
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/labels.yml"
+      - ".github/workflows/sync-labels.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Sync labels from .github/labels.yml
+        uses: EndBug/label-sync@v2
+        with:
+          config-file: .github/labels.yml
+          token: ${{ secrets.GITHUB_TOKEN }}
