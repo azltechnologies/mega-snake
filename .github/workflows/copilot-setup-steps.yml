@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/copilot-setup-steps.yml
       - .github/actions/setup-env/action.yml
+      - .github/actions/setup-ai-context/action.yml
 
 jobs:
   copilot-setup-steps: # This name is mandatory
@@ -18,3 +19,7 @@ jobs:
 
       - name: Set up environment
         uses: ./.github/actions/setup-env
+        with:
+          requires-ai-context: "true"
+          source-repo: ${{ secrets.AI_CONTEXT }}
+          context-token: ${{ secrets.AI_CONTEXT_TOKEN }}
