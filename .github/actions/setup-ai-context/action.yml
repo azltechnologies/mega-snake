@@ -14,6 +14,12 @@ inputs:
       Token with read access to `source-repo`. The job's GITHUB_TOKEN cannot
       reach another repository, so a PAT or App token is required.
     required: true
+  context-ref:
+    description: >-
+      Branch, tag or SHA to pull from `source-repo`. Left empty, the repository's
+      own default branch is used, so `main` is never assumed.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -34,7 +40,7 @@ runs:
       with:
         repository: ${{ inputs.source-repo }}
         token: ${{ inputs.context-token }}
-        ref: main
+        ref: ${{ inputs.context-ref }}
         path: ${{ env.CONTEXT_DIR }}
         persist-credentials: false
 
