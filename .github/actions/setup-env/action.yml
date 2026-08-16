@@ -25,6 +25,12 @@ inputs:
       `requires-ai-context` is true. Ignored otherwise.
     required: false
     default: ""
+  context-ref:
+    description: >-
+      Branch, tag or SHA to pull from `source-repo`. Left empty, the repository's
+      own default branch is used, so `main` is never assumed.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -76,3 +82,4 @@ runs:
       with:
         source-repo: ${{ inputs.source-repo }}
         context-token: ${{ inputs.context-token }}
+        context-ref: ${{ inputs.context-ref }}
