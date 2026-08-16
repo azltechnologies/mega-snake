@@ -77,7 +77,7 @@ def run_after_each_test() -> Generator[None, None, None]:
         member.get_pattern_date = original_get_pattern_date.__get__(member, LogWatcher)
         member.to_dict = original_to_dict.__get__(member, LogWatcher)
     yield
-    MavenVersion._id_counter = 0  # pylint: disable=protected-access
+    MavenVersion._id_counter = 0
 
 
 @pytest.fixture(name="_mk_os_linux")
@@ -357,7 +357,7 @@ def test_set_maven_version_linux_defined_versions(
             mocks_reset()
 
             # Test selecting a different version with --maven-home
-            MavenVersion._id_counter = 0  # pylint: disable=protected-access
+            MavenVersion._id_counter = 0
             with patch("mega_snake.config_environment.maven_set.os.path.isdir", return_value=True):
                 result = runner.invoke(set_maven_version, ["-m", "/opt/apache-maven-3.9.8/libexec"])
             assert result.exit_code == 0

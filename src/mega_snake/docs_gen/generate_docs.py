@@ -46,7 +46,7 @@ def generate_docs(output: Path, check: bool) -> None:
     Returns:
         None
     """
-    from mega_snake.__main__ import cli  # pylint: disable=C0415
+    from mega_snake.__main__ import cli
 
     markdown: str = render_markdown(iter_introspected_commands(cli))
     write_or_check_document(output, markdown, check)

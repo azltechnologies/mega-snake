@@ -45,7 +45,7 @@ def test_init_app_properties_falls_back_between_powershell_variants(
     """init_app_properties should accept the alternate PowerShell executable when available."""
     properties = {"resources_path": "resources"}
     app_properties = MagicMock()
-    app_properties._retrieve_property.return_value = "/tmp/mgsnake.log"  # pylint: disable=protected-access
+    app_properties._retrieve_property.return_value = "/tmp/mgsnake.log"
     app_properties.log_level = 20
 
     with patch("mega_snake.util.props._get_package_root", return_value="/pkg"), patch(
@@ -78,7 +78,7 @@ def test_init_app_properties_rejects_invalid_shell_values_during_validation(tmp_
         "local_env_file_name": ".mgsnake.env",
     }
 
-    props_module.AppProperties._instance = None  # pylint: disable=protected-access
+    props_module.AppProperties._instance = None
     try:
         with patch("mega_snake.util.props._get_package_root", return_value=str(tmp_path)), patch(
             "mega_snake.util.props._read_properties", return_value=properties
@@ -90,4 +90,4 @@ def test_init_app_properties_rejects_invalid_shell_values_during_validation(tmp_
             with pytest.raises(ValueError, match="Invalid shell: fish"):
                 props_module.init_app_properties("INFO", "fish", False)
     finally:
-        props_module.AppProperties._instance = None  # pylint: disable=protected-access
+        props_module.AppProperties._instance = None

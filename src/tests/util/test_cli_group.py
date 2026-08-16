@@ -81,11 +81,11 @@ def assert_add_command(group: CliGroup, name: str, alias: str, params: Any, call
     assert group.commands[name].short_help == TEST_SHORT_HELP
     assert group.commands[name].epilog == TEST_EPILOG
     assert group.commands[name].params == params
-    assert group.commands[name].callback == callback  # pylint: disable=w0143
+    assert group.commands[name].callback == callback
     assert group.commands[alias].hidden is True
     assert group.commands[alias].params == params
     assert group.commands[alias].epilog == TEST_EPILOG
-    assert group.commands[alias].callback == callback  # pylint: disable=w0143
+    assert group.commands[alias].callback == callback
     assert group.commands[alias].name == alias
     assert group.commands[alias].params == group.commands[name].params
     assert group.commands[alias].epilog == group.commands[name].epilog

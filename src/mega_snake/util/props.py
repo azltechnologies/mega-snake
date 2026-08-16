@@ -64,7 +64,7 @@ def _check_forbidden_execution(
         # deferred by light-weight mode has no "log_file" yet, and reloading must not invent one.
         if props.is_fully_initialized():
             formatting.config_log(
-                props._retrieve_property("log_file"),  # pylint: disable=protected-access
+                props._retrieve_property("log_file"),
                 props.log_level,
             )
         formatting.ws_advice(f"Properties reloaded by: {message}")
@@ -358,7 +358,6 @@ def _read_properties(file_path: str) -> dict:
     return dict(parser["DEFAULT"])
 
 
-# pylint: disable=protected-access
 # Initialize the configuration object
 def init_app_properties(log_level: str, shell: Optional[str], light_weight: bool) -> None:
     """
@@ -434,7 +433,6 @@ def complete_app_properties() -> None:
     formatting.ws_advice(f"Deferred initialization completed; log file: {app_props._retrieve_property('log_file')}")
 
 
-# pylint: disable=C0415
 def _find_code_workspace_files(directory: str) -> str:
     """
     Find the .code-workspace file in the specified directory
@@ -465,4 +463,4 @@ def get_property(prop: str) -> str:
     Args:
         prop (str): The property to get
     """
-    return AppProperties.get_instance()._retrieve_property(prop)  # pylint: disable=protected-access
+    return AppProperties.get_instance()._retrieve_property(prop)
