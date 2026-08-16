@@ -1,9 +1,10 @@
 name: Setup AI Context
 description: >-
-  Pulls the shared AI context repository and assembles it into the workspace:
-  Copilot instruction files land in `.github/instructions/`, and the context
-  CLAUDE.md is merged into the repository's own CLAUDE.md. Assumes the calling
-  repository is already checked out.
+  Pulls the shared AI context repository and installs it on the runner: the
+  context repo's `.claude/` directory becomes the runner's user-level Claude
+  configuration (memory and skills), and its `prompts/*.instructions.md` files
+  are published where Copilot reads them. Assumes the calling repository is
+  already checked out.
 
 inputs:
   source-repo:
@@ -27,8 +28,14 @@ runs:
     - name: Set environment variables
       shell: bash
       run: |
-        echo "CONTEXT_DIR=_local_ai_context_" >> "$GITHUB_ENV"
-        echo "TARGET_DIR=.github/instructions" >> "$GITHUB_ENV"
+        {
+          echo "CONTEXT_DIR=_local_ai_context_"
+          echo "TARGET_DIR=.github/instructions"
+          # User-level Claude config. Claude Code reads CLAUDE.md and skills/ from
+          # here with no wiring at all, which is the whole point of this action:
+          # the context repo's .claude/ is a mirror of a developer's ~/.claude/.
+          echo "CLAUDE_HOME=${HOME}/.claude"
+        } >> "$GITHUB_ENV"
 
     - name: Create target
       shell: bash
@@ -44,54 +51,90 @@ runs:
         path: ${{ env.CONTEXT_DIR }}
         persist-credentials: false
 
-    - name: Check context dir
+    # The layout below is a contract with the context repository. Checking it up
+    # front turns a wrong layout into a loud failure instead of a job that copies
+    # nothing and passes green -- which is exactly how the previous version failed.
+    - name: Check context layout
       shell: bash
       run: |
         if [ ! -d "${{ env.CONTEXT_DIR }}" ]; then
           echo "::error::Context directory ${{ env.CONTEXT_DIR }} does not exist"
           exit 1
         fi
-
-    - name: Clean local refs in CLAUDE
-      shell: bash
-      run: |
-        CLAUDE_FILE="${{ env.CONTEXT_DIR }}/CLAUDE.md"
-        if [ -f "$CLAUDE_FILE" ]; then
-          echo "Cleaning local refs in $CLAUDE_FILE"
-          sed -i '/^[[:space:]]*@.*\.md[[:space:]]*$/d' "$CLAUDE_FILE"
-        else
-          echo "No CLAUDE.md found; skipping local ref cleanup"
+        if [ ! -d "${{ env.CONTEXT_DIR }}/.claude" ]; then
+          echo "::error::Expected '.claude/' at the root of ${{ inputs.source-repo }}; found: $(ls -A "${{ env.CONTEXT_DIR }}" | tr '\n' ' ')"
+          exit 1
         fi
+        echo "Context layout OK"
 
-    - name: Nest claude context
+    - name: Install user-level Claude config
       shell: bash
       run: |
-        MAIN_CLAUDE_FILE="CLAUDE.md"
-        APPENDIX_CLAUDE_FILE="${{ env.CONTEXT_DIR }}/CLAUDE.md"
-        if [ ! -f "$APPENDIX_CLAUDE_FILE" ]; then
-          echo "No CLAUDE.md found in the context repository; nothing to nest"
-        elif [ -f "$MAIN_CLAUDE_FILE" ]; then
-          echo "Both main and appendix CLAUDE.md found; appending appendix to main"
-          echo "" >> "$MAIN_CLAUDE_FILE"
-          cat "$APPENDIX_CLAUDE_FILE" >> "$MAIN_CLAUDE_FILE"
-        else
-          echo "Only the appendix CLAUDE.md found; promoting it to the repository root"
-          mv "$APPENDIX_CLAUDE_FILE" "$MAIN_CLAUDE_FILE"
+        mkdir -p "${{ env.CLAUDE_HOME }}"
+        # Trailing '/.' copies the contents, so an existing ~/.claude is merged
+        # into rather than nested under itself.
+        cp -R "${{ env.CONTEXT_DIR }}/.claude/." "${{ env.CLAUDE_HOME }}/"
+        # Local developer settings: machine-specific paths and permission
+        # allowlists that mean nothing on a runner and could silently change how
+        # Claude behaves here. The rest of .claude/ (CLAUDE.md, skills/) is what
+        # we actually want.
+        rm -f "${{ env.CLAUDE_HOME }}/settings.local.json"
+        echo "Installed into ${{ env.CLAUDE_HOME }}:"
+        ls -A "${{ env.CLAUDE_HOME }}"
+
+    - name: Publish prompt files
+      shell: bash
+      run: |
+        src="${{ env.CONTEXT_DIR }}/prompts"
+        if [ ! -d "$src" ]; then
+          echo "::warning::No 'prompts/' directory in the context repository; skipping instruction files"
+          exit 0
         fi
-
-    - name: Move Copilot instructions to target
-      shell: bash
-      run: |
-        for file in "${{ env.CONTEXT_DIR }}"/*.instructions.md; do
-          if [ -f "$file" ]; then
-            mv "$file" "${{ env.TARGET_DIR }}/"
-            if [ -f "CLAUDE.md" ]; then
-              echo "Appending $file to CLAUDE.md"
-              echo "" >> "CLAUDE.md"
-              echo "@${{ env.TARGET_DIR }}/$(basename "$file")" >> "CLAUDE.md"
-            fi
-          fi
+        shopt -s nullglob
+        files=("$src"/*.instructions.md)
+        if [ ${#files[@]} -eq 0 ]; then
+          echo "::warning::'prompts/' contains no *.instructions.md files"
+          exit 0
+        fi
+        # Two destinations, two consumers: Copilot reads .github/instructions/,
+        # while the CLAUDE.md imports resolve against the user-level copy.
+        mkdir -p "${{ env.CLAUDE_HOME }}/prompts"
+        for file in "${files[@]}"; do
+          echo "Publishing $(basename "$file")"
+          cp "$file" "${{ env.TARGET_DIR }}/"
+          cp "$file" "${{ env.CLAUDE_HOME }}/prompts/"
         done
+
+    - name: Rewrite CLAUDE.md imports
+      shell: bash
+      run: |
+        claude_file="${{ env.CLAUDE_HOME }}/CLAUDE.md"
+        if [ ! -f "$claude_file" ]; then
+          echo "::warning::No CLAUDE.md in the context repository's .claude/; nothing to rewrite"
+          exit 0
+        fi
+        # The imports point at absolute paths on the author's machine
+        # (@/data/home2/.../prompts/foo.instructions.md), which do not exist here.
+        # Repoint each one at the copy published above; drop the ones that have no
+        # counterpart, since a dangling import is worse than an absent one.
+        #
+        # The pattern is anchored at the start of the line on purpose: prose that
+        # merely mentions something like a@b.md must survive untouched.
+        tmp=$(mktemp)
+        while IFS= read -r line || [ -n "$line" ]; do
+          if [[ "$line" =~ ^[[:space:]]*@(.+\.md)[[:space:]]*$ ]]; then
+            base=$(basename "${BASH_REMATCH[1]}")
+            if [ -f "${{ env.CLAUDE_HOME }}/prompts/${base}" ]; then
+              echo "@${{ env.CLAUDE_HOME }}/prompts/${base}" >> "$tmp"
+              echo "Rewrote import -> ${base}"
+            else
+              echo "Dropped unresolvable import: ${line}"
+            fi
+          else
+            printf '%s\n' "$line" >> "$tmp"
+          fi
+        done < "$claude_file"
+        mv "$tmp" "$claude_file"
 
     - name: Clean up context dir
       if: always()
