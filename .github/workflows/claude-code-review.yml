@@ -32,6 +32,10 @@ jobs:
 
       - name: Set up environment
         uses: ./.github/actions/setup-env
+        with:
+          requires-ai-context: "true"
+          source-repo: ${{ secrets.AI_CONTEXT }}
+          context-token: ${{ secrets.AI_CONTEXT_TOKEN }}
 
       - name: Pick model from trigger body
         id: model
