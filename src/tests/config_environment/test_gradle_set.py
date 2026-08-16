@@ -35,7 +35,7 @@ def run_after_each_test() -> Generator[None, None, None]:
     """Reset the counter after each test"""
     # setup code here
     yield
-    GradleVersion._id_counter = 0 # pylint: disable=protected-access
+    GradleVersion._id_counter = 0
 
 
 @pytest.fixture(name="_mk_os_darwin")
@@ -310,7 +310,7 @@ def test_set_gradle_version_darwin_defined_versions(
 
             # Test when override and workspace file and local file have versions
             get_validated_input.return_value = "8"  # Return the first version 8.5
-            GradleVersion._id_counter = 0  # pylint: disable=protected-access
+            GradleVersion._id_counter = 0
             result = runner.invoke(set_gradle_version, ["-o"])
             assert result.exit_code == 0
             assert get_property.call_count == 3

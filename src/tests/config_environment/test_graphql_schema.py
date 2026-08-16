@@ -16,7 +16,7 @@ real_open = builtins.open
 write_mocks = {}
 
 
-def custom_open(file, mode="r", *args, **kwargs) -> Any:  # pylint: disable=W1113
+def custom_open(file, mode="r", *args, **kwargs) -> Any:
     """Custom open function that returns a mock for write mode and the real open function for read mode."""
     if "w" in mode:
         # Create a new mock for write mode and store it (if you need later access)

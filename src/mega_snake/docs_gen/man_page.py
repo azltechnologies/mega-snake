@@ -183,7 +183,7 @@ def man(command_name: Optional[str]) -> None:
     Returns:
         None
     """
-    from mega_snake.__main__ import cli  # pylint: disable=C0415
+    from mega_snake.__main__ import cli
 
     commands: list[IntrospectedCommand] = list(iter_introspected_commands(cli))
     if command_name:

@@ -172,7 +172,6 @@ def _get_version_from_commnad(path: str, command: Callable[[str], str]) -> str:
     return f"{path}\t{output}"
 
 
-# pylint: disable=C3001
 # flake8: noqa: E501
 def _get_versions() -> list[GradleVersion]:
     """Get Gradle versions installed on the system.

@@ -36,7 +36,7 @@ def run_after_each_test() -> Generator[None, None, None]:
     """Reset the counter after each test"""
     # setup code here
     yield
-    JavaVersion._id_counter = 0  # pylint: disable=protected-access
+    JavaVersion._id_counter = 0
 
 
 @pytest.fixture(name="_mk_os_darwin")
@@ -420,7 +420,7 @@ def test_set_java_version_darwin_defined_versions(
 
             # Test when override and workspace file and local file have versions
             get_validated_input.return_value = "5"  # Return the first version 8.5
-            JavaVersion._id_counter = 0  # pylint: disable=protected-access
+            JavaVersion._id_counter = 0
             result = runner.invoke(set_java_version, ["-o"])
             assert result.exit_code == 0
             assert get_property.call_count == 4
@@ -472,7 +472,7 @@ def test_set_java_version_failing_scenarios(
 
         def mocks_reset() -> None:
             """Reset the mocks."""
-            JavaVersion._id_counter = 0  # pylint: disable=protected-access
+            JavaVersion._id_counter = 0
             reset_mocks(
                 get_property,
                 run_operation,
@@ -632,7 +632,7 @@ def test_add_java_formatter(
 
         def mocks_reset() -> None:
             """Reset the mocks."""
-            JavaVersion._id_counter = 0  # pylint: disable=protected-access
+            JavaVersion._id_counter = 0
             reset_mocks(
                 get_property,
                 get_local_file,
