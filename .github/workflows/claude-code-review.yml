@@ -1,7 +1,14 @@
 name: Claude Code Review
 
-# On-demand only: this review is NOT automatic. It runs when the `claude-cr`
-# label is added to a PR. Re-run it by removing and re-adding the label.
+# On-demand only: this review is NOT automatic. It runs when one of the review
+# labels is added to a PR, and the label itself picks the model:
+#
+#   claude-cr   -> no --model flag; the action picks
+#   haiku-cr    -> haiku
+#   sonnet-cr   -> sonnet
+#   opus-cr     -> opus
+#
+# Re-run it by removing and re-adding the label (or by adding a different one).
 #
 # Why a direct prompt instead of the `code-review` plugin: that plugin is built
 # for interactive terminal use and fans out into ~5 parallel (Opus) subagents.
@@ -15,8 +22,8 @@ on:
 
 jobs:
   claude-review:
-    # Only run when the trigger label is the one that was just added.
-    if: github.event.label.name == 'claude-cr'
+    # Only run when the label just added is one of the review labels.
+    if: contains(fromJSON('["claude-cr", "haiku-cr", "sonnet-cr", "opus-cr"]'), github.event.label.name)
 
     runs-on: ubuntu-latest
     permissions:
@@ -37,22 +44,21 @@ jobs:
           source-repo: ${{ secrets.AI_CONTEXT }}
           context-token: ${{ secrets.AI_CONTEXT_TOKEN }}
 
-      - name: Pick model from trigger body
+      - name: Pick model from trigger label
         id: model
         env:
-          PR_BODY: ${{ github.event.pull_request.body }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
+          LABEL: ${{ github.event.label.name }}
         run: |
-          body=$(printf '%s\n%s\n' "$PR_BODY" "$PR_TITLE" | tr '[:upper:]' '[:lower:]')
-          if printf '%s' "$body" | grep -Eq '@claude[[:space:]]+opus\b'; then
-            echo "model=opus" >> "$GITHUB_OUTPUT"
-          elif printf '%s' "$body" | grep -Eq '@claude[[:space:]]+sonnet\b'; then
-            echo "model=sonnet" >> "$GITHUB_OUTPUT"
-          elif printf '%s' "$body" | grep -Eq '@claude[[:space:]]+haiku\b'; then
-            echo "model=haiku" >> "$GITHUB_OUTPUT"
-          else
-            echo "model=" >> "$GITHUB_OUTPUT"
-          fi
+          # 'claude-cr' deliberately yields an empty model, which drops the
+          # --model flag altogether and lets the action choose.
+          case "${LABEL}" in
+            haiku-cr) model="haiku" ;;
+            sonnet-cr) model="sonnet" ;;
+            opus-cr) model="opus" ;;
+            *) model="" ;;
+          esac
+          echo "Label '${LABEL}' selected model '${model:-<action default>}'"
+          echo "model=${model}" >> "$GITHUB_OUTPUT"
 
       - name: Run Claude Code Review
         id: claude-review
