@@ -83,3 +83,23 @@ jobs:
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)" ${{ steps.model.outputs.model != '' && format('--model {0}', steps.model.outputs.model) || '' }}
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
+
+      # The action skips itself with a *warning* — not an error — when the OIDC
+      # exchange is refused because this workflow file differs from the copy on the
+      # default branch (error code `workflow_not_found_on_default_branch`). The step
+      # still reports success, so without this guard the check goes green while no
+      # review was ever posted, which is worse than a red check.
+      #
+      # `conclusion` is only written once Claude actually ran, so an empty value is
+      # the signature of an early return. No `if:` on purpose: this step is meant to
+      # catch the case where everything *looked* fine.
+      - name: Verify the review actually ran
+        env:
+          CONCLUSION: ${{ steps.claude-review.outputs.conclusion }}
+        run: |
+          if [ "${CONCLUSION}" != "success" ]; then
+            echo "::error::Claude review did not run (conclusion='${CONCLUSION:-<unset>}')."
+            echo "::error::An unset conclusion usually means this workflow file does not match the version on the default branch; merge the change first. See the 'Run Claude Code Review' logs for the exact reason."
+            exit 1
+          fi
+          echo "Claude review completed (conclusion=success)."
