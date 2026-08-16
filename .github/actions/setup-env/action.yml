@@ -1,7 +1,7 @@
 name: Setup Env
 description: >-
   Prepares the Python toolchain shared by the Copilot and Claude workflows:
-  Python 3.13 and uv. Callers run `uv sync` to materialize the virtual
+  Python (from `.python-version`) and uv. Callers run `uv sync` to materialize the virtual
   environment. When `requires-ai-context` is true it also assembles the shared
   AI context files into the workspace.
 
@@ -51,19 +51,22 @@ runs:
         esac
         if [ "${REQUIRES_AI_CONTEXT}" = "true" ]; then
           if [ -z "${SOURCE_REPO}" ]; then
-            echo "::error::source-repo is required when requires-ai-context is 'true'"
+            echo "::error::source-repo is required when requires-ai-context is 'true' -- is the AI_CONTEXT secret set on this repository?"
             exit 1
           fi
           if [ -z "${CONTEXT_TOKEN}" ]; then
-            echo "::error::context-token is required when requires-ai-context is 'true'"
+            echo "::error::context-token is required when requires-ai-context is 'true' -- is the AI_CONTEXT_TOKEN secret set on this repository?"
             exit 1
           fi
         fi
 
-    - name: Set up Python 3.13
+    # Read from `.python-version` rather than hardcoding a literal: a second
+    # source of truth here can silently drift from the file uv itself honours,
+    # and from `requires-python` in pyproject.toml.
+    - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: "3.13"
+        python-version-file: .python-version
 
     - name: Install uv
       uses: astral-sh/setup-uv@v6

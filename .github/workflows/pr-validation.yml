@@ -2,37 +2,51 @@ name: PR Validation
 
 on:
   pull_request:
-    types: [ opened, ready_for_review, reopened, synchronize ]
+    types: [opened, ready_for_review, reopened, synchronize]
+
+# The suite only reads the repository. Without an explicit block the job inherits
+# the repository default, which can be read/write on everything.
+permissions:
+  contents: read
+
+# A new push to the same PR makes the in-flight run obsolete; cancel it instead
+# of paying for a result nobody will read.
+concurrency:
+  group: pr-validation-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
 
-    - name: Set up environment
-      uses: ./.github/actions/setup-env
+      - name: Set up environment
+        uses: ./.github/actions/setup-env
 
-    - name: Install dependencies
-      run: |
-        uv sync --all-extras
-    
-    - name: Run pytest
-      run: |
-        uv run pytest
+      # `--locked` fails when uv.lock no longer agrees with pyproject.toml,
+      # instead of silently re-resolving into an environment the lockfile does
+      # not describe -- which would make CI test a dependency set nobody has.
+      - name: Install dependencies
+        run: |
+          uv sync --locked --all-extras
 
-    - name: Run ruff check
-      run: |
-        uv run ruff check src/mega_snake --output-format=concise
+      - name: Run pytest
+        run: |
+          uv run pytest
 
-    - name: Run mypy
-      run: |
-        uv run mypy --show-column-numbers --no-error-summary src/mega_snake
+      - name: Run ruff check
+        run: |
+          uv run ruff check src/mega_snake --output-format=concise
 
-    # Catches a committed COMMANDS.md that no longer matches the code. This is a different failure
-    # from the one the test suite catches: the tests fail when a command has no docs fragment, this
-    # step fails when the generated file was not regenerated after changing command metadata.
-    - name: Check generated command docs are up to date
-      run: |
-        uv run mgsnake generate-docs --check
+      - name: Run mypy
+        run: |
+          uv run mypy --show-column-numbers --no-error-summary src/mega_snake
+
+      # Catches a committed COMMANDS.md that no longer matches the code. This is a different failure
+      # from the one the test suite catches: the tests fail when a command has no docs fragment, this
+      # step fails when the generated file was not regenerated after changing command metadata.
+      - name: Check generated command docs are up to date
+        run: |
+          uv run mgsnake generate-docs --check
