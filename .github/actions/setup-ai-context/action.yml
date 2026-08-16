@@ -1,0 +1,100 @@
+name: Setup AI Context
+description: >-
+  Pulls the shared AI context repository and assembles it into the workspace:
+  Copilot instruction files land in `.github/instructions/`, and the context
+  CLAUDE.md is merged into the repository's own CLAUDE.md. Assumes the calling
+  repository is already checked out.
+
+inputs:
+  source-repo:
+    description: The repository containing the additional AI context files
+    required: true
+  context-token:
+    description: >-
+      Token with read access to `source-repo`. The job's GITHUB_TOKEN cannot
+      reach another repository, so a PAT or App token is required.
+    required: true
+  context-ref:
+    description: >-
+      Branch, tag or SHA to pull from `source-repo`. Left empty, the repository's
+      own default branch is used, so `main` is never assumed.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Set environment variables
+      shell: bash
+      run: |
+        echo "CONTEXT_DIR=_local_ai_context_" >> "$GITHUB_ENV"
+        echo "TARGET_DIR=.github/instructions" >> "$GITHUB_ENV"
+
+    - name: Create target
+      shell: bash
+      run: |
+        mkdir -p "${{ env.TARGET_DIR }}"
+
+    - name: Pull context dir
+      uses: actions/checkout@v7
+      with:
+        repository: ${{ inputs.source-repo }}
+        token: ${{ inputs.context-token }}
+        ref: ${{ inputs.context-ref }}
+        path: ${{ env.CONTEXT_DIR }}
+        persist-credentials: false
+
+    - name: Check context dir
+      shell: bash
+      run: |
+        if [ ! -d "${{ env.CONTEXT_DIR }}" ]; then
+          echo "::error::Context directory ${{ env.CONTEXT_DIR }} does not exist"
+          exit 1
+        fi
+
+    - name: Clean local refs in CLAUDE
+      shell: bash
+      run: |
+        CLAUDE_FILE="${{ env.CONTEXT_DIR }}/CLAUDE.md"
+        if [ -f "$CLAUDE_FILE" ]; then
+          echo "Cleaning local refs in $CLAUDE_FILE"
+          sed -i '/^[[:space:]]*@.*\.md[[:space:]]*$/d' "$CLAUDE_FILE"
+        else
+          echo "No CLAUDE.md found; skipping local ref cleanup"
+        fi
+
+    - name: Nest claude context
+      shell: bash
+      run: |
+        MAIN_CLAUDE_FILE="CLAUDE.md"
+        APPENDIX_CLAUDE_FILE="${{ env.CONTEXT_DIR }}/CLAUDE.md"
+        if [ ! -f "$APPENDIX_CLAUDE_FILE" ]; then
+          echo "No CLAUDE.md found in the context repository; nothing to nest"
+        elif [ -f "$MAIN_CLAUDE_FILE" ]; then
+          echo "Both main and appendix CLAUDE.md found; appending appendix to main"
+          echo "" >> "$MAIN_CLAUDE_FILE"
+          cat "$APPENDIX_CLAUDE_FILE" >> "$MAIN_CLAUDE_FILE"
+        else
+          echo "Only the appendix CLAUDE.md found; promoting it to the repository root"
+          mv "$APPENDIX_CLAUDE_FILE" "$MAIN_CLAUDE_FILE"
+        fi
+
+    - name: Move Copilot instructions to target
+      shell: bash
+      run: |
+        for file in "${{ env.CONTEXT_DIR }}"/*.instructions.md; do
+          if [ -f "$file" ]; then
+            mv "$file" "${{ env.TARGET_DIR }}/"
+            if [ -f "CLAUDE.md" ]; then
+              echo "Appending $file to CLAUDE.md"
+              echo "" >> "CLAUDE.md"
+              echo "@${{ env.TARGET_DIR }}/$(basename "$file")" >> "CLAUDE.md"
+            fi
+          fi
+        done
+
+    - name: Clean up context dir
+      if: always()
+      shell: bash
+      run: |
+        rm -rf "${{ env.CONTEXT_DIR }}"
