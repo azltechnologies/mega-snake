@@ -18,6 +18,7 @@ description: >-
 #
 #   CLAUDE_HOME       where the user-level Claude config goes ($HOME/.claude)
 #   INSTRUCTIONS_DIR  where Copilot instruction files go (.github/instructions)
+#   SKILLS_DIR        where Copilot agent skills go (.github/skills)
 #
 # The split matters: several repositories consume this action, and a change to
 # the context repository's structure has to be one commit in one place rather
@@ -65,6 +66,7 @@ runs:
         {
           echo "CONTEXT_DIR=_local_ai_context_"
           echo "INSTRUCTIONS_DIR=.github/instructions"
+          echo "SKILLS_DIR=.github/skills"
           echo "CLAUDE_HOME=${HOME}/.claude"
         } >> "$GITHUB_ENV"
 
