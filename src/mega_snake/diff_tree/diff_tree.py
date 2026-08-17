@@ -2,6 +2,7 @@
 
 import os
 import shutil
+import subprocess
 from typing import Optional
 import click
 from directory_tree import DisplayTree
@@ -155,10 +156,16 @@ def _validate_commit(commit_hash: str) -> str:
     Returns:
         str: The validated reference, unchanged.
     """
-    commit_validation: str = run_operation(
-        f"git cat-file -t {commit_hash} 2>/dev/null", f"Checking if commit hash '{commit_hash}' is valid"
-    ).stdout.strip()
-    if commit_validation != "commit":
+    # check=False because a reference that does not exist is the expected failure here, not an
+    # operational one: `git cat-file` exits 128 for it, which under the default check=True would be
+    # retried three times with a two-second sleep and reported as a subprocess failure instead of the
+    # typo it is. Same pattern as `_tag_exists` in light_weight/release.py.
+    result: subprocess.CompletedProcess[str] = run_operation(
+        f"git cat-file -t {commit_hash} 2>/dev/null",
+        f"Checking if commit hash '{commit_hash}' is valid",
+        check=False,
+    )
+    if result.returncode != 0 or result.stdout.strip() != "commit":
         raise ValueError(f"Invalid commit hash: {commit_hash}")
     return commit_hash
 

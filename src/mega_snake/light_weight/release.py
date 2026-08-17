@@ -89,7 +89,13 @@ class Release:
                 f"Invalid version part: {version_part}; Please enter one of:\n"
                 f" {' | '.join(VERSION_PART_OPT.keys())}"
             )
-        numbers: list[int] = _parse_version(self.tag_name)
+        # Neither a prerelease nor a `--latest=false` release advances the `latest` pointer, so that
+        # pointer alone is not enough to know where the sequence stands: a higher tag can already
+        # exist beside it. Deriving from the highest known version *unconditionally* is what makes
+        # "a new tag never lands below one already published" hold in every case, not only when the
+        # derived tag happens to collide. `_parse_version` still runs first, as the fallback, so a
+        # `latest` release with a non-semver tag is still rejected before anything else happens.
+        numbers: list[int] = _highest_version(fallback=_parse_version(self.tag_name))
         index: int = VERSION_PART_OPT[version_part]
         numbers[index] += 1
         # Everything to the right of the bumped component restarts, so 1.2.3 with 'minor' is 1.3.0.
@@ -97,22 +103,13 @@ class Release:
             numbers[lower] = 0
         base_tag: str = f"{TAG_PREFIX}{'.'.join(str(number) for number in numbers)}"
         if not suffix:
-            # Neither a prerelease nor a `--latest=false` release advances the `latest` pointer, so
-            # deriving from it twice in a row lands on a tag that already exists. Falling back to the
-            # highest version in the repository keeps every release type moving the sequence forward,
-            # and cannot produce a tag below one that was already published.
+            # Guards against a stale local view: the tag list is read from the local repository, so a
+            # tag fetched by nobody would not have been counted above.
             if _tag_exists(base_tag):
-                ws_info(f"Tag {base_tag} already exists; deriving from the highest known version instead.")
-                numbers = _highest_version(fallback=numbers)
-                numbers[index] += 1
-                for lower in range(index + 1, len(numbers)):
-                    numbers[lower] = 0
-                base_tag = f"{TAG_PREFIX}{'.'.join(str(number) for number in numbers)}"
-                if _tag_exists(base_tag):
-                    raise subprocess.SubprocessError(
-                        f"Tag {base_tag} already exists even though it was derived from the highest "
-                        "version in the repository. Fetch the repository and try again."
-                    )
+                raise subprocess.SubprocessError(
+                    f"Tag {base_tag} already exists even though it was derived from the highest "
+                    "version known locally. Fetch the repository (git fetch --tags) and try again."
+                )
             ws_info(f"Tag {base_tag} is available!")
             return base_tag
         for attempt in range(SUFFIX_ATTEMPTS):

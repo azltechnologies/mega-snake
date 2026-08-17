@@ -434,7 +434,10 @@ Resetting is what keeps the order monotonic: a minor bump that produced `v1.3.3`
 patches that follow it.
 
 `--tag-suffix` marks the result as a pre-release build of that version — `v1.2.4-beta.0` — with a
-counter that grows so the same version can be built repeatedly. It is **rejected for the `l` type**:
+counter that grows so the same version can be built repeatedly. The base version is derived the same
+way as for a plain release, so a pre-release always announces a version that has **not** shipped yet:
+`v1.2.5-beta.0` precedes `v1.2.5`, never trails `v1.2.4`. Pre-release tags do not raise the ceiling
+either, so one beta cannot push the next release past it. It is **rejected for the `l` type**:
 GitHub only grants the `latest` pointer to a plain version, so asking for a suffixed latest release
 is something the platform cannot honour.
 
@@ -462,10 +465,11 @@ mgsnake cr p
 Light-weight: it runs from anywhere, no workspace required. When `branch` is omitted the release is
 cut from the current branch.
 
-The new tag is derived from the release GitHub currently marks as `latest`. Prereleases and `r`
-releases do not move that pointer, so when the derived tag is already taken the command falls back to
-the highest `vX.Y.Z` tag in the repository and increments that instead — every release type advances
-the sequence, and a new tag can never land below one that was already published.
+The new tag is derived from the **highest `vX.Y.Z` tag in the repository**, not from the `latest`
+pointer alone. Prereleases and `r` releases publish tags without moving that pointer, so it can sit
+below tags that already exist; taking the maximum on every derivation is what makes the guarantee
+hold unconditionally — a new tag can never land below one that was already published. The `latest`
+release still decides whether the version is usable at all (see the note below).
 
 A release tagged by hand in the GitHub UI can hold the `latest` mark with any tag text, so the command
 refuses to continue when that tag is not a `vX.Y.Z` version: there is nothing to increment. Publish a

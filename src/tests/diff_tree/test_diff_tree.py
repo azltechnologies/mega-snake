@@ -90,7 +90,7 @@ def test_diff_tree_main_rejects_an_invalid_commit_hash() -> None:
     ), patch("mega_snake.diff_tree.diff_tree.get_current_commit", return_value="head"), patch(
         "mega_snake.diff_tree.diff_tree.os.makedirs"
     ), patch("mega_snake.diff_tree.diff_tree.run_operation") as run_operation:
-        run_operation.return_value.stdout = "tree"
+        run_operation.return_value = SimpleNamespace(returncode=0, stdout="tree")
         with pytest.raises(ValueError, match="Invalid commit hash: abc"):
             diff_tree_cmd.diff_tree.callback(
                 origin_hash="abc", target_hash=None, delete_original_files=False, scope="c"
@@ -177,7 +177,7 @@ def test_diff_tree_main_writes_the_pending_changes_above_the_commits() -> None:
             "builtins.open", mock_open()
         ) as m_open:
             run_operation.side_effect = [
-                SimpleNamespace(stdout="commit"),  # commit hash validation
+                SimpleNamespace(stdout="commit", returncode=0),  # commit hash validation
                 SimpleNamespace(stdout=""),  # untracked files
                 SimpleNamespace(stdout=":000000 100644 0000000 1111111 A\tfile.txt"),  # raw diff
                 SimpleNamespace(stdout=""),  # numstat
@@ -219,7 +219,7 @@ def test_diff_tree_main_includes_untracked_files_in_unstaged_scope() -> None:
             "builtins.open", mock_open()
         ):
             run_operation.side_effect = [
-                SimpleNamespace(stdout="commit"),  # commit hash validation
+                SimpleNamespace(stdout="commit", returncode=0),  # commit hash validation
                 SimpleNamespace(stdout="new.txt"),  # untracked files
                 SimpleNamespace(stdout=""),  # raw diff: nothing tracked changed
                 SimpleNamespace(stdout=""),  # numstat
@@ -281,7 +281,7 @@ def test_diff_tree_main_computes_binary_files() -> None:
         "builtins.open", mock_open()
     ):
         run_operation.side_effect = [
-            SimpleNamespace(stdout="commit"),
+            SimpleNamespace(stdout="commit", returncode=0),
             SimpleNamespace(stdout=":000000 100644 0000000 1111111 A\tfile.txt"),
             SimpleNamespace(stdout="-\t-\tasset.webp"),
             SimpleNamespace(stdout="commit log"),
@@ -322,7 +322,7 @@ def test_diff_tree_main_paths() -> None:
         "builtins.open", mock_open()
     ):
         run_operation.side_effect = [
-            SimpleNamespace(stdout="commit"),
+            SimpleNamespace(stdout="commit", returncode=0),
             SimpleNamespace(stdout=":000000 100644 0000000 1111111 A\tfile.txt"),
             SimpleNamespace(stdout=""),
             SimpleNamespace(stdout="commit log"),
@@ -356,8 +356,8 @@ def test_diff_tree_target_replaces_head_in_every_derived_command() -> None:
             "mega_snake.diff_tree.diff_tree.os.makedirs"
         ), patch("builtins.open", mock_open()):
             run_operation.side_effect = [
-                SimpleNamespace(stdout="commit"),  # base validation
-                SimpleNamespace(stdout="commit"),  # target validation
+                SimpleNamespace(stdout="commit", returncode=0),  # base validation
+                SimpleNamespace(stdout="commit", returncode=0),  # target validation
                 SimpleNamespace(stdout=":000000 100644 0000000 1111111 A\tfile.txt"),  # raw diff
                 SimpleNamespace(stdout=""),  # numstat
                 SimpleNamespace(stdout="commit log"),  # commit list
@@ -404,7 +404,7 @@ def test_diff_tree_without_target_still_compares_against_head() -> None:
             "mega_snake.diff_tree.diff_tree.os.makedirs"
         ), patch("builtins.open", mock_open()):
             run_operation.side_effect = [
-                SimpleNamespace(stdout="commit"),  # base validation
+                SimpleNamespace(stdout="commit", returncode=0),  # base validation
                 SimpleNamespace(stdout=":000000 100644 0000000 1111111 A\tfile.txt"),  # raw diff
                 SimpleNamespace(stdout=""),  # numstat
                 SimpleNamespace(stdout="commit log"),  # commit list
@@ -468,7 +468,7 @@ def test_diff_tree_rejects_an_invalid_target() -> None:
     ), patch("mega_snake.diff_tree.diff_tree.get_remote", return_value="origin"), patch(
         "mega_snake.diff_tree.diff_tree.run_operation"
     ) as run_operation:
-        run_operation.return_value.stdout = "blob"
+        run_operation.return_value = SimpleNamespace(returncode=0, stdout="blob")
         with pytest.raises(ValueError, match="Invalid commit hash: notacommit"):
             diff_tree_cmd.diff_tree.callback(
                 origin_hash=None, target_hash="notacommit", delete_original_files=False, scope="c"
@@ -478,10 +478,12 @@ def test_diff_tree_rejects_an_invalid_target() -> None:
 def test_validate_commit_returns_the_reference_it_was_given() -> None:
     """A valid reference is returned unchanged, so callers can assign it directly."""
     with patch("mega_snake.diff_tree.diff_tree.run_operation") as run_operation:
-        run_operation.return_value.stdout = "commit\n"
+        run_operation.return_value = SimpleNamespace(returncode=0, stdout="commit\n")
         assert diff_tree_cmd._validate_commit("abc123") == "abc123"
+    # check=False is load-bearing: a reference that does not exist exits non-zero, and the default
+    # check=True would retry it three times and report a subprocess failure instead of the typo.
     run_operation.assert_called_once_with(
-        "git cat-file -t abc123 2>/dev/null", "Checking if commit hash 'abc123' is valid"
+        "git cat-file -t abc123 2>/dev/null", "Checking if commit hash 'abc123' is valid", check=False
     )
 
 
@@ -536,7 +538,7 @@ def test_diff_tree_validates_both_commits_before_touching_the_output() -> None:
     ) as makedirs, patch("mega_snake.diff_tree.diff_tree.get_current_commit", return_value="head"), patch(
         "mega_snake.diff_tree.diff_tree.run_operation"
     ) as run_operation:
-        run_operation.return_value.stdout = "blob"
+        run_operation.return_value = SimpleNamespace(returncode=0, stdout="blob")
         with pytest.raises(ValueError, match="Invalid commit hash: typo"):
             diff_tree_cmd.diff_tree.callback(
                 origin_hash="typo", target_hash=None, delete_original_files=False, scope="c"
@@ -557,7 +559,7 @@ def test_diff_tree_validates_the_target_before_touching_the_output() -> None:
     ), patch("mega_snake.diff_tree.diff_tree.get_remote", return_value="origin"), patch(
         "mega_snake.diff_tree.diff_tree.run_operation"
     ) as run_operation:
-        run_operation.return_value.stdout = "tree"
+        run_operation.return_value = SimpleNamespace(returncode=0, stdout="tree")
         with pytest.raises(ValueError, match="Invalid commit hash: typo"):
             diff_tree_cmd.diff_tree.callback(
                 origin_hash=None, target_hash="typo", delete_original_files=False, scope="c"
@@ -565,3 +567,55 @@ def test_diff_tree_validates_the_target_before_touching_the_output() -> None:
 
     rmtree.assert_not_called()
     makedirs.assert_not_called()
+
+
+@pytest.mark.parametrize("option", ["origin_hash", "target_hash"])
+def test_diff_tree_reports_a_mistyped_hash_as_an_invalid_commit(option: str) -> None:
+    """A reference git cannot resolve at all must be reported as the typo it is.
+
+    `git cat-file -t` exits 128 for a name that does not exist, which is the *common* rejection —
+    far more likely than a reference that resolves to a tree or a blob. Under the default
+    `check=True` that status is treated as an operational failure: retried three times with a
+    two-second sleep, then surfaced as a subprocess error that says nothing about the typo.
+
+    Parameters:
+        option: Which end of the comparison carries the mistyped hash.
+
+    Raises:
+        None
+
+    Returns:
+        None
+    """
+    arguments = {"origin_hash": None, "target_hash": None, "delete_original_files": False, "scope": "c"}
+    arguments[option] = "abc123x"
+    with patch("mega_snake.diff_tree.diff_tree.get_property", return_value="/tmp"), patch(
+        "mega_snake.diff_tree.diff_tree.os.path.exists", return_value=True
+    ), patch("mega_snake.diff_tree.diff_tree.shutil.rmtree") as rmtree, patch(
+        "mega_snake.diff_tree.diff_tree.os.makedirs"
+    ), patch("mega_snake.diff_tree.diff_tree.get_main_branch", return_value="master"), patch(
+        "mega_snake.diff_tree.diff_tree.get_remote", return_value="origin"
+    ), patch("mega_snake.diff_tree.diff_tree.get_current_commit", return_value="head"), patch(
+        "mega_snake.diff_tree.diff_tree.run_operation"
+    ) as run_operation:
+        # What git actually returns for a name it cannot resolve: non-zero, and nothing on stdout.
+        run_operation.return_value = SimpleNamespace(returncode=128, stdout="")
+        with pytest.raises(ValueError, match="Invalid commit hash: abc123x"):
+            diff_tree_cmd.diff_tree.callback(**arguments)  # type: ignore[arg-type]
+
+    # The lookup must not be retried: a name that does not exist will not start existing.
+    assert run_operation.call_count == 1, f"the failing lookup was retried {run_operation.call_count} times"
+    assert run_operation.call_args.kwargs["check"] is False
+    rmtree.assert_not_called()
+
+
+def test_validate_commit_rejects_a_reference_that_is_not_a_commit() -> None:
+    """A reference that resolves, but not to a commit, is still rejected.
+
+    This is the rarer path the exit status alone cannot catch: git succeeds, so only the payload
+    distinguishes a tag or a tree from the commit the diff needs.
+    """
+    with patch("mega_snake.diff_tree.diff_tree.run_operation") as run_operation:
+        run_operation.return_value = SimpleNamespace(returncode=0, stdout="tree\n")
+        with pytest.raises(ValueError, match="Invalid commit hash: sometree"):
+            diff_tree_cmd._validate_commit("sometree")

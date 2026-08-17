@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from types import SimpleNamespace
+from typing import Generator
 from unittest.mock import MagicMock, patch
 import click
 import re
@@ -14,6 +15,28 @@ from mega_snake.light_weight.echo import echo
 from mega_snake.light_weight.jks_expired_certs import expired_certs
 from mega_snake.light_weight import release as release_module
 from mega_snake.light_weight.release import Release, _create_release_list, get_latest_release
+
+
+@pytest.fixture(autouse=True)
+def stub_the_tag_list() -> Generator[MagicMock, None, None]:
+    """Stand in for the repository's tag list, which the tag derivation reads on every call.
+
+    `get_release_tag` consults the highest existing version unconditionally, so without this every
+    test would shell out to git through `run_operation` and fail on the uninitialized properties
+    singleton. Tests that care about the tag list override `return_value` themselves.
+
+    Parameters:
+        None
+
+    Raises:
+        None
+
+    Returns:
+        Generator[MagicMock, None, None]: The patched `run_operation`.
+    """
+    with patch("mega_snake.light_weight.release.run_operation") as run_operation:
+        run_operation.return_value = SimpleNamespace(stdout="", returncode=0)
+        yield run_operation
 
 
 def test_create_release_flows() -> None:
@@ -441,3 +464,150 @@ def test_highest_version_never_returns_below_the_fallback() -> None:
     listed = SimpleNamespace(stdout="v0.1.0\nv0.2.0\n", returncode=0)
     with patch("mega_snake.light_weight.release.run_operation", return_value=listed):
         assert release_module._highest_version(fallback=[1, 2, 3]) == [1, 2, 3]
+
+
+def test_get_release_tag_never_lands_below_a_higher_tag_that_did_not_collide(
+    stub_the_tag_list: MagicMock,
+) -> None:
+    """The monotonic guarantee is unconditional, so it must hold when the derived tag is free too.
+
+    Reachable with two invocations of this tool alone: a `--latest=false` minor release publishes
+    v1.3.0 without moving the `latest` pointer, so the next patch derives v1.2.4 from the stale
+    pointer, finds it free, and publishes a release that sorts *below* the previous one. Deriving
+    only on collision leaves this path uncovered, which is how it stayed invisible.
+
+    Parameters:
+        stub_the_tag_list: The patched tag listing.
+
+    Raises:
+        None
+
+    Returns:
+        None
+    """
+    release = SimpleNamespace(tag_name="v1.2.3")
+    taken = {"v1.2.3", "v1.3.0"}
+    stub_the_tag_list.return_value = SimpleNamespace(stdout="\n".join(sorted(taken)), returncode=0)
+    with patch("mega_snake.light_weight.release._tag_exists", side_effect=lambda tag: tag in taken):
+        result = Release.get_release_tag(release, "patch")  # type: ignore[arg-type]
+
+    assert result == "v1.3.1"
+    # v1.2.4 is free, so a derivation anchored on the latest pointer would have taken it.
+    assert result != "v1.2.4", "derived from the stale latest pointer instead of the highest tag"
+
+
+def test_get_release_tag_consults_the_highest_version_on_every_derivation(
+    stub_the_tag_list: MagicMock,
+) -> None:
+    """The tag list must be read every time, not only as collision recovery.
+
+    Asserting the resulting tag is not enough: a collision-only implementation returns the same
+    answer whenever the pointer and the highest tag agree, so this pins that the lookup happens.
+
+    Parameters:
+        stub_the_tag_list: The patched tag listing.
+
+    Raises:
+        None
+
+    Returns:
+        None
+    """
+    release = SimpleNamespace(tag_name="v1.2.3")
+    stub_the_tag_list.return_value = SimpleNamespace(stdout="v1.2.3\n", returncode=0)
+    with patch("mega_snake.light_weight.release._tag_exists", return_value=False):
+        assert Release.get_release_tag(release, "patch") == "v1.2.4"  # type: ignore[arg-type]
+
+    issued = [call.args[0] for call in stub_the_tag_list.call_args_list]
+    assert "git tag --list" in issued, "the highest version was never looked up"
+
+
+def test_get_release_tag_rejects_a_non_semver_latest_before_using_the_tag_list(
+    stub_the_tag_list: MagicMock,
+) -> None:
+    """The BAD CONFIG guard must still win, even though derivation now starts from the tag list.
+
+    `_parse_version` is passed as the fallback, so an unusable `latest` tag is rejected rather than
+    silently replaced by whatever the highest tag happens to be.
+
+    Parameters:
+        stub_the_tag_list: The patched tag listing.
+
+    Raises:
+        None
+
+    Returns:
+        None
+    """
+    release = SimpleNamespace(tag_name="release-2026")
+    stub_the_tag_list.return_value = SimpleNamespace(stdout="v9.9.9\n", returncode=0)
+    with pytest.raises(ValueError, match="BAD CONFIG"):
+        Release.get_release_tag(release, "patch")  # type: ignore[arg-type]
+
+
+def test_get_release_tag_never_prereleases_an_already_published_version(
+    stub_the_tag_list: MagicMock,
+) -> None:
+    """A suffixed tag must sit above every released version, not below one of them.
+
+    The suffixed path only probes `v{base}-{suffix}.{n}`, never `base_tag` itself, so anchoring the
+    base on the `latest` pointer would cut `v1.2.4-beta.0` after `v1.2.4` shipped. Under SemVer
+    `1.2.4-beta.0` precedes `1.2.4`, so the sequence would run backwards.
+
+    Parameters:
+        stub_the_tag_list: The patched tag listing.
+
+    Raises:
+        None
+
+    Returns:
+        None
+    """
+    release = SimpleNamespace(tag_name="v1.2.3")
+    # v1.2.4 shipped with `r`, which leaves the latest pointer on v1.2.3.
+    taken = {"v1.2.3", "v1.2.4"}
+    stub_the_tag_list.return_value = SimpleNamespace(stdout="\n".join(sorted(taken)), returncode=0)
+    with patch("mega_snake.light_weight.release._tag_exists", side_effect=lambda tag: tag in taken):
+        result = Release.get_release_tag(release, "patch", "beta")  # type: ignore[arg-type]
+
+    assert result == "v1.2.5-beta.0"
+    # The released version must not be the one being pre-released.
+    assert not result.startswith("v1.2.4-"), "cut a prerelease of a version that already shipped"
+
+
+def test_get_release_tag_promotes_a_prerelease_to_its_own_version(
+    stub_the_tag_list: MagicMock,
+) -> None:
+    """The suffixed and plain paths must agree on the base, so a beta announces the release it precedes."""
+    release = SimpleNamespace(tag_name="v1.2.3")
+    taken = {"v1.2.3", "v1.2.4"}
+    stub_the_tag_list.return_value = SimpleNamespace(stdout="\n".join(sorted(taken)), returncode=0)
+    with patch("mega_snake.light_weight.release._tag_exists", side_effect=lambda tag: tag in taken):
+        prerelease = Release.get_release_tag(release, "patch", "beta")  # type: ignore[arg-type]
+        final = Release.get_release_tag(release, "patch")  # type: ignore[arg-type]
+
+    assert prerelease == "v1.2.5-beta.0"
+    assert final == "v1.2.5"
+    # SemVer: 1.2.5-beta.0 precedes 1.2.5, so the prerelease announces exactly this release.
+    assert prerelease.startswith(f"{final}-"), f"{prerelease} does not precede {final}"
+
+
+def test_highest_version_excludes_suffixed_tags(stub_the_tag_list: MagicMock) -> None:
+    """A prerelease tag must never raise the ceiling, or one beta would skip the whole sequence.
+
+    `VERSION_PATTERN` is anchored, so `v9.9.9-beta.0` cannot match. Without that anchoring a single
+    prerelease would push every future release past it.
+
+    Parameters:
+        stub_the_tag_list: The patched tag listing.
+
+    Raises:
+        None
+
+    Returns:
+        None
+    """
+    stub_the_tag_list.return_value = SimpleNamespace(
+        stdout="v1.2.3\nv1.2.4\nv9.9.9-beta.0\n", returncode=0
+    )
+    assert release_module._highest_version(fallback=[0, 0, 0]) == [1, 2, 4]
