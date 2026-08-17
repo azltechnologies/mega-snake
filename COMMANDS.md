@@ -217,7 +217,7 @@ Creates a diff tree of changes and a commit list between two points in history. 
 | Option | Description |
 | --- | --- |
 | `-o, --origin-hash TEXT` | Commit hash to compare against instead of master |
-| `-t, --target-hash TEXT` | Commit hash to compare up to, instead of the current HEAD. Forces --scope c, since the index and the working tree only exist for HEAD; combining it with another scope is rejected. |
+| `-t, --target-hash TEXT` | Commit hash to compare up to, instead of the current HEAD. Requires --scope c (the default), since the index and the working tree only exist for HEAD; any other scope is rejected. |
 | `-d, --delete-original-files` | Delete the generated copy of the original files in the diff tree |
 | `-s, --scope [c\|s\|u]` | Changes to include: (c)ommitted only [default], committed and (s)taged, or also (u)nstaged and untracked. Only 'c' is compatible with --target-hash: the other two read the index and the working tree, which exist only for HEAD, so passing them together is rejected instead of silently ignoring one of them.  [default: c] |
 | `-h, --help` | Show this message and exit. |
@@ -402,6 +402,7 @@ Creates a GitHub release and tag: the new tag is the latest release's version wi
 
 | Option | Description |
 | --- | --- |
+| `-p, --tag-pattern TEXT` | Pattern describing this project's release tags, where `$1`, `$2` and `$3` stand for the major, minor and patch numbers and everything else is literal (`$$` is a literal `$`). Defaults to `v$1.$2.$3`, or to the `release_tag_pattern` property when the project sets one. The pattern must match the latest release's tag, or the command stops. |
 | `-s, --tag-suffix TEXT` | Pre-release label appended to the new tag (v1.2.4-<suffix>.N). Only valid for the 'p' and 'r' release types: a 'l' release takes over the latest pointer, which GitHub only ever grants to a plain version, so the two are mutually exclusive. |
 | `-v, --version-part [patch\|minor\|major]` | Which component of the latest release's version to increment: 'patch' (the last number), 'minor' (the middle one, resetting the patch to zero) or 'major' (the first one, resetting the other two to zero).  [default: patch] |
 | `-h, --help` | Show this message and exit. |
@@ -471,9 +472,26 @@ below tags that already exist; taking the maximum on every derivation is what ma
 hold unconditionally — a new tag can never land below one that was already published. The `latest`
 release still decides whether the version is usable at all (see the note below).
 
-A release tagged by hand in the GitHub UI can hold the `latest` mark with any tag text, so the command
-refuses to continue when that tag is not a `vX.Y.Z` version: there is nothing to increment. Publish a
-version-tagged release first, or create that one with `gh release create`.
+#### Tag patterns
+
+The tag format is **not** hard-coded. A pattern describes the tags this project already uses, with
+`$1`, `$2` and `$3` standing for the major, minor and patch numbers; everything else is literal, and
+`$$` is a literal `$`. The same string parses the current tag and renders the next one, so the two
+can never disagree.
+
+| Pattern | Latest tag | Next patch |
+|---|---|---|
+| `v$1.$2.$3` *(default)* | `v1.2.3` | `v1.2.4` |
+| `$1.$2.$3` | `1.2.3` | `1.2.4` |
+| `rel-$1_$2_$3` | `rel-1_2_3` | `rel-1_2_4` |
+
+Set it per invocation with `--tag-pattern`, or per project with the `release_tag_pattern` property.
+All three placeholders are required, since `--version-part` names exactly those three components.
+
+The pattern must match the tag of the latest release, and the command stops when it does not — a
+pattern that describes nothing in the repository would otherwise fail much later, with nothing
+pointing at it as the cause. Only tags the pattern recognises count towards the next version, so tags
+left over from a different scheme never raise the ceiling.
 
 ### expired-certs-jks
 

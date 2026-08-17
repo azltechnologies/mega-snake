@@ -28,8 +28,8 @@ from mega_snake.diff_tree.file_type import FileType
     "-t",
     type=click.STRING,
     default=None,
-    help="Commit hash to compare up to, instead of the current HEAD. Forces --scope c, since the index and"
-    " the working tree only exist for HEAD; combining it with another scope is rejected.",
+    help="Commit hash to compare up to, instead of the current HEAD. Requires --scope c (the default),"
+    " since the index and the working tree only exist for HEAD; any other scope is rejected.",
 )
 @click.option(
     "--delete-original-files",

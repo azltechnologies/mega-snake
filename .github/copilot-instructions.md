@@ -649,12 +649,26 @@ in CI, so any instability turns into spurious failures.
 
 ### 4.2 Property Management (`src/mega_snake/util/props.py`)
 
-Configuration is layered:
-1. **Hardcoded Defaults**
-2. **`src/config.properties`**: Static project config (versions, default paths).
-3. **Local Overrides**: A local file (usually ignored by git) that overrides specific keys for a specific developer machine.
+#### ⚠️ CRITICAL: `config.properties` is repository-internal, never user-facing
 
-Access properties via `get_property(key)`.
+**`src/config.properties` is NOT a configuration file for users of `mega-snake`.** It is internal metadata
+for this repository's development — it contains build-time constants, version pins, and resource paths used by
+commands that touch this codebase (like `generate-docs` and `dependency_audit`). A user installing `mgsnake` from
+PyPI has no `src/config.properties` and will never need one. T
+
+The only configuration users can or should edit is an optional local shell profile (sourced by `config_setup.sh` /
+`config_setup.ps1`), which receives shell-specific overrides like `PATH` extensions or alias definitions. That is
+separate from property management and is documented under `init-local-config` (§3.1).
+
+#### Configuration layers (internal, for reference)
+
+When initialized, `AppProperties` reads from three layers (lowest to highest priority):
+1. **Hardcoded Defaults** — built into the Python code as constants or fallback values.
+2. **`src/config.properties`** — a static file committed to this repository, used only by internal tooling and tests.
+3. **Local Overrides** — an optional, git-ignored shell script sourced by the user's shell profile (documented in
+   `init-local-config`, §3.1), which is the **only** configuration mechanism end-users have.
+
+Access properties programmatically via `get_property(key).
 
 **Note:** `no_init` commands (§2.1) cannot use any of this — `AppProperties` is never built for them. They must
 resolve packaged files through `importlib.resources` and the constants below instead.

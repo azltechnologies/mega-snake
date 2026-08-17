@@ -1,8 +1,11 @@
 # Publishes `mega-snake` to PyPI when a GitHub Release is published as a real release.
 #
 # Trigger rationale: `released` fires only for non-prerelease publications, so
-# `mgsnake create-release p` (a prerelease) never reaches PyPI, while `l` (latest) and
-# `r` (regular) do. Using `push: tags` instead would publish prereleases too.
+# `mgsnake create-release p` (a prerelease) never reaches PyPI. Both `l` (latest) and `r` (regular)
+# do reach it, and `r` accepts `--tag-suffix` — `mgsnake create-release r --tag-suffix beta` is a
+# supported invocation that publishes a NON-prerelease tagged `vX.Y.Z-beta.N`. Only plain versions
+# are publishable, so the job is gated on the tag shape and simply does not run for the rest, rather
+# than failing red on an intentional invocation. Using `push: tags` would publish prereleases too.
 #
 # Publishing to PyPI is IRREVERSIBLE: a version number can never be reused, even after deleting the
 # file. Every validation below therefore runs *before* the build, and the job fails closed.
@@ -24,6 +27,9 @@ jobs:
   publish:
     name: Validate and publish to PyPI
     runs-on: ubuntu-latest
+    # A suffixed tag is a build of a version, not the version itself: there is nothing to publish.
+    # The regex below stays as the fail-closed backstop for anything this filter lets through.
+    if: ${{ !contains(github.event.release.tag_name, '-') }}
 
     steps:
       - uses: actions/checkout@v7

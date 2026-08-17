@@ -33,6 +33,10 @@ lives in the GitHub Release body (`gh release create --generate-notes`); this fi
 - **Automated release pipeline.** Publishing to PyPI now runs from a GitHub Release, gated on the tag
   matching `vX.Y.Z`, the version in `pyproject.toml` agreeing with it, and this file documenting the release.
   `twine check` validates the distributions before the upload.
+- **`create-release --tag-pattern`.** The release tag format is no longer hard-coded to `vX.Y.Z`: a
+  pattern such as `$1.$2.$3` or `rel-$1_$2_$3` describes whatever scheme the project already uses,
+  where `$1`, `$2` and `$3` are the major, minor and patch numbers. Set it per invocation, or per
+  project with the `release_tag_pattern` property. The pattern must match the latest release's tag.
 - **`create-release --version-part`.** The new tag is now derived from the latest release by incrementing
   its `patch`, `minor` or `major` component, instead of appending a free-form suffix. `--tag-suffix` still
   produces pre-release builds (`v1.2.4-beta.0`), and is rejected for `latest` releases, which GitHub only

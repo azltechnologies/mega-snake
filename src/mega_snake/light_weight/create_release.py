@@ -6,7 +6,7 @@ Create a GitHub release for the current project.
 from typing import Optional
 import click
 import mega_snake.light_weight.release_handler as handler
-from mega_snake.light_weight.release import Release, get_latest_release
+from mega_snake.light_weight.release import DEFAULT_TAG_PATTERN, Release, get_latest_release, resolve_tag_pattern
 from mega_snake.util.formatting import ws_info, ws_success
 from mega_snake.util.util import get_validated_input, get_current_commit
 from mega_snake.constants import RELEASE_TYPE_OPT, VERSION_PART_OPT
@@ -31,6 +31,16 @@ NUM_RETRIES = 3
 @click.argument("notes", type=click.STRING, required=False, default=None)
 @click.argument("branch", type=click.STRING, required=False, default=None)
 @click.option(
+    "--tag-pattern",
+    "-p",
+    type=click.STRING,
+    default=None,
+    help="Pattern describing this project's release tags, where `$1`, `$2` and `$3` stand for the"
+    f" major, minor and patch numbers and everything else is literal (`$$` is a literal `$`)."
+    f" Defaults to `{DEFAULT_TAG_PATTERN}`, or to the `release_tag_pattern` property when the project"
+    " sets one. The pattern must match the latest release's tag, or the command stops.",
+)
+@click.option(
     "--tag-suffix",
     "-s",
     type=click.STRING,
@@ -50,7 +60,12 @@ NUM_RETRIES = 3
     " other two to zero).",
 )
 def create_release(
-    release_type: str, notes: Optional[str], branch: Optional[str], version_part: str, tag_suffix: Optional[str]
+    release_type: str,
+    notes: Optional[str],
+    branch: Optional[str],
+    version_part: str,
+    tag_suffix: Optional[str],
+    tag_pattern: Optional[str],
 ) -> None:
     """
     Creates a new release on GitHub with the given parameters.
@@ -66,6 +81,7 @@ def create_release(
         branch: Optional[str] - Branch to create the release from; defaults to the current branch.
         version_part: str - Version component to increment: 'patch', 'minor' or 'major'.
         tag_suffix: Optional[str] - Pre-release label for the new tag; rejected for the 'l' type.
+        tag_pattern: Optional[str] - Tag pattern overriding the configured or default one.
 
     Raises:
         ValueError: If the release type is not one of the supported ones.
@@ -104,7 +120,7 @@ def create_release(
     latest_release: Release = get_latest_release()
 
     # getting the new tag
-    new_tag: str = latest_release.get_release_tag(version_part, tag_suffix)
+    new_tag: str = latest_release.get_release_tag(version_part, tag_suffix, resolve_tag_pattern(tag_pattern))
     # publishing the release
     handler.publish_release(new_tag, tag_flag, notes_release, branch)
 

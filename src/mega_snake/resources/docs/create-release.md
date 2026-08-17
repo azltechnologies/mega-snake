@@ -59,6 +59,23 @@ below tags that already exist; taking the maximum on every derivation is what ma
 hold unconditionally — a new tag can never land below one that was already published. The `latest`
 release still decides whether the version is usable at all (see the note below).
 
-A release tagged by hand in the GitHub UI can hold the `latest` mark with any tag text, so the command
-refuses to continue when that tag is not a `vX.Y.Z` version: there is nothing to increment. Publish a
-version-tagged release first, or create that one with `gh release create`.
+## Tag patterns
+
+The tag format is **not** hard-coded. A pattern describes the tags this project already uses, with
+`$1`, `$2` and `$3` standing for the major, minor and patch numbers; everything else is literal, and
+`$$` is a literal `$`. The same string parses the current tag and renders the next one, so the two
+can never disagree.
+
+| Pattern | Latest tag | Next patch |
+|---|---|---|
+| `v$1.$2.$3` *(default)* | `v1.2.3` | `v1.2.4` |
+| `$1.$2.$3` | `1.2.3` | `1.2.4` |
+| `rel-$1_$2_$3` | `rel-1_2_3` | `rel-1_2_4` |
+
+Set it per invocation with `--tag-pattern`, or per project with the `release_tag_pattern` property.
+All three placeholders are required, since `--version-part` names exactly those three components.
+
+The pattern must match the tag of the latest release, and the command stops when it does not — a
+pattern that describes nothing in the repository would otherwise fail much later, with nothing
+pointing at it as the cause. Only tags the pattern recognises count towards the next version, so tags
+left over from a different scheme never raise the ceiling.

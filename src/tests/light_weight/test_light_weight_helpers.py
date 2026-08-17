@@ -1,5 +1,6 @@
 """Additional tests for light_weight helpers."""
 
+
 from datetime import datetime
 from types import SimpleNamespace
 from typing import Generator
@@ -14,7 +15,20 @@ from mega_snake.light_weight.create_release import _get_notes, create_release
 from mega_snake.light_weight.echo import echo
 from mega_snake.light_weight.jks_expired_certs import expired_certs
 from mega_snake.light_weight import release as release_module
-from mega_snake.light_weight.release import Release, _create_release_list, get_latest_release
+from mega_snake.light_weight.release import (
+    DEFAULT_TAG_PATTERN,
+    Release,
+    _create_release_list,
+    build_tag,
+    compile_tag_pattern,
+    get_latest_release,
+    resolve_tag_pattern,
+    validate_tag_pattern,
+)
+
+
+# Compiled form of the default tag pattern, which the tag scan now takes as an argument.
+_DEFAULT_EXPRESSION = compile_tag_pattern(DEFAULT_TAG_PATTERN)
 
 
 @pytest.fixture(autouse=True)
@@ -44,7 +58,7 @@ def test_create_release_flows() -> None:
     assert _get_notes(None) == ""
     assert _get_notes("  release notes  ") == '--notes "release notes"'
 
-    latest = SimpleNamespace(tag_name="v1.0.0", get_release_tag=lambda part, suffix=None: "v1.0.1")
+    latest = SimpleNamespace(tag_name="v1.0.0", get_release_tag=lambda part, suffix=None, pattern=None: "v1.0.1")
     with patch("mega_snake.light_weight.create_release.handler.git_fetch"), patch(
         "mega_snake.light_weight.create_release.get_latest_release", return_value=latest
     ), patch("mega_snake.light_weight.create_release.handler.publish_release"), patch(
@@ -52,7 +66,7 @@ def test_create_release_flows() -> None:
     ), patch(
         "mega_snake.light_weight.create_release.get_validated_input", return_value="n"
     ):
-        create_release.callback(release_type="l", notes=None, branch=None, version_part="patch", tag_suffix=None)
+        create_release.callback(release_type="l", notes=None, branch=None, version_part="patch", tag_suffix=None, tag_pattern=None)
 
     with patch("mega_snake.light_weight.create_release.handler.git_fetch"), patch(
         "mega_snake.light_weight.create_release.get_latest_release", side_effect=[latest, latest]
@@ -60,24 +74,24 @@ def test_create_release_flows() -> None:
         "mega_snake.light_weight.create_release.handler.set_release_to_latest"
     ) as set_latest:
         create_release.callback(
-            release_type="r", notes="notes ok", branch="branch", version_part="patch", tag_suffix=None
+            release_type="r", notes="notes ok", branch="branch", version_part="patch", tag_suffix=None, tag_pattern=None
         )
         set_latest.assert_not_called()
 
-    newer = SimpleNamespace(tag_name="v2.0.0", get_release_tag=lambda part, suffix=None: "v2.0.1")
+    newer = SimpleNamespace(tag_name="v2.0.0", get_release_tag=lambda part, suffix=None, pattern=None: "v2.0.1")
     with patch("mega_snake.light_weight.create_release.handler.git_fetch"), patch(
         "mega_snake.light_weight.create_release.get_latest_release", side_effect=[latest, newer]
     ), patch("mega_snake.light_weight.create_release.handler.publish_release"), patch(
         "mega_snake.light_weight.create_release.handler.set_release_to_latest"
     ) as set_latest:
         create_release.callback(
-            release_type="r", notes="notes ok", branch="branch", version_part="patch", tag_suffix=None
+            release_type="r", notes="notes ok", branch="branch", version_part="patch", tag_suffix=None, tag_pattern=None
         )
         set_latest.assert_called_once_with(latest.tag_name)
 
     with pytest.raises(ValueError, match="Invalid release type: x"):
         create_release.callback(
-            release_type="x", notes=None, branch="branch", version_part="patch", tag_suffix=None
+            release_type="x", notes=None, branch="branch", version_part="patch", tag_suffix=None, tag_pattern=None
         )
 
 
@@ -201,7 +215,6 @@ def test_get_release_tag_produces_a_tag_the_release_workflow_accepts() -> None:
     "bad_tag",
     [
         pytest.param("v0.1.5-beta.0", id="suffixed-tag"),
-        pytest.param("0.1.5", id="missing-v-prefix"),
         pytest.param("v1.2", id="two-components"),
         pytest.param("v1.2.3.4", id="four-components"),
         pytest.param("latest", id="not-a-version"),
@@ -221,7 +234,7 @@ def test_get_release_tag_rejects_a_latest_release_without_a_version_tag(bad_tag:
     """
     release = SimpleNamespace(tag_name=bad_tag)
     with patch("mega_snake.light_weight.release._tag_exists", return_value=False):
-        with pytest.raises(ValueError, match="is not a 'vX.Y.Z' version"):
+        with pytest.raises(click.ClickException, match="does not match the latest release tag"):
             Release.get_release_tag(release, "patch")  # type: ignore[arg-type]
 
 
@@ -323,14 +336,15 @@ def test_create_release_allows_a_suffix_for_non_latest_types(release_type: str) 
     Returns:
         None
     """
-    latest = SimpleNamespace(tag_name="v1.0.0", get_release_tag=lambda part, suffix=None: f"v1.0.1-{suffix}.0")
+    latest = SimpleNamespace(tag_name="v1.0.0", get_release_tag=lambda part, suffix=None, pattern=None: f"v1.0.1-{suffix}.0")
     with patch("mega_snake.light_weight.create_release.handler.git_fetch"), patch(
         "mega_snake.light_weight.create_release.get_latest_release", return_value=latest
     ), patch("mega_snake.light_weight.create_release.handler.publish_release") as publish, patch(
         "mega_snake.light_weight.create_release.handler.set_release_to_latest"
     ):
         create_release.callback(
-            release_type=release_type, notes=None, branch="b", version_part="patch", tag_suffix="beta"
+            release_type=release_type, notes=None, branch="b", version_part="patch", tag_suffix="beta",
+            tag_pattern=None,
         )
     assert publish.call_args.args[0] == "v1.0.1-beta.0"
 
@@ -349,7 +363,7 @@ def test_create_release_rejects_a_suffix_on_a_latest_release() -> None:
             match="BAD REQUEST: --tag-suffix and the 'l' release type are mutually exclusive",
         ):
             create_release.callback(
-                release_type="l", notes=None, branch="b", version_part="patch", tag_suffix="beta"
+                release_type="l", notes=None, branch="b", version_part="patch", tag_suffix="beta", tag_pattern=None
             )
     # Refused before any side effect: nothing is fetched, resolved or published.
     git_fetch.assert_not_called()
@@ -359,14 +373,14 @@ def test_create_release_rejects_a_suffix_on_a_latest_release() -> None:
 
 def test_create_release_still_allows_a_latest_release_without_a_suffix() -> None:
     """The exclusion must only bite when a suffix is actually given."""
-    latest = SimpleNamespace(tag_name="v1.0.0", get_release_tag=lambda part, suffix=None: "v1.0.1")
+    latest = SimpleNamespace(tag_name="v1.0.0", get_release_tag=lambda part, suffix=None, pattern=None: "v1.0.1")
     with patch("mega_snake.light_weight.create_release.handler.git_fetch"), patch(
         "mega_snake.light_weight.create_release.get_latest_release", return_value=latest
     ), patch("mega_snake.light_weight.create_release.handler.publish_release") as publish, patch(
         "mega_snake.light_weight.create_release.get_validated_input", return_value="y"
     ):
         create_release.callback(
-            release_type="l", notes=None, branch="b", version_part="patch", tag_suffix=None
+            release_type="l", notes=None, branch="b", version_part="patch", tag_suffix=None, tag_pattern=None
         )
     assert publish.call_args.args[0] == "v1.0.1"
 
@@ -397,13 +411,13 @@ def test_get_release_tag_refuses_a_hand_written_latest_tag(hand_written_tag: str
         None
     """
     release = SimpleNamespace(tag_name=hand_written_tag)
-    with pytest.raises(ValueError, match="BAD CONFIG") as excinfo:
+    with pytest.raises(click.ClickException, match="BAD REQUEST") as excinfo:
         Release.get_release_tag(release, "patch")  # type: ignore[arg-type]
 
     message = str(excinfo.value)
     # The message must name the offending tag and tell the user where to go instead.
     assert hand_written_tag in message
-    assert "gh release create" in message
+    assert "Adjust the pattern" in message
 
 
 def test_get_release_tag_falls_back_to_the_highest_version_on_collision() -> None:
@@ -449,21 +463,21 @@ def test_highest_version_ignores_tags_that_are_not_versions() -> None:
     """
     listed = SimpleNamespace(stdout="v1.0.0\nv2.5.1\nrelease-2026\nv9.9.9-beta.0\nnightly\nv3\n", returncode=0)
     with patch("mega_snake.light_weight.release.run_operation", return_value=listed):
-        assert release_module._highest_version(fallback=[0, 0, 0]) == [2, 5, 1]
+        assert release_module._highest_version(_DEFAULT_EXPRESSION, fallback=[0, 0, 0]) == [2, 5, 1]
 
 
 def test_highest_version_falls_back_when_no_version_tag_exists() -> None:
     """A repository with no version tags must keep the version derived from the latest release."""
     listed = SimpleNamespace(stdout="nightly\nrelease-2026\n", returncode=0)
     with patch("mega_snake.light_weight.release.run_operation", return_value=listed):
-        assert release_module._highest_version(fallback=[1, 2, 3]) == [1, 2, 3]
+        assert release_module._highest_version(_DEFAULT_EXPRESSION, fallback=[1, 2, 3]) == [1, 2, 3]
 
 
 def test_highest_version_never_returns_below_the_fallback() -> None:
     """When every tag is older than the latest release, the latest release still wins."""
     listed = SimpleNamespace(stdout="v0.1.0\nv0.2.0\n", returncode=0)
     with patch("mega_snake.light_weight.release.run_operation", return_value=listed):
-        assert release_module._highest_version(fallback=[1, 2, 3]) == [1, 2, 3]
+        assert release_module._highest_version(_DEFAULT_EXPRESSION, fallback=[1, 2, 3]) == [1, 2, 3]
 
 
 def test_get_release_tag_never_lands_below_a_higher_tag_that_did_not_collide(
@@ -541,7 +555,7 @@ def test_get_release_tag_rejects_a_non_semver_latest_before_using_the_tag_list(
     """
     release = SimpleNamespace(tag_name="release-2026")
     stub_the_tag_list.return_value = SimpleNamespace(stdout="v9.9.9\n", returncode=0)
-    with pytest.raises(ValueError, match="BAD CONFIG"):
+    with pytest.raises(click.ClickException, match="BAD REQUEST"):
         Release.get_release_tag(release, "patch")  # type: ignore[arg-type]
 
 
@@ -610,4 +624,148 @@ def test_highest_version_excludes_suffixed_tags(stub_the_tag_list: MagicMock) ->
     stub_the_tag_list.return_value = SimpleNamespace(
         stdout="v1.2.3\nv1.2.4\nv9.9.9-beta.0\n", returncode=0
     )
-    assert release_module._highest_version(fallback=[0, 0, 0]) == [1, 2, 4]
+    assert release_module._highest_version(_DEFAULT_EXPRESSION, fallback=[0, 0, 0]) == [1, 2, 4]
+
+
+@pytest.mark.parametrize(
+    "pattern, latest, expected",
+    [
+        pytest.param("v$1.$2.$3", "v1.2.3", "v1.2.4", id="the-default-v-prefixed-scheme"),
+        pytest.param("$1.$2.$3", "1.2.3", "1.2.4", id="no-prefix-common-in-java-projects"),
+        pytest.param("rel-$1_$2_$3", "rel-1_2_3", "rel-1_2_4", id="underscores-and-a-word-prefix"),
+        pytest.param("v$1.$2.$3$$", "v1.2.3$", "v1.2.4$", id="an-escaped-dollar-stays-literal"),
+    ],
+)
+def test_get_release_tag_honours_the_projects_own_tag_scheme(
+    pattern: str, latest: str, expected: str, stub_the_tag_list: MagicMock
+) -> None:
+    """A project's existing tag scheme must be usable, not just this repository's.
+
+    Hard-coding `vX.Y.Z` would refuse to run for anyone tagging `1.2.3`, which is common in the
+    Java/Gradle projects this tool targets. One pattern both parses the current tag and renders the
+    next one, so the two can never disagree.
+
+    Parameters:
+        pattern: The project's tag pattern.
+        latest: The tag its latest release carries.
+        expected: The tag the next patch release must get.
+        stub_the_tag_list: The patched tag listing.
+
+    Raises:
+        None
+
+    Returns:
+        None
+    """
+    release = SimpleNamespace(tag_name=latest)
+    stub_the_tag_list.return_value = SimpleNamespace(stdout=f"{latest}\n", returncode=0)
+    with patch("mega_snake.light_weight.release._tag_exists", return_value=False):
+        result = Release.get_release_tag(release, "patch", None, pattern)  # type: ignore[arg-type]
+
+    assert result == expected
+
+
+def test_highest_version_only_counts_tags_of_the_projects_own_scheme(
+    stub_the_tag_list: MagicMock,
+) -> None:
+    """The scan must use the project's pattern, so tags from another scheme never raise the ceiling.
+
+    A repository that migrated schemes still holds its old tags; counting them would push every
+    future release past a version the project no longer uses.
+
+    Parameters:
+        stub_the_tag_list: The patched tag listing.
+
+    Raises:
+        None
+
+    Returns:
+        None
+    """
+    release = SimpleNamespace(tag_name="1.2.3")
+    stub_the_tag_list.return_value = SimpleNamespace(stdout="1.2.3\n1.5.0\nv9.9.9\n", returncode=0)
+    with patch("mega_snake.light_weight.release._tag_exists", return_value=False):
+        result = Release.get_release_tag(release, "patch", None, "$1.$2.$3")  # type: ignore[arg-type]
+
+    assert result == "1.5.1"
+    assert result != "v9.9.10", "counted a tag belonging to a different scheme"
+
+
+@pytest.mark.parametrize(
+    "pattern, missing",
+    [
+        pytest.param("v$1.$2", "$3", id="two-placeholders"),
+        pytest.param("v$1", "$2", id="one-placeholder"),
+        pytest.param("release-2026", "$1", id="no-placeholder-at-all"),
+    ],
+)
+def test_validate_tag_pattern_requires_all_three_placeholders(pattern: str, missing: str) -> None:
+    """All three placeholders are mandatory, because --version-part names exactly three components.
+
+    With a missing placeholder there would be a version part the pattern cannot express, so the
+    command would silently ignore part of its own interface.
+
+    Parameters:
+        pattern: The incomplete pattern.
+        missing: A placeholder the error must name.
+
+    Raises:
+        None
+
+    Returns:
+        None
+    """
+    with pytest.raises(click.ClickException, match="BAD REQUEST") as excinfo:
+        validate_tag_pattern(pattern, "v1.2.3")
+
+    assert missing in str(excinfo.value), "the error does not name the missing placeholder"
+
+
+def test_validate_tag_pattern_rejects_a_pattern_the_repository_does_not_use() -> None:
+    """Validating against the latest release turns a typo into an immediate, located error.
+
+    Without it the mismatch would surface much later, as a derivation that finds no version to build
+    on, with nothing pointing at the pattern as the cause.
+    """
+    with pytest.raises(click.ClickException, match="does not match the latest release tag") as excinfo:
+        validate_tag_pattern("v$1.$2.$3", "1.2.3")
+
+    message = str(excinfo.value)
+    assert "v$1.$2.$3" in message and "1.2.3" in message, "the error names neither the pattern nor the tag"
+
+
+def test_compile_and_build_are_inverses_of_each_other() -> None:
+    """A tag built from a pattern must be one the same pattern recognises.
+
+    They are separate functions walking the same placeholders, so nothing but this pins that they
+    agree — and a mismatch would make every derived tag unparseable on the next run.
+    """
+    for pattern in ("v$1.$2.$3", "$1.$2.$3", "rel-$1_$2_$3", "v$1.$2.$3$$"):
+        built = build_tag(pattern, [4, 5, 6])
+        match = compile_tag_pattern(pattern).match(built)
+        assert match is not None, f"{pattern} cannot parse the tag it just built: {built}"
+        assert [int(group) for group in match.groups()] == [4, 5, 6]
+
+
+def test_compile_tag_pattern_treats_literals_literally() -> None:
+    """The pattern describes a tag format, not a regular expression.
+
+    A `.` the user typed means a dot; if it were left as a regex metacharacter, `v1x2x3` would be
+    accepted as a valid tag and the pattern validation would stop meaning anything.
+    """
+    expression = compile_tag_pattern("v$1.$2.$3")
+    assert expression.match("v1.2.3") is not None
+    assert expression.match("v1x2x3") is None, "the dot was treated as a regex wildcard"
+
+
+def test_resolve_tag_pattern_prefers_the_invocation_then_the_project_then_the_default() -> None:
+    """Precedence lives in one place, so a future settings layer only has to change this function."""
+    with patch("mega_snake.light_weight.release.get_property", return_value="cfg-$1.$2.$3"):
+        assert resolve_tag_pattern("flag-$1.$2.$3") == "flag-$1.$2.$3"
+        assert resolve_tag_pattern(None) == "cfg-$1.$2.$3"
+
+    # An unconfigured project is the normal case, not an error: both lookups fall back cleanly.
+    with patch("mega_snake.light_weight.release.get_property", side_effect=KeyError("absent")):
+        assert resolve_tag_pattern(None) == DEFAULT_TAG_PATTERN
+    with patch("mega_snake.light_weight.release.get_property", side_effect=RuntimeError("no properties")):
+        assert resolve_tag_pattern(None) == DEFAULT_TAG_PATTERN
