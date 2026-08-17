@@ -267,9 +267,10 @@ def _get_versions() -> list[JavaVersion]:
 def _add_java_formatter(workspace_file: str, resources_path: str) -> None:
     """Add Java formatter xml to the vscode folder"""
     formatter_path: str = f"{resources_path}/java-formatter.xml"
-    assert os.path.exists(formatter_path), (
-        f"Java formatter file not found at {formatter_path}. Its supposed to be in the resources folder. This is a bug."
-    )
+    if not os.path.exists(formatter_path):
+        raise FileNotFoundError(
+            f"Java formatter file not found at {formatter_path}. Its supposed to be in the resources folder."
+        )
     vscode_path: str = f"{os.getcwd()}/.vscode"
     if not os.path.exists(vscode_path):
         os.makedirs(vscode_path, exist_ok=True)

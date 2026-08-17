@@ -272,7 +272,7 @@ def test_resources_path_validator(request) -> None:
 
         # Test when the resources location doesn't exist
         get_package_root.side_effect = [ROOT, non_existent_resource_folder]
-        with pytest.raises(AssertionError):
+        with pytest.raises(FileNotFoundError):
             init_app_properties(log_level, shell, light_weight)
         reset_mocks(*mocks.values())
 

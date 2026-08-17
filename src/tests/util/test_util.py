@@ -613,9 +613,9 @@ def test_ensure_working_path_invalid_property(
     monkeypatch.chdir(tmp_path)
 
     mk_get_property.return_value = ""
-    with pytest.raises(AssertionError, match="not found in the properties"):
+    with pytest.raises(ValueError, match="not found in the properties"):
         ensure_working_path()
 
     mk_get_property.return_value = str(tmp_path.parent / "somewhere_else")
-    with pytest.raises(AssertionError, match="not in the current directory"):
+    with pytest.raises(ValueError, match="not in the current directory"):
         ensure_working_path()
