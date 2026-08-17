@@ -67,7 +67,7 @@ jobs:
             echo "base=" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Pick model from trigger body
+      - name: Parse trigger directives
         id: model
         env:
           COMMENT_BODY: ${{ github.event.comment.body }}
@@ -85,6 +85,28 @@ jobs:
             echo "model=" >> "$GITHUB_OUTPUT"
           fi
 
+          # Escape hatch for the session persistence below: a conversation that
+          # grew too large, or drifted, can be reset from the comment itself
+          # instead of waiting for the cache to be evicted.
+          if printf '%s' "$body" | grep -Eq '(new|fresh) session|nueva sesi'; then
+            echo "fresh=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "fresh=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Runners are ephemeral, so Claude's conversation history dies with the run
+      # unless it is carried across explicitly. This restores what the previous
+      # run of THIS issue left behind; the matching save step runs after Claude.
+      # Keyed by issue number, because `--continue` resumes whatever session the
+      # CLI considers most recent -- state from an unrelated issue would be
+      # resumed just as happily.
+      - name: Restore Claude session
+        id: session
+        uses: ./.github/actions/restore-claude-session
+        with:
+          thread-id: ${{ github.event.issue.number }}
+          fresh: ${{ steps.model.outputs.fresh }}
+
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
@@ -100,5 +122,19 @@ jobs:
 
           # Allow Claude to run the project's dev toolchain and Git/GitHub commands so it can
           # validate changes (tests, lint, type-check) and manage PRs without manual approval.
+          #
+          # `continue-flag` expands to `--continue` only when a transcript for
+          # this workspace was actually restored: passing it without one makes
+          # the CLI exit with "no conversation found".
           claude_args: |
-            --allowed-tools Bash(uv:*),Bash(pytest:*),Bash(ruff:*),Bash(mypy:*),Bash(gh:*),Bash(git:*) ${{ steps.model.outputs.model != '' && format('--model {0}', steps.model.outputs.model) || '' }}
+            --allowed-tools Bash(uv:*),Bash(pytest:*),Bash(ruff:*),Bash(mypy:*),Bash(gh:*),Bash(git:*) ${{ steps.session.outputs.continue-flag }} ${{ steps.model.outputs.model != '' && format('--model {0}', steps.model.outputs.model) || '' }}
+
+      # No `if:` on purpose. The default `success()` means a failed run does not
+      # become the next checkpoint of the conversation: the following run then
+      # resumes the last state that actually completed, rather than one left
+      # half-written. Switch to `if: always()` to checkpoint failures too.
+      - name: Save Claude session
+        uses: ./.github/actions/save-claude-session
+        with:
+          cache-key: ${{ steps.session.outputs.cache-key }}
+          session-path: ${{ steps.session.outputs.session-path }}
