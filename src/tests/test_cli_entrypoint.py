@@ -14,6 +14,7 @@ from click.testing import CliRunner
 
 from mega_snake import __main__ as app_main
 from mega_snake.util.formatting import WorkspaceError, resolve_error_code
+from mega_snake.util.cli_group import ATTR_METADATA
 
 
 @pytest.mark.parametrize("command_name", ["shell-path", "generate-docs"])
@@ -35,7 +36,7 @@ def test_cli_uses_light_weight_mode_for_skip_commands() -> None:
     ctx = click.Context(app_main.cli)
     ctx.invoked_subcommand = "echo"
     ctx.obj = {}
-    skip_command = SimpleNamespace(callback=SimpleNamespace(flags={"flags": {"skip"}}))
+    skip_command = SimpleNamespace(callback=SimpleNamespace(**{ATTR_METADATA: {"flags": {"skip"}}}))
 
     with ctx.scope():
         with patch.dict(os.environ, {"MEGA_SNAKE_SHELL": "bash"}), patch.object(

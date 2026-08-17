@@ -11,13 +11,16 @@ from rich_click import RichGroup
 from mega_snake.constants import APP_NAME, DOCS_DIR, DOCS_FILE_SUFFIX, MODULE_NAME, RESOURCES_DIR
 
 # Attribute set on a callback by @cli_metadata, holding every metadata keyword it was given.
-ATTR_METADATA = "flags"
+# Deliberately distinct from META_FLAGS below: this is the *container* attribute name, not a key
+# inside it. Keeping the two apart avoids the confusing "callback.flags == {'flags': ...}" shape
+# that resulted from both once sharing the string "flags".
+ATTR_METADATA = "_cli_metadata"
 # Metadata keys, which double as the attribute names resolved onto the command object.
 ATTR_ALIAS = "aliases"
 ATTR_DOCS = "docs_fragment"
 ATTR_GROUP = "docs_group"
-# Metadata key holding the initialization flags read by the CLI entry point (hence the double
-# nesting: `@cli_metadata(flags={"skip"})` produces `callback.flags == {"flags": {"skip"}}`).
+# Metadata key holding the initialization flags read by the CLI entry point, e.g.
+# `@cli_metadata(flags={"skip"})` produces `getattr(callback, ATTR_METADATA) == {"flags": {"skip"}}`.
 META_FLAGS = "flags"
 # Metadata key marking a command that rewrites one of the local environment files, so the shell has
 # to re-source them once it finishes. Declared per command rather than per module: sitting in
