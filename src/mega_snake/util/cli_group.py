@@ -85,6 +85,48 @@ class CliGroup(RichGroup):
         group_key: str = module_parts[1] if len(module_parts) > 1 else module_parts[0]
         return cls._derive_group_title(group_key)
 
+    def __resolve_origin(self, cmd: click.Command) -> str:
+        """Describe where a command came from, for use in diagnostics.
+
+        Parameters:
+            cmd: The command whose origin should be described.
+
+        Raises:
+            None
+
+        Returns:
+            str: The command's documentation group, resolved from its module path when unset.
+        """
+        return getattr(cmd, ATTR_GROUP, "") or self._derive_group_name_from_callback(cmd.callback)
+
+    def __reject_duplicate(self, name: str, cmd: click.Command, label: str) -> None:
+        """Fail loudly when a name is already taken in this group.
+
+        Click's registry is a plain dict, so a second registration under an existing name silently
+        replaces the first one: the shadowed command becomes unreachable while every test that
+        exercises it directly keeps passing. Refusing the registration turns that into an immediate,
+        located failure instead of dead code that nobody notices.
+
+        Parameters:
+            name: The name (or alias) about to be registered.
+            cmd: The command being registered under that name.
+            label: How to describe the name in the error message ("Command" or "Alias").
+
+        Raises:
+            click.UsageError: If the name is already registered in this group.
+
+        Returns:
+            None
+        """
+        existing: Optional[click.Command] = self.commands.get(name)
+        if existing is None:
+            return
+        raise click.UsageError(
+            f"{label} '{name}' is already registered by '{self.__resolve_origin(existing)}' "
+            f"and cannot be reused by '{self.__resolve_origin(cmd)}'. "
+            "Rename one of them or drop the duplicate registration."
+        )
+
     def __add_alias_commands(self, cmd: click.Command, aliases: Optional[list[str]] = None) -> None:
         """Register hidden alias commands for the given real command.
 
@@ -109,6 +151,10 @@ class CliGroup(RichGroup):
                     short_help=f"Alias for '{cmd.name}'.",
                     epilog=cmd.epilog,
                 )
+                # An alias belongs to the same documentation group as the command it points at, so
+                # a later collision against it reports the owning command instead of this module.
+                setattr(alias_cmd, ATTR_GROUP, self.__resolve_origin(cmd))
+                self.__reject_duplicate(alias, cmd, "Alias")
                 super().add_command(alias_cmd, alias)
 
     def add_command(
@@ -133,7 +179,7 @@ class CliGroup(RichGroup):
             panel: Optional rich-click panel forwarded unchanged.
 
         Raises:
-            None
+            click.UsageError: If the resolved name is already registered in this group.
 
         Returns:
             None
@@ -144,6 +190,7 @@ class CliGroup(RichGroup):
         explicit_group: str = getattr(cmd, ATTR_GROUP, "") or metadata.get(ATTR_GROUP) or ""
         setattr(cmd, ATTR_DOCS, fragment_name)
         setattr(cmd, ATTR_GROUP, explicit_group or self._derive_group_name_from_callback(cmd.callback))
+        self.__reject_duplicate(name or cmd.name or "", cmd, "Command")
         super().add_command(cmd, name, aliases=aliases, panel=panel)
 
     def add_command_with_alias(self, cmd: click.Command, aliases: Optional[list[str]] = None) -> None:
