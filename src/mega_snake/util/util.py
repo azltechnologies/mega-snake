@@ -338,10 +338,10 @@ def ensure_working_path(decline_message: Optional[str] = None) -> str:
         str: The absolute path to the existing working path folder.
     """
     working_path: str = get_property("working_path")
-    assert working_path, "Working path is required but was not found in the properties. This is a bug."
-    assert Path(working_path).resolve().is_relative_to(Path.cwd().resolve()), (
-        "Working path is not in the current directory. This is a bug."
-    )
+    if not working_path:
+        raise ValueError("Working path is required but was not found in the properties.")
+    if not Path(working_path).resolve().is_relative_to(Path.cwd().resolve()):
+        raise ValueError("Working path is not in the current directory.")
     if os.path.exists(working_path):
         ws_info(f"Working path found: {working_path}")
         return working_path

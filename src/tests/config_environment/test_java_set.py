@@ -652,7 +652,7 @@ def test_add_java_formatter(
         os_path_exists.return_value = False
         result = runner.invoke(set_java_version)
         assert result.exit_code == 1
-        assert isinstance(result.exception, AssertionError)
+        assert isinstance(result.exception, FileNotFoundError)
         assert get_property.call_count == 4
         get_local_file.assert_called_once()
         java_set.assert_called_once()
