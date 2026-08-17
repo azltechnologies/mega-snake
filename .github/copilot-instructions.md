@@ -585,13 +585,13 @@ annotation, since the synopsis already shows which arguments exist:
 
 ```python
 epilog="""
-usage: mgsnake create-release <tag_suffix> <release_type> [notes] [branch]\n
+usage: mgsnake create-release <release_type> [notes] [branch]\n
 Args:\n
-    tag_suffix: str - suffix to add to the tag\n
+    release_type: char - 'p' (prerelease) | 'l' (latest) | 'r' (regular release)\n
     branch: Optional[str] - branch to create the release from. Default is the current branch.
 """
 ```
-→ renders as `- \`tag_suffix\` — suffix to add to the tag`
+→ renders as `- \`branch\` — branch to create the release from. Default is the current branch.`
 
 **Never move detail out of an option `help=` into an epilog.** If a flag needs a long explanation, the explanation
 belongs in field #5, where both `--help` and `COMMANDS.md` show it. An epilog that documents a flag is dropped, so
@@ -774,7 +774,7 @@ be reused, even after deleting the file — so every check runs before the build
 | What changed | A `## [X.Y.Z]` section in `CHANGELOG.md` | Must exist **and** carry content that is not the seeded placeholder |
 
 **The trigger is `release: types: [released]`, not `push: tags`.** `released` fires only for
-non-prerelease publications, so `mgsnake create-release <suffix> p` (prerelease) never reaches PyPI while
+non-prerelease publications, so `mgsnake create-release p` (prerelease) never reaches PyPI while
 `l` and `r` do. A tag-push trigger would publish prereleases.
 
 **`CHANGELOG.md` is hand-written, and that is the point.** Merge commit subjects in this repository read

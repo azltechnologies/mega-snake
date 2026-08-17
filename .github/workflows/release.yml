@@ -1,7 +1,7 @@
 # Publishes `mega-snake` to PyPI when a GitHub Release is published as a real release.
 #
 # Trigger rationale: `released` fires only for non-prerelease publications, so
-# `mgsnake create-release <suffix> p` (a prerelease) never reaches PyPI, while `l` (latest) and
+# `mgsnake create-release p` (a prerelease) never reaches PyPI, while `l` (latest) and
 # `r` (regular) do. Using `push: tags` instead would publish prereleases too.
 #
 # Publishing to PyPI is IRREVERSIBLE: a version number can never be reused, even after deleting the
