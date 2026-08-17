@@ -769,3 +769,68 @@ def test_resolve_tag_pattern_prefers_the_invocation_then_the_project_then_the_de
         assert resolve_tag_pattern(None) == DEFAULT_TAG_PATTERN
     with patch("mega_snake.light_weight.release.get_property", side_effect=RuntimeError("no properties")):
         assert resolve_tag_pattern(None) == DEFAULT_TAG_PATTERN
+
+
+@pytest.mark.parametrize(
+    "pattern, latest, expected",
+    [
+        pytest.param("v$1.$2.$3", "v1.2.3", "v1.2.4-beta.0", id="the-default-scheme"),
+        pytest.param("$1.$2.$3", "1.2.3", "1.2.4-beta.0", id="no-prefix-yields-valid-semver"),
+        pytest.param("rel-$1_$2_$3", "rel-1_2_3", "rel-1_2_4-beta.0", id="a-scheme-that-uses-hyphens"),
+    ],
+)
+def test_get_release_tag_marks_prereleases_with_a_hyphen_whatever_the_scheme(
+    pattern: str, latest: str, expected: str, stub_the_tag_list: MagicMock
+) -> None:
+    """The pre-release separator is always `-`, regardless of the separators inside the version.
+
+    It is not cosmetic: under SemVer the hyphen is what makes `1.2.4-beta.0` precede `1.2.4`. Using
+    the scheme's own separator instead would make `rel-1_2_4_beta.0` indistinguishable from a version
+    with a fourth component.
+
+    Parameters:
+        pattern: The project's tag pattern.
+        latest: The tag its latest release carries.
+        expected: The pre-release tag that must be produced.
+        stub_the_tag_list: The patched tag listing.
+
+    Raises:
+        None
+
+    Returns:
+        None
+    """
+    release = SimpleNamespace(tag_name=latest)
+    stub_the_tag_list.return_value = SimpleNamespace(stdout=f"{latest}\n", returncode=0)
+    with patch("mega_snake.light_weight.release._tag_exists", return_value=False):
+        result = Release.get_release_tag(release, "patch", "beta", pattern)  # type: ignore[arg-type]
+
+    assert result == expected
+
+
+def test_a_suffixed_tag_is_never_counted_as_a_version_even_when_the_scheme_uses_hyphens(
+    stub_the_tag_list: MagicMock,
+) -> None:
+    """A pre-release build must not raise the ceiling, including for hyphen-bearing schemes.
+
+    `rel-$1_$2_$3` contains a hyphen itself, so the distinction cannot rest on "the tag has a
+    hyphen": it rests on the pattern not matching the trailing `-beta.N`.
+
+    Parameters:
+        stub_the_tag_list: The patched tag listing.
+
+    Raises:
+        None
+
+    Returns:
+        None
+    """
+    release = SimpleNamespace(tag_name="rel-1_2_3")
+    stub_the_tag_list.return_value = SimpleNamespace(
+        stdout="rel-1_2_3\nrel-9_9_9-beta.0\n", returncode=0
+    )
+    with patch("mega_snake.light_weight.release._tag_exists", return_value=False):
+        result = Release.get_release_tag(release, "patch", None, "rel-$1_$2_$3")  # type: ignore[arg-type]
+
+    assert result == "rel-1_2_4"
+    assert result != "rel-9_10_0", "a pre-release build raised the version ceiling"

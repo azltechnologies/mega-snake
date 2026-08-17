@@ -3,9 +3,10 @@
 # Trigger rationale: `released` fires only for non-prerelease publications, so
 # `mgsnake create-release p` (a prerelease) never reaches PyPI. Both `l` (latest) and `r` (regular)
 # do reach it, and `r` accepts `--tag-suffix` — `mgsnake create-release r --tag-suffix beta` is a
-# supported invocation that publishes a NON-prerelease tagged `vX.Y.Z-beta.N`. Only plain versions
-# are publishable, so the job is gated on the tag shape and simply does not run for the rest, rather
-# than failing red on an intentional invocation. Using `push: tags` would publish prereleases too.
+# supported invocation that publishes a NON-prerelease tagged `vX.Y.Z-beta.N`. The job is gated on
+# the flags GitHub recorded for the release rather than on the tag text, and simply does not run for
+# the rest, instead of failing red on an intentional invocation. Using `push: tags` would publish
+# prereleases too.
 #
 # Publishing to PyPI is IRREVERSIBLE: a version number can never be reused, even after deleting the
 # file. Every validation below therefore runs *before* the build, and the job fails closed.
@@ -27,9 +28,11 @@ jobs:
   publish:
     name: Validate and publish to PyPI
     runs-on: ubuntu-latest
-    # A suffixed tag is a build of a version, not the version itself: there is nothing to publish.
-    # The regex below stays as the fail-closed backstop for anything this filter lets through.
-    if: ${{ !contains(github.event.release.tag_name, '-') }}
+    # Gate on what GitHub itself recorded, never on the shape of the tag: a project whose tags carry
+    # a hyphen (`rel-1_2_4`) would be skipped forever by a text filter, and `mgsnake create-release`
+    # supports exactly those patterns. `prerelease` is set by the platform, so it cannot disagree
+    # with what was actually published. The regex below stays as the fail-closed backstop.
+    if: ${{ !github.event.release.prerelease && !github.event.release.draft }}
 
     steps:
       - uses: actions/checkout@v7
@@ -53,10 +56,20 @@ jobs:
         env:
           TAG_NAME: ${{ github.event.release.tag_name }}
         run: |
+          # A build tag (vX.Y.Z-beta.N) is a legitimate product of `create-release r --tag-suffix`:
+          # there is simply no version to publish, so the job stops green instead of reporting a
+          # failure for an intentional invocation. Anything else that is not a plain version is a
+          # genuine mistake and fails the job.
+          if [[ "${TAG_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+- ]]; then
+            echo "::notice::'${TAG_NAME}' is a pre-release build, not a version. Nothing to publish."
+            echo "PUBLISHABLE=false" >> "${GITHUB_ENV}"
+            exit 0
+          fi
           if [[ ! "${TAG_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::Tag '${TAG_NAME}' does not match the required 'vX.Y.Z' format."
             exit 1
           fi
+          echo "PUBLISHABLE=true" >> "${GITHUB_ENV}"
           VERSION="${TAG_NAME#v}"
           # tomllib is stdlib on 3.11+, so this needs no dependency of its own.
           PROJECT_VERSION="$(python -c "import tomllib, pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")"
@@ -68,6 +81,7 @@ jobs:
           echo "Publishing version ${VERSION}."
 
       - name: Validate the changelog documents this version
+        if: ${{ env.PUBLISHABLE == 'true' }}
         env:
           RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
         run: |
@@ -111,18 +125,23 @@ jobs:
       # A tag can point at any commit, so the PR checks are not proof that *this* tree is releasable.
       # Republishing is impossible, which makes re-running them the cheapest insurance available.
       - name: Run tests
+        if: ${{ env.PUBLISHABLE == 'true' }}
         run: uv run pytest
 
       - name: Run ruff check
+        if: ${{ env.PUBLISHABLE == 'true' }}
         run: uv run ruff check src/mega_snake --output-format=concise
 
       - name: Run mypy
+        if: ${{ env.PUBLISHABLE == 'true' }}
         run: uv run mypy --show-column-numbers --no-error-summary src/mega_snake
 
       - name: Check generated command docs are up to date
+        if: ${{ env.PUBLISHABLE == 'true' }}
         run: uv run mgsnake generate-docs --check
 
       - name: Build the distributions
+        if: ${{ env.PUBLISHABLE == 'true' }}
         run: |
           rm -rf dist
           uv build
@@ -131,9 +150,11 @@ jobs:
       # README. twine does, and a README that fails to render on PyPI cannot be fixed without
       # burning the version number, so this runs while that is still free.
       - name: Validate the distributions
+        if: ${{ env.PUBLISHABLE == 'true' }}
         run: uv run twine check dist/*
 
       - name: Publish to PyPI
+        if: ${{ env.PUBLISHABLE == 'true' }}
         env:
           UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
         run: uv publish
