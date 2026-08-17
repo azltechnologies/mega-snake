@@ -1,0 +1,177 @@
+name: Restore Claude Session
+
+# GitHub-hosted runners are ephemeral: everything Claude Code writes during a run
+# is gone by the time the next comment on the same issue arrives. This action
+# carries that state forward with `actions/cache`, so a follow-up run can resume
+# the previous conversation with `--continue` instead of starting from zero.
+#
+# It only *restores*. The matching `save-claude-session` action writes the next
+# link of the chain, because `actions/cache/restore` has no post-save phase and
+# we want explicit control over when (and what) gets stored.
+#
+# WHAT IS CACHED, AND WHY NOT MORE
+# --------------------------------
+# The cached path is `~/.claude/projects`, never `~/.claude` itself.
+# `~/.claude/.credentials.json` holds the OAuth token minted from
+# CLAUDE_CODE_OAUTH_TOKEN, and an Actions cache is readable by any workflow run
+# in the repository -- including pull requests from forks, which can read caches
+# scoped to the default branch. Persisting the whole home directory would
+# therefore publish a live credential to anyone who can open a PR. The
+# conversation transcripts under `projects/` are all that `--continue` needs.
+#
+# Note that transcripts are still repository content: anything Claude read during
+# a run is inside them. Keep that in mind before enabling this on a repository
+# that accepts fork PRs.
+description: >-
+  Restores the Claude Code conversation state produced by the previous run of the
+  same GitHub thread, and reports whether the next `claude` invocation can safely
+  resume it with `--continue`.
+
+inputs:
+  thread-id:
+    description: >-
+      Number of the issue (or pull request) that owns the conversation. This is
+      what isolates one conversation's state from every other one, so it is
+      mandatory -- a shared key would let `--continue` resume the wrong thread.
+      Issues and pull requests share a single numbering sequence in GitHub, so a
+      bare number is already unambiguous.
+    required: true
+  cache-version:
+    description: >-
+      Prefix component used to invalidate every stored session at once. Bump it
+      when a change makes previously stored state unusable.
+    required: false
+    default: v1
+  fresh:
+    description: >-
+      When "true", nothing is restored and `continue-flag` stays empty, so Claude
+      starts a brand new conversation. The escape hatch for a session that grew
+      too large or went off the rails; the next save then starts a new chain.
+    required: false
+    default: "false"
+
+outputs:
+  cache-key:
+    description: >-
+      The key the new state must be stored under. Pass it verbatim to
+      `save-claude-session`.
+    value: ${{ steps.keys.outputs.key }}
+  restored-key:
+    description: >-
+      The key that was actually restored, empty on a cache miss. A first run on a
+      thread always reports empty; later runs report the previous run's key.
+    value: ${{ steps.restore.outputs.cache-matched-key }}
+  continue-flag:
+    description: >-
+      Literal `--continue` when a resumable transcript for this workspace was
+      restored, empty otherwise. Interpolate it straight into `claude_args`:
+      passing `--continue` with no prior session makes the CLI fail.
+    value: ${{ steps.detect.outputs.continue-flag }}
+  session-path:
+    description: The directory that holds the persisted state.
+    value: ${{ steps.keys.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Compute cache keys
+      id: keys
+      shell: bash
+      env:
+        THREAD_ID: ${{ inputs.thread-id }}
+        CACHE_VERSION: ${{ inputs.cache-version }}
+      run: |
+        set -euo pipefail
+        if ! printf '%s' "${THREAD_ID}" | grep -Eq '^[0-9]+$'; then
+          echo "::error::thread-id must be a number, got '${THREAD_ID}'"
+          exit 1
+        fi
+
+        # The prefix is the *family* of states belonging to one thread; the full
+        # key is one concrete state within it. `restore-keys` matches on the
+        # prefix, which is how run N picks up what run N-1 left behind.
+        #
+        # The trailing '-' on the prefix keeps issue #5 from matching issue #50,
+        # exactly like the branch lookup in claude-issue.yml.
+        prefix="claude-session-${CACHE_VERSION}-issue-${THREAD_ID}-"
+
+        # Cache entries are immutable, so every run needs a key of its own.
+        # `run_attempt` is part of it because re-running a failed job reuses the
+        # same `run_id`, and a duplicate key is refused at save time.
+        {
+          echo "prefix=${prefix}"
+          echo "key=${prefix}${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "path=${HOME}/.claude/projects"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Restore Claude session
+      id: restore
+      if: inputs.fresh != 'true'
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ steps.keys.outputs.path }}
+        key: ${{ steps.keys.outputs.key }}
+        restore-keys: ${{ steps.keys.outputs.prefix }}
+
+    - name: Detect resumable session
+      id: detect
+      shell: bash
+      env:
+        FRESH: ${{ inputs.fresh }}
+        MATCHED_KEY: ${{ steps.restore.outputs.cache-matched-key }}
+        SESSION_PATH: ${{ steps.keys.outputs.path }}
+      run: |
+        set -euo pipefail
+
+        # Claude Code keeps one directory per working directory, named after the
+        # workspace's absolute path with the separators folded into dashes, and
+        # the transcripts inside it as `.jsonl` files. `--continue` resolves the
+        # session from the *current* working directory, so a transcript recorded
+        # under some other path is not resumable and must not raise the flag.
+        #
+        # Two spellings are probed because the exact sanitisation has differed
+        # between Claude Code versions: only the separators, or every character
+        # outside [A-Za-z0-9].
+        candidates=(
+          "${GITHUB_WORKSPACE//\//-}"
+          "$(printf '%s' "${GITHUB_WORKSPACE}" | sed 's/[^A-Za-z0-9]/-/g')"
+        )
+
+        newest=""
+        for slug in "${candidates[@]}"; do
+          dir="${SESSION_PATH}/${slug}"
+          [ -d "${dir}" ] || continue
+          # -size +0 skips a truncated transcript, which `--continue` would
+          # either reject or resume as an empty conversation.
+          found=$(find "${dir}" -maxdepth 1 -type f -name '*.jsonl' -size +0c \
+                    -printf '%T@\t%p\n' 2>/dev/null | sort -nr | head -n 1 | cut -f2-)
+          if [ -n "${found}" ]; then
+            newest="${found}"
+            break
+          fi
+        done
+
+        if [ "${FRESH}" = "true" ]; then
+          state="fresh session requested -- nothing restored"
+          flag=""
+        elif [ -n "${newest}" ]; then
+          state="resuming \`$(basename "${newest}")\` (restored from \`${MATCHED_KEY}\`)"
+          flag="--continue"
+        elif [ -n "${MATCHED_KEY}" ]; then
+          # A cache existed but held no transcript for this workspace. Passing
+          # `--continue` here would fail the run, so a new conversation starts.
+          state="cache \`${MATCHED_KEY}\` restored, but it holds no transcript for this workspace -- starting a new session"
+          flag=""
+        else
+          state="cache miss -- starting a new session"
+          flag=""
+        fi
+
+        echo "continue-flag=${flag}" >> "$GITHUB_OUTPUT"
+        echo "Claude session: ${state}"
+        {
+          echo "### Claude session"
+          echo ""
+          echo "- Restore: ${state}"
+          echo "- Next key: \`${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}\` under this thread's prefix"
+        } >> "$GITHUB_STEP_SUMMARY"
