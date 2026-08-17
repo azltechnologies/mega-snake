@@ -27,15 +27,24 @@ lives in the GitHub Release body (`gh release create --generate-notes`); this fi
 - **`diff-tree --scope`.** Chooses how much of the work to include: committed only (default), committed and
   staged, or also unstaged and untracked. Untracked files are reported as additions, and pending work is
   listed above the commit list.
-- **`diff-tree --target`.** Moves the far end of the comparison off `HEAD`, so a past range can be inspected
-  by naming both of its commits. Refused for the staged and unstaged scopes, which only exist for `HEAD`.
+- **`diff-tree --target-hash`.** Moves the far end of the comparison off `HEAD`, so a past range can be
+  inspected by naming both of its commits. Refused for the staged and unstaged scopes, which only exist for
+  `HEAD`.
 - **Automated release pipeline.** Publishing to PyPI now runs from a GitHub Release, gated on the tag
   matching `vX.Y.Z`, the version in `pyproject.toml` agreeing with it, and this file documenting the release.
   `twine check` validates the distributions before the upload.
+- **`create-release --version-part`.** The new tag is now derived from the latest release by incrementing
+  its `patch`, `minor` or `major` component, instead of appending a free-form suffix. `--tag-suffix` still
+  produces pre-release builds (`v1.2.4-beta.0`), and is rejected for `latest` releases, which GitHub only
+  grants to a plain version.
 - **This changelog.**
 
 ### Changed
 
+- **`diff-tree` renamed its revision options** to `--origin-hash` / `-o` (was `--commit-hash` / `-c`), so
+  the two ends of the comparison read as a pair with `--target-hash`.
+- `create-release` no longer takes a `tag_suffix` positional argument; the version is derived and the
+  suffix is an option.
 - The PyPI long description is now assembled with `hatch-fancy-pypi-readme` instead of shipping `README.md`
   verbatim.
 - `ws_advice` writes to stderr, keeping the stdout of `no_init` commands clean for shell substitution
