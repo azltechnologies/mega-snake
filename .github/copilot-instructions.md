@@ -654,7 +654,7 @@ in CI, so any instability turns into spurious failures.
 **`src/config.properties` is NOT a configuration file for users of `mega-snake`.** It is internal metadata
 for this repository's development — it contains build-time constants, version pins, and resource paths used by
 commands that touch this codebase (like `generate-docs` and `dependency_audit`). A user installing `mgsnake` from
-PyPI has no `src/config.properties` and will never need one. T
+PyPI has no `src/config.properties` and will never need one.
 
 The only configuration users can or should edit is an optional local shell profile (sourced by `config_setup.sh` /
 `config_setup.ps1`), which receives shell-specific overrides like `PATH` extensions or alias definitions. That is
@@ -668,7 +668,7 @@ When initialized, `AppProperties` reads from three layers (lowest to highest pri
 3. **Local Overrides** — an optional, git-ignored shell script sourced by the user's shell profile (documented in
    `init-local-config`, §3.1), which is the **only** configuration mechanism end-users have.
 
-Access properties programmatically via `get_property(key).
+Access properties programmatically via `get_property(key)`.
 
 **Note:** `no_init` commands (§2.1) cannot use any of this — `AppProperties` is never built for them. They must
 resolve packaged files through `importlib.resources` and the constants below instead.
