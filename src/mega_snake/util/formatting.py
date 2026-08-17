@@ -239,31 +239,43 @@ def get_traceback(e: BaseException) -> str:
     return result
 
 
+# Every ws_* helper writes to stderr, never to stdout.
+#
+# stdout belongs to whatever a command *produces* — the value a caller consumes. Progress, status
+# and diagnostics are not that, and POSIX puts them on stderr precisely so a caller can separate
+# the two: `mgsnake cmd 2>/dev/null` keeps the payload, and `$(mgsnake cmd)` captures the payload
+# alone. Both are impossible while a status line shares the stream with the result.
+#
+# This used to hold for ws_advice only, which left errors leaking into every pipe and made stdout
+# unusable as a data channel for any command that logged anything. Keeping it uniform is what lets
+# a command emit a value on stdout without auditing every helper it might reach.
+#
+# The user sees no difference: an interactive terminal shows both streams.
 def ws_success(message: str) -> None:
-    """Print a success message"""
-    print(Fore.BLUE + Back.CYAN + message)
+    """Print a success message to stderr"""
+    print(Fore.BLUE + Back.CYAN + message, file=sys.stderr)
     logger.info(message, stacklevel=2)
 
 
 def ws_info(message: str) -> None:
-    """Print an informational message"""
-    print(Fore.WHITE + Back.BLUE + message)
+    """Print an informational message to stderr"""
+    print(Fore.WHITE + Back.BLUE + message, file=sys.stderr)
     logger.info(message, stacklevel=2)
 
 
 def ws_warning(message: str) -> None:
-    """Print a warning message"""
-    print(Fore.YELLOW + Back.BLACK + message)
+    """Print a warning message to stderr"""
+    print(Fore.YELLOW + Back.BLACK + message, file=sys.stderr)
     if logger.hasHandlers():
         logger.warning(message, stacklevel=2)
 
 
 # specify that this function raises an exception
 def _ws_error(error: BaseException, message: Optional[str] = None) -> None:
-    """Print an error message"""
+    """Print an error message to stderr"""
     if not message:
         message = str(error) if str(error) else "unknown error"
-    print(Back.BLACK + Fore.RED + message)
+    print(Back.BLACK + Fore.RED + message, file=sys.stderr)
     # Capture the traceback
     tb = traceback.extract_tb(error.__traceback__)
     func_name: str = "unknown function"
@@ -294,10 +306,9 @@ def _ws_error(error: BaseException, message: Optional[str] = None) -> None:
 def ws_advice(message: str, force: bool = False) -> None:
     """Print an advice message to stderr if LOG_LEVEL is set to DEBUG.
 
-    Advice messages are pure diagnostics, so they go to stderr and never to stdout. Commands whose
-    stdout is captured by the shell (`get-local-config-path` is read with `$(...)` in
-    `config_setup.sh`) would otherwise have their value polluted by these lines whenever the CLI
-    runs at DEBUG level.
+    Like every other ws_* helper, this writes to stderr (see the note above them). It was the first
+    one to do so, because `get-local-config-path` is read with `$(...)` in `config_setup.sh` and its
+    value was polluted by these lines whenever the CLI ran at DEBUG level.
 
     Parameters:
         message: The advice message to print and log.
@@ -317,13 +328,13 @@ def ws_advice(message: str, force: bool = False) -> None:
 
 
 def ws_tip(messages: dict[Color, str]) -> None:
-    """Print a tip message"""
+    """Print a tip message to stderr"""
     msg: str = ""
     for color, message in messages.items():
         msg += f"{color.value}{message}"
     nc = Style.RESET_ALL  # No Color
     tip: str = f"{Back.BLACK}{msg}{nc}"
-    print(tip)
+    print(tip, file=sys.stderr)
     logger.info(msg, stacklevel=2)
 
 

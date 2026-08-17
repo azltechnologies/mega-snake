@@ -215,6 +215,35 @@ def test_ws_advice_forced_writes_to_stderr_only(mk_logger: MagicMock, capsys: py
     assert "Forced advice message" in captured.err
 
 
+@pytest.mark.parametrize(
+    "helper",
+    [
+        pytest.param(ws_success, id="ws_success"),
+        pytest.param(ws_info, id="ws_info"),
+        pytest.param(ws_warning, id="ws_warning"),
+        pytest.param(ws_error, id="ws_error"),
+        pytest.param(lambda message: ws_tip({Color.GREEN: message}), id="ws_tip"),
+    ],
+)
+def test_every_ws_helper_writes_to_stderr_only(
+    helper: Callable[[str], None], mk_logger: MagicMock, capsys: pytest.CaptureFixture
+) -> None:
+    """No ws_* helper may write to stdout, so a command can emit a value there safely.
+
+    Checked over the whole family rather than one example: the rule is what makes stdout usable as
+    a data channel, and a single helper leaking is enough to break every caller that captures it
+    with `$(...)`. Asserting stdout is exactly empty (not merely "the message is in stderr") is the
+    half that fails when a helper prints to both streams.
+    """
+    mk_logger.level = logging.DEBUG
+
+    helper("A message on the wrong stream")
+
+    captured = capsys.readouterr()
+    assert captured.out == "", f"{captured.out!r} reached stdout; ws_* helpers must use stderr only"
+    assert "A message on the wrong stream" in captured.err
+
+
 def test_ws_tip(mk_logger: MagicMock) -> None:
     """Test ws_tip function"""
     msg_blue = "Test tip message"

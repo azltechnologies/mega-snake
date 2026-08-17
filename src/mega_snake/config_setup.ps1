@@ -1,21 +1,30 @@
 # Sets MEGA_SNAKE_SHELL for the current PowerShell session.
-# Defines `mgsnake` as a thin wrapper around the real executable, so the auto-reload signal
-# (exit status 29) can be acted on: a child process cannot mutate its parent's environment,
-# so re-sourcing the local environment files has to happen here, in the user's own session.
-# Defines `mgsnake_reload`, `mgsnake_load_env` and `mgsnake_reload_all`.
+# Defines `mgsnake` as a thin wrapper around the real executable, so the commands whose work has to
+# happen in this session can be acted on: a child process cannot mutate its parent's environment,
+# so `mgsnake reload-config` and `mgsnake load-env` report what they need through their exit status
+# and the wrapper below performs it here.
+#
+# The helpers are private (`__mgsnake_*`). The public interface is the CLI itself:
+#     mgsnake reload-config      re-sources the local config file
+#     mgsnake load-env [FILE]    exports the variables declared in an env file
+# Both are documented like any other command (`mgsnake <command> --help`).
 
 $env:MEGA_SNAKE_SHELL = "powershell"
 
-# Exit status meaning "success, and the shell must re-source its local environment files".
-# Mirrors RELOAD_ENVIRONMENT_EXIT_CODE in mega_snake/constants.py; the two have to agree.
+# Exit statuses asking this session to act, mirroring RELOAD_ENVIRONMENT_EXIT_CODE and
+# LOAD_ENV_EXIT_CODE in mega_snake/constants.py. `reload-config` needs no name here because it takes
+# no arguments; only `load-env` has to be located in the arguments. A test fails if any of these
+# three stops matching its Python counterpart.
 $global:MegaSnakeReloadExitCode = 29
+$global:MegaSnakeLoadEnvExitCode = 30
+$global:MegaSnakeLoadEnvCommand = "load-env"
 
 # Resolved once, and filtered to -CommandType Application on purpose: the function defined below
 # shadows the executable by name, so this is what keeps the wrapper from calling itself.
 $global:MegaSnakeExe = (Get-Command mgsnake -CommandType Application -ErrorAction SilentlyContinue |
     Select-Object -First 1).Source
 
-function mgsnake_reload {
+function __mgsnake_reload {
 
     $local_config_file = & $global:MegaSnakeExe get-local-config-path
     if (Test-Path $local_config_file) {
@@ -27,7 +36,7 @@ function mgsnake_reload {
     }
 }
 
-function mgsnake_load_env {
+function __mgsnake_load_env {
     param(
         [string]$Path = ".env"
     )
@@ -47,31 +56,45 @@ function mgsnake_load_env {
             [Environment]::SetEnvironmentVariable($key, $value, 'Process')
         }
     }
-    & $global:MegaSnakeExe msg -t t -p "mgsnake_load_env" ": Environment variables loaded from $Path"
+    & $global:MegaSnakeExe msg -t t -p "load-env" ": Environment variables loaded from $Path"
 }
 
-# Reloads both local environment files in one step. This is what the wrapper calls, so a command
-# that rewrites either of them takes effect in the current session without opening a new terminal.
-function mgsnake_reload_all {
-    mgsnake_reload
-    mgsnake_load_env
+# Returns the single argument that follows the given command name, or "" when there is none. This is
+# what lets `mgsnake --log-level DEBUG load-env foo.env` forward `foo.env` alone: forwarding the raw
+# argument list would hand the global options to the helper, and parsing them here would mean
+# reimplementing click in PowerShell. The command is looked up by its registered name, which is also
+# why these two commands are registered without aliases.
+#
+# Returning a string rather than an array is deliberate. PowerShell unwraps a single-element array on
+# return, so an array-shaped result turned into a bare string at the call site and `$result[0]` then
+# indexed into it, yielding its first *character* -- `f` instead of `foo.env`. `load-env` takes at
+# most one argument, so returning that one value has no such failure mode.
+function __mgsnake_args_after {
+    param(
+        [string]$Wanted,
+        [string[]]$Arguments
+    )
+    $index = [Array]::IndexOf($Arguments, $Wanted)
+    if ($index -lt 0 -or $index -eq ($Arguments.Length - 1)) { return "" }
+    return [string]$Arguments[$index + 1]
 }
 
-# The wrapper is the consumer of the reload signal. Without it the status is emitted and nothing
-# ever captures it, which is exactly how the auto-reload stopped working when `mgsnake` became an
+# The wrapper is the consumer of the signals. Without it the status is emitted and nothing ever
+# captures it, which is exactly how the auto-reload stopped working when `mgsnake` became an
 # installed executable invoked directly instead of through a shell function.
-# $LASTEXITCODE is restored at the end because mgsnake_reload_all runs its own commands and would
+# $LASTEXITCODE is restored at the end because the helpers run their own commands and would
 # otherwise overwrite the status the caller is about to read.
 function mgsnake {
     & $global:MegaSnakeExe @args
     $exitCode = $LASTEXITCODE
-    if ($exitCode -eq $global:MegaSnakeReloadExitCode) {
-        mgsnake_reload_all
+    switch ($exitCode) {
+        $global:MegaSnakeReloadExitCode { __mgsnake_reload }
+        $global:MegaSnakeLoadEnvExitCode {
+            $envFile = __mgsnake_args_after -Wanted $global:MegaSnakeLoadEnvCommand -Arguments $args
+            if ($envFile) { __mgsnake_load_env -Path $envFile } else { __mgsnake_load_env }
+        }
     }
     $global:LASTEXITCODE = $exitCode
 }
 
-& $global:MegaSnakeExe msg -t t -p "mgsnake" ": use this function to set the environment configuration"
-mgsnake_reload
-& $global:MegaSnakeExe msg -t t -p "mgsnake_reload" ": use this function to reload the local config file"
-& $global:MegaSnakeExe msg -t t -p "mgsnake_reload_all" ": reloads the local config file and the .env file"
+__mgsnake_reload

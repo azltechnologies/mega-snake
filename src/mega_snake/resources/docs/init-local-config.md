@@ -7,11 +7,10 @@ Custom shell function definitions are supported, not just environment variables.
 
 ## Notes
 
-Reload it in the current session with `mgsnake_reload`, defined by the shell init script (see
-`shell-path`).
+Reload it in the current session with `mgsnake reload-config`.
 
 This happens automatically: the command exits with status `29` when it succeeds, and the `mgsnake`
-shell function installed by the init script reads that status and runs `mgsnake_reload_all` for you.
+shell function installed by the init script reads that status and reloads the file for you.
 A child process cannot change its parent's environment, so the reload has to happen in your shell.
 If you invoke the executable directly — bypassing the function, or from a script — you will see the
 `29` and no reload will run.

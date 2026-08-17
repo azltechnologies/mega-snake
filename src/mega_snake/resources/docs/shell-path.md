@@ -17,10 +17,10 @@ For PowerShell, in your profile (`$PROFILE`):
 
 ## Notes
 
-Sourcing that script sets `MEGA_SNAKE_SHELL` and defines `mgsnake_reload`, `mgsnake_load_env` and
-`mgsnake_reload_all`. Because the profile calls this command *before* that variable exists, it is
-the one command that runs with no initialization at all — which is also why it prints the bare path
-and nothing else.
+Sourcing that script sets `MEGA_SNAKE_SHELL` and defines the private helpers behind `reload-config`
+and `load-env`. Because the profile calls this command *before* that variable exists, it is the one
+command that runs with no initialization at all — which is also why it prints the bare path and
+nothing else.
 
 It also defines `mgsnake` itself as a thin shell function around the real executable. That function
 is what makes the environment auto-reload work: a command that rewrites one of the local environment
