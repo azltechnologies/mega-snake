@@ -1,8 +1,13 @@
 # Sets MEGA_SNAKE_SHELL for the current shell session.
-# Defines `mgsnake` as a thin wrapper around the real executable, so the auto-reload signal
-# (exit status 29) can be acted on: a child process cannot mutate its parent's environment,
-# so re-sourcing the local environment files has to happen here, in the user's own shell.
-# Defines `mgsnake_reload`, `mgsnake_load_env` and `mgsnake_reload_all`.
+# Defines `mgsnake` as a thin wrapper around the real executable, so the commands whose work has to
+# happen in this session can be acted on: a child process cannot mutate its parent's environment,
+# so `mgsnake reload-config` and `mgsnake load-env` report what they need through their exit status
+# and the wrapper below performs it here.
+#
+# The helpers are private (`__mgsnake_*`). The public interface is the CLI itself:
+#     mgsnake reload-config      re-sources the local config file
+#     mgsnake load-env [FILE]    exports the variables declared in an env file
+# Both are documented like any other command (`mgsnake <command> --help`).
 
 if [ -n "${BASH_VERSION:-}" ]; then
     # Para bash
@@ -13,11 +18,15 @@ else
 fi
 export MEGA_SNAKE_SHELL
 
-# Exit status meaning "success, and the shell must re-source its local environment files".
-# Mirrors RELOAD_ENVIRONMENT_EXIT_CODE in mega_snake/constants.py; the two have to agree.
+# Exit statuses asking this shell to act, mirroring RELOAD_ENVIRONMENT_EXIT_CODE and
+# LOAD_ENV_EXIT_CODE in mega_snake/constants.py. `reload-config` needs no name here because it takes
+# no arguments; only `load-env` has to be located in "$@". A test fails if any of these three stops
+# matching its Python counterpart.
 MEGA_SNAKE_RELOAD_EXIT_CODE=29
+MEGA_SNAKE_LOAD_ENV_EXIT_CODE=30
+MEGA_SNAKE_LOAD_ENV_COMMAND="load-env"
 
-mgsnake_reload() {
+__mgsnake_reload() {
     local local_config_file
     # `command` reaches the real executable, never this file's function, so the helpers can never
     # recurse into the wrapper below.
@@ -32,7 +41,7 @@ mgsnake_reload() {
     fi
 }
 
-mgsnake_load_env() {
+__mgsnake_load_env() {
   local env_file="${1:-.env}"
   [[ -f "$env_file" ]] || return 0
 
@@ -49,30 +58,45 @@ mgsnake_load_env() {
     # 4. Exportar de forma segura al entorno actual
     export "$key"="$value"
   done < "$env_file"
-  command mgsnake msg -t t -p "mgsnake_load_env" ": Environment variables loaded from $env_file"
+  command mgsnake msg -t t -p "load-env" ": Environment variables loaded from $env_file"
 }
 
-# Reloads both local environment files in one step. This is what the wrapper calls, so a command
-# that rewrites either of them takes effect in the current session without opening a new terminal.
-mgsnake_reload_all() {
-    mgsnake_reload
-    mgsnake_load_env
+# Drops everything up to and including the given command name, leaving that command's own arguments
+# in "$@". This is what lets `mgsnake --log-level DEBUG load-env foo.env` forward `foo.env` alone:
+# forwarding the raw "$@" would hand the global options to the helper, and parsing them here would
+# mean reimplementing click in shell. The command is looked up by its registered name, which is also
+# why these two commands are registered without aliases.
+__mgsnake_args_after() {
+    local wanted="$1"
+    shift
+    while [ $# -gt 0 ]; do
+        if [ "$1" = "$wanted" ]; then
+            shift
+            printf '%s\n' "$@"
+            return 0
+        fi
+        shift
+    done
 }
 
-# The wrapper is the consumer of the reload signal. Without it the status is emitted and nothing
-# ever captures $?, which is exactly how the auto-reload stopped working when `mgsnake` became an
+# The wrapper is the consumer of the signals. Without it the status is emitted and nothing ever
+# captures $?, which is exactly how the auto-reload stopped working when `mgsnake` became an
 # installed executable invoked directly instead of through a shell function.
 # `type mgsnake` reporting a function is the only visible difference.
 mgsnake() {
     command mgsnake "$@"
     local exit_code=$?
-    if [ "$exit_code" -eq "$MEGA_SNAKE_RELOAD_EXIT_CODE" ]; then
-        mgsnake_reload_all
-    fi
+    case "$exit_code" in
+        "$MEGA_SNAKE_RELOAD_EXIT_CODE")
+            __mgsnake_reload
+            ;;
+        "$MEGA_SNAKE_LOAD_ENV_EXIT_CODE")
+            local env_file
+            env_file=$(__mgsnake_args_after "$MEGA_SNAKE_LOAD_ENV_COMMAND" "$@")
+            __mgsnake_load_env "$env_file"
+            ;;
+    esac
     return "$exit_code"
 }
 
-command mgsnake msg -t t -p "mgsnake" ": use this function to set the environment configuration"
-mgsnake_reload
-command mgsnake msg -t t -p "mgsnake_reload" ": use this function to reload the local config file"
-command mgsnake msg -t t -p "mgsnake_reload_all" ": reloads the local config file and the .env file"
+__mgsnake_reload

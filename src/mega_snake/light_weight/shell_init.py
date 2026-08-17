@@ -1,12 +1,22 @@
 """
 Light-weight commands for shell initialization.
 
-Provides commands to print the packaged shell init script path and the resolved local config file path.
+Provides commands to print the packaged shell init script path and the resolved local config file
+path, plus the two commands whose real work is carried out by the shell itself (`reload-config` and
+`load-env`).
 """
 
+import sys
 from importlib.resources import files
 import click
-from mega_snake.constants import SHELL_OPT, MODULE_NAME
+from mega_snake.constants import (
+    LOAD_ENV_COMMAND,
+    LOAD_ENV_EXIT_CODE,
+    MODULE_NAME,
+    RELOAD_CONFIG_COMMAND,
+    RELOAD_ENVIRONMENT_EXIT_CODE,
+    SHELL_OPT,
+)
 from mega_snake.config_environment.util import get_local_file
 from mega_snake.util.util import cli_metadata
 
@@ -69,3 +79,66 @@ def get_local_config_path() -> None:
         None
     """
     click.echo(get_local_file())
+
+
+@click.command(
+    name=RELOAD_CONFIG_COMMAND,
+    short_help="Reloads the local configuration file in the current shell session.",
+    help="Re-sources the local configuration file (and the environment file it loads) into the"
+    " current shell session, so edits to it take effect without opening a new terminal.",
+    epilog=f"usage: mgsnake {RELOAD_CONFIG_COMMAND}",
+)
+@cli_metadata(flags={"no_init"})
+def reload_config() -> None:
+    """Ask the shell to re-source the local configuration file.
+
+    The work cannot happen here: a child process cannot mutate its parent's environment, so this
+    command only reports the request through its exit status and the `mgsnake` shell function
+    installed by config_setup performs the sourcing in the session that asked for it.
+
+    Raises:
+        SystemExit: Always, carrying RELOAD_ENVIRONMENT_EXIT_CODE.
+
+    Returns:
+        None
+    """
+    sys.exit(RELOAD_ENVIRONMENT_EXIT_CODE)
+
+
+@click.command(
+    name=LOAD_ENV_COMMAND,
+    short_help="Loads an environment file into the current shell session.",
+    help="Exports the variables declared in an environment file into the current shell session."
+    " The file is a plain list of KEY=value lines: no `export` keyword, one pair per line, `#`"
+    " starts a comment, and surrounding single or double quotes around a value are stripped.",
+    epilog=f"""
+    usage: mgsnake {LOAD_ENV_COMMAND} [env_file]\n
+    Args:\n
+        env_file: Optional[str] - Path to the environment file to load. Defaults to `.env` in the
+        current directory.
+    """,
+)
+@cli_metadata(flags={"no_init"})
+@click.argument("env_file", required=False, type=click.Path())
+def load_env(env_file: str) -> None:  # pylint: disable=unused-argument
+    """Ask the shell to export the variables declared in an environment file.
+
+    Like `reload-config`, the exporting itself has to happen in the caller's own session, so this
+    command only reports the request through its exit status. The shell function recovers
+    ``env_file`` by re-reading the arguments it was given, which is why nothing needs to travel
+    through stdout and this command can log freely.
+
+    ``env_file`` is deliberately declared but unused here: the declaration is what puts the argument
+    in `--help` and in the generated reference, and what makes click reject a second positional
+    argument. The value itself is only ever consumed by the shell.
+
+    Parameters:
+        env_file: Path to the environment file, or None to let the shell default to `.env`.
+
+    Raises:
+        SystemExit: Always, carrying LOAD_ENV_EXIT_CODE.
+
+    Returns:
+        None
+    """
+    sys.exit(LOAD_ENV_EXIT_CODE)

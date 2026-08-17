@@ -648,6 +648,24 @@ in CI, so any instability turns into spurious failures.
 - `ws_warning(msg)`: ⚠️ Yellow warning.
 - `ws_error(msg)`: ❌ Red error.
 - `ws_advice(msg)`: 💡 Helpful tip/advice.
+- `ws_tip(dict)`: 🎨 Multi-colour tip.
+
+#### ⚠️ Every `ws_*` helper writes to **stderr**. stdout belongs to the command's output.
+
+stdout carries what a command *produces* — the value a caller consumes. Progress, status and
+diagnostics are not that, and POSIX puts them on stderr precisely so the two can be separated:
+`mgsnake cmd 2>/dev/null` keeps the payload, and `$(mgsnake cmd)` captures the payload alone. Neither
+works while a status line shares the stream with the result.
+
+This held for `ws_advice` only, which left `ws_error` writing errors into every pipe and made stdout
+unusable as a data channel for any command that logged anything — `get-local-config-path` worked by
+luck, because nothing on its path happened to print. Now the split is uniform, so a command can emit
+a value on stdout without auditing every helper it might reach.
+
+**Writing to stdout is therefore a deliberate act**, and only `click.echo` does it, in the few
+commands whose output is consumed by a script (`shell-path`, `get-local-config-path`). The user sees
+no difference: a terminal shows both streams. `test_every_ws_helper_writes_to_stderr_only` walks the
+whole family and fails naming any helper that regresses.
 
 ### 4.2 Property Management (`src/mega_snake/util/props.py`)
 
@@ -730,13 +748,14 @@ When end-users install `mega_snake` via `uv tool install` or `pipx install`:
    - **PowerShell**: `. (mgsnake shell-path pwsh)` → outputs the path to `config_setup.ps1`
 4. The initialization script (`config_setup.sh` or `config_setup.ps1`) is sourced, which:
    - Sets `MEGA_SNAKE_SHELL` environment variable
-   - Defines `mgsnake_reload` to (re)load the local config file (if present)
-   - Calls `mgsnake_reload` once so the local config is applied immediately
+   - Defines `mgsnake` as a shell function wrapping the real executable, plus the private
+     `__mgsnake_*` helpers it dispatches to (§7.4)
+   - Loads the local config file once so it is applied immediately
 **Why this approach?**
 - Allows the tool to run anywhere without polluting the user's active Python environment
 - Users don't need to manually activate/deactivate virtual environments
 - The `mgsnake` console script runs from its isolated `uv tool`/`pipx` environment
-- Sourcing the shell setup only configures shell integration (`MEGA_SNAKE_SHELL` and `mgsnake_reload`) per session
+- Sourcing the shell setup only configures shell integration (`MEGA_SNAKE_SHELL` and the `mgsnake` function) per session
 
 ### Local Development Setup
 
@@ -1076,37 +1095,77 @@ ancestor's code (`subprocess.CalledProcessError` → 111), while a type listed i
 ancestor (`FileNotFoundError` → 102, not the 112 of the `OSError` it derives from). The old exact
 `type(e) in ERROR_CODES` lookup sent every unlisted subclass to the generic `100`.
 
-### 7.4 The `29` reload signal — what it does and who consumes it
+### 7.4 The shell-dispatch signals (`29`, `30`) — what they do and who consumes them
 
-**What it does:** a command finished successfully *and* rewrote one of the two local environment files, so the
-user's shell has to re-source them. A child process cannot mutate its parent's environment, which is why this
-cannot be done in Python and has to be a status the shell reacts to.
+**What they do:** they ask the user's shell to perform something Python cannot. A child process cannot mutate its
+parent's environment — an OS guarantee, not a Python limitation — so anything that changes the caller's variables
+has to run *in the caller's session*. The command's exit status is the request; the shell is what performs it.
 
-**Who consumes it:** the `mgsnake` **shell function** defined by `config_setup.sh` / `config_setup.ps1`. It calls
+| Code | Request | Emitted by |
+|---|---|---|
+| `29` | Re-source the local config file | `@cli_metadata(reloads_environment=True)`, and the `reload-config` command |
+| `30` | Load an env file | The `load-env` command |
+
+**Who consumes them:** the `mgsnake` **shell function** defined by `config_setup.sh` / `config_setup.ps1`. It calls
 the real executable through `command mgsnake` (bash/zsh) or the resolved application path (PowerShell), captures the
-status, and calls `mgsnake_reload_all` when it equals 29. There is no recursion — `command` and the resolved path
+status, and dispatches to a private `__mgsnake_*` helper. There is no recursion — `command` and the resolved path
 both bypass the function — and the only visible difference is that `type mgsnake` reports a function.
 
 ```bash
 mgsnake() {
     command mgsnake "$@"
     local exit_code=$?
-    if [ "$exit_code" -eq "$MEGA_SNAKE_RELOAD_EXIT_CODE" ]; then
-        mgsnake_reload_all
-    fi
+    case "$exit_code" in
+        "$MEGA_SNAKE_RELOAD_EXIT_CODE")   __mgsnake_reload ;;
+        "$MEGA_SNAKE_LOAD_ENV_EXIT_CODE")
+            env_file=$(__mgsnake_args_after "$MEGA_SNAKE_LOAD_ENV_COMMAND" "$@")
+            __mgsnake_load_env "$env_file" ;;
+    esac
     return "$exit_code"
 }
 ```
+
+**How arguments reach the shell — and why not stdout.** `load-env` takes a file path, which the helper needs. The
+obvious channel is stdout (`$(...)`, the way `direnv` and `ssh-agent` do it), and it was rejected: it makes the
+command's stdout a data channel, so *any* helper that ever prints there silently corrupts the value, at a distance,
+only at some log levels. Instead `__mgsnake_args_after` rescans the wrapper's own `"$@"`, drops everything up to
+the command name, and forwards what follows. Forwarding the raw `"$@"` would hand the global options to the helper
+(`mgsnake --log-level DEBUG load-env foo.env`), and parsing them in shell would mean reimplementing click.
+
+Two consequences of locating the command **by name**:
+
+- **These commands must not have aliases.** An alias resolves fine and returns the right status, then leaves the
+  wrapper unable to find the name — so it would load `.env` instead of the requested file, with no error at all.
+  `test_shell_backed_commands_have_no_aliases` pins this.
+- **The name is hard-coded in three places** (`constants.py`, and both scripts), like the numbers themselves.
+
+**The helpers are private.** `__mgsnake_reload`, `__mgsnake_load_env` and `__mgsnake_args_after` are implementation
+detail; the public interface is `mgsnake reload-config` and `mgsnake load-env`, documented like any other command.
+They were public (`mgsnake_reload`, `mgsnake_load_env`, `mgsnake_reload_all`) and announced on every new terminal,
+which gave every action two names — one of them undocumented and invisible to `--help`. The one caller that still
+uses a helper directly is the local config file generated by `init-local-config`: it is *being sourced by the
+shell*, so `LOAD_ENV_HELPER` reaches the right session already and routing it back through the CLI would mean
+exiting 30 from inside a reload the wrapper is performing.
+
+**The rename is a breaking change for any local config file generated before it**, since that file calls
+`mgsnake_load_env` by its old name and will fail with `command not found` on the next shell startup. No shim is
+kept: fix the call in the affected file (it is a single line, and the rest of the file is the user's own content),
+or regenerate it with `init-local-config -o`.
+
+`mgsnake_reload_all` is gone entirely. It called `mgsnake_load_env` with no argument *after* the reload, which
+loaded whatever `.env` happened to be in the **current directory** — while the config file had already loaded its
+own `.env` by absolute path. That second load was an undeclared read of an arbitrary directory, not the "reload
+both files" the name promised.
 
 **This is the link that was cut before.** The historical wrapper wrapped `python3 -m $PY_MODULE` and branched on
 `$?`; when `mgsnake` became an installed executable invoked directly, nothing captured the status any more. The
 Python side kept emitting it into a void. If you ever change how the CLI is invoked, **the wrapper is the thing to
 check**.
 
-**Emitting it:** a command declares `@cli_metadata(reloads_environment=True)`, and the `config_environment` module
-wrapper relays it into `ctx.obj["exit_code"]`; `post_command` turns that into the process status. It is per command,
-**not** per module: living in `config_environment` is not what makes a command change the environment, touching
-those files is.
+**Emitting `29` from a normal command:** declare `@cli_metadata(reloads_environment=True)`, and the
+`config_environment` module wrapper relays it into `ctx.obj["exit_code"]`; `post_command` turns that into the
+process status. It is per command, **not** per module: living in `config_environment` is not what makes a command
+change the environment, touching those files is.
 
 | Command | Emits `29` |
 |---|---|
@@ -1114,8 +1173,9 @@ those files is.
 | `set-java`, `set-gradle`, `set-maven` | Yes |
 | `maven-project-setup`, `graphql-schema` | No |
 
-The number is hard-coded in three places that must agree: `RELOAD_ENVIRONMENT_EXIT_CODE` in `constants.py`,
-`MEGA_SNAKE_RELOAD_EXIT_CODE` in `config_setup.sh`, and `$global:MegaSnakeReloadExitCode` in `config_setup.ps1`.
+Everything shared across the language boundary is pinned by `src/tests/light_weight/test_shell_wrapper.py`: the two
+numbers, the command name the scripts scan for, the helper name the generated config file calls, the absence of
+aliases, and the argument slicing itself — run through a real `bash` rather than asserted as text.
 
 ### 7.5 Testing rule
 

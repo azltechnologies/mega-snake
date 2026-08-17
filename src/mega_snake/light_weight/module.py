@@ -2,7 +2,7 @@
 
 import click
 from mega_snake.util.util import cli_metadata
-from mega_snake.light_weight.shell_init import shell_path, get_local_config_path
+from mega_snake.light_weight.shell_init import shell_path, get_local_config_path, reload_config, load_env
 from mega_snake.light_weight.echo import echo
 from mega_snake.light_weight.create_release import create_release
 from mega_snake.light_weight.jks_expired_certs import expired_certs
@@ -28,3 +28,8 @@ main.add_command_with_alias(create_release, ["release", "cr"])
 main.add_command_with_alias(expired_certs, ["ecj"])
 main.add_command_with_alias(shell_path, ["sp"])
 main.add_command_with_alias(get_local_config_path, ["lcp"])
+# Registered without aliases on purpose. The shell wrapper locates these commands by scanning its
+# own arguments for the registered name, so an alias would be invoked successfully, return the right
+# status, and then leave the wrapper unable to tell where the command's arguments begin.
+main.add_command(reload_config)
+main.add_command(load_env)

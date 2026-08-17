@@ -53,11 +53,10 @@ Custom shell function definitions are supported, not just environment variables.
 
 #### Notes
 
-Reload it in the current session with `mgsnake_reload`, defined by the shell init script (see
-`shell-path`).
+Reload it in the current session with `mgsnake reload-config`.
 
 This happens automatically: the command exits with status `29` when it succeeds, and the `mgsnake`
-shell function installed by the init script reads that status and runs `mgsnake_reload_all` for you.
+shell function installed by the init script reads that status and reloads the file for you.
 A child process cannot change its parent's environment, so the reload has to happen in your shell.
 If you invoke the executable directly — bypassing the function, or from a script — you will see the
 `29` and no reload will run.
@@ -576,6 +575,64 @@ local_config_file=$(mgsnake get-local-config-path)
 so the command prints the path and nothing else. Diagnostics go to stderr precisely so this stays
 parseable at any log level.
 
+### load-env
+
+Exports the variables declared in an environment file into the current shell session. The file is a plain list of KEY=value lines: no `export` keyword, one pair per line, `#` starts a comment, and surrounding single or double quotes around a value are stripped.
+
+**Synopsis:** `mgsnake load-env [OPTIONS] [ENV_FILE]`
+
+| Option | Description |
+| --- | --- |
+| `-h, --help` | Show this message and exit. |
+
+- `env_file` — Path to the environment file to load. Defaults to `.env` in the current directory.
+
+Exports the variables declared in an environment file into the shell session that runs the command,
+so a project's settings can be picked up without restarting the terminal or writing an `export` for
+each one.
+
+The file format is deliberately plain, and is **not** a shell script:
+
+```bash
+# Comments start with a hash
+DATABASE_URL=postgres://localhost:5432/dev
+API_TOKEN="quoted values work too"
+```
+
+One `KEY=value` per line, no `export` keyword, blank lines and `#` comments ignored, and a matching
+pair of surrounding single or double quotes stripped from the value. Because the file is parsed
+rather than executed, it holds values only: command substitutions and variable references are not
+expanded.
+
+#### Examples
+
+```bash
+# Load the .env in the current directory
+mgsnake load-env
+
+# Load a specific file
+mgsnake load-env config/staging.env
+```
+
+#### Notes
+
+A process cannot change the environment of the process that started it, which is a guarantee of the
+operating system rather than a limitation of this tool. The command therefore does no work itself:
+it reports the request through its exit status, and the `mgsnake` shell function installed by the
+init script performs the exports inside the session that asked for it. That function finds the file
+name by re-reading the arguments it was given, so global options are handled normally and
+`mgsnake --log-level DEBUG load-env staging.env` loads `staging.env`.
+
+That function is the reason this works, so the command is only useful once
+`config_setup.sh` / `config_setup.ps1` is sourced from the shell profile — see `shell-path`. Run
+without it, the command exits with its status and nothing happens.
+
+A missing file is not an error: nothing is exported and the command stays silent, so an optional
+`.env` can be loaded unconditionally from a startup script.
+
+The environment file created by `init-local-config` is already loaded by the generated configuration
+file, so it needs no explicit call here. Use this command for the other ones.
+
 ### msg
 
 Prints a message to the console in a custom format and logs it into the workspace configuration log file.
@@ -600,6 +657,39 @@ same format as the Python commands, instead of each one inventing its own `echo`
 #### Notes
 
 The message is both printed to the console and written to the workspace log file.
+
+### reload-config
+
+Re-sources the local configuration file (and the environment file it loads) into the current shell session, so edits to it take effect without opening a new terminal.
+
+**Synopsis:** `mgsnake reload-config [OPTIONS]`
+
+| Option | Description |
+| --- | --- |
+| `-h, --help` | Show this message and exit. |
+
+Applies edits to the local configuration file without opening a new terminal. Sourcing that file is
+what makes its functions, aliases and exported variables available, and a shell only does it at
+startup — so after editing it, the running session keeps the old definitions until something
+re-sources it. This is that something.
+
+#### Notes
+
+A process cannot change the environment of the process that started it, which is a guarantee of the
+operating system rather than a limitation of this tool. The command therefore does no work itself:
+it reports the request through its exit status, and the `mgsnake` shell function installed by the
+init script performs the sourcing inside the session that asked for it.
+
+That function is the reason this works, so the command is only useful once
+`config_setup.sh` / `config_setup.ps1` is sourced from the shell profile — see `shell-path`. Run
+without it, the command exits with its status and nothing happens.
+
+Commands that rewrite the local files (`working-env`, `set-java`, `set-gradle`, `set-maven`,
+`init-local-config`) already emit the same request when they finish, so running this afterwards is
+usually unnecessary. Reach for it after editing the file by hand.
+
+Reloading the configuration file also reloads the environment file, because the generated
+configuration file loads it on the way through.
 
 ### shell-path
 
@@ -634,10 +724,10 @@ For PowerShell, in your profile (`$PROFILE`):
 
 #### Notes
 
-Sourcing that script sets `MEGA_SNAKE_SHELL` and defines `mgsnake_reload`, `mgsnake_load_env` and
-`mgsnake_reload_all`. Because the profile calls this command *before* that variable exists, it is
-the one command that runs with no initialization at all — which is also why it prints the bare path
-and nothing else.
+Sourcing that script sets `MEGA_SNAKE_SHELL` and defines the private helpers behind `reload-config`
+and `load-env`. Because the profile calls this command *before* that variable exists, it is the one
+command that runs with no initialization at all — which is also why it prints the bare path and
+nothing else.
 
 It also defines `mgsnake` itself as a thin shell function around the real executable. That function
 is what makes the environment auto-reload work: a command that rewrites one of the local environment
