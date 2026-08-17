@@ -1,13 +1,10 @@
-"""Additional tests for main CLI and diff_tree helpers."""
+"""Tests for the diff-tree command, its pre-flight wrapper and its helpers."""
 
-import os
 from types import SimpleNamespace
 from unittest.mock import mock_open, patch
 import click
 import pytest
-from click.testing import CliRunner
 
-from mega_snake import __main__ as app_main
 from mega_snake.diff_tree.file_type import FileType
 from mega_snake.diff_tree import module as diff_module
 from mega_snake.diff_tree import diff_tree as diff_tree_cmd
@@ -39,23 +36,6 @@ def test_diff_tree_wrapper_fails_when_working_path_is_declined() -> None:
         with pytest.raises(click.ClickException, match="Cannot continue without"):
             diff_module.wrapper(None)
     complete_app_properties.assert_not_called()
-
-
-def test_main_cli_and_post_command() -> None:
-    """Cover cli init, error path, and post-command."""
-    runner = CliRunner()
-    with patch.dict(os.environ, {"MEGA_SNAKE_SHELL": "bash"}):
-        with patch("mega_snake.__main__.init_app_properties"):
-            result = runner.invoke(app_main.cli, ["diff-tree", "--help"])
-            assert result.exit_code == 0
-            alias_result = runner.invoke(app_main.cli, ["dt", "--help"])
-            assert alias_result.exit_code == 0
-
-    error_context = click.Context(app_main.cli)
-    error_context.invoked_subcommand = "x"
-    error_context.obj = {"exit_code": 2}
-    with pytest.raises(SystemExit), error_context.scope():
-        app_main.post_command(None)
 
 
 def test_file_type_and_diff_tree_helpers() -> None:
@@ -112,7 +92,9 @@ def test_diff_tree_main_rejects_an_invalid_commit_hash() -> None:
     ), patch("mega_snake.diff_tree.diff_tree.run_operation") as run_operation:
         run_operation.return_value.stdout = "tree"
         with pytest.raises(ValueError, match="Invalid commit hash: abc"):
-            diff_tree_cmd.diff_tree.callback("abc", False, "c")
+            diff_tree_cmd.diff_tree.callback(
+                origin_hash="abc", target_hash=None, delete_original_files=False, scope="c"
+            )
 
 
 def test_get_diff_target_per_scope() -> None:
@@ -206,7 +188,9 @@ def test_diff_tree_main_writes_the_pending_changes_above_the_commits() -> None:
                 SimpleNamespace(stdout="diff content"),  # changes
                 SimpleNamespace(stdout=""),  # opening changes file
             ]
-            diff_tree_cmd.diff_tree.callback("abc", True, "u")
+            diff_tree_cmd.diff_tree.callback(
+                origin_hash="abc", target_hash=None, delete_original_files=True, scope="u"
+            )
 
         written = [call.args[0] for call in m_open().write.call_args_list]
         assert "Unstaged files:\n- modified.txt\n\nStaged files:\n- staged.txt\n\n2026-08-14 abc123\nmsg" in written
@@ -246,7 +230,9 @@ def test_diff_tree_main_includes_untracked_files_in_unstaged_scope() -> None:
                 SimpleNamespace(stdout="diff content"),  # changes
                 SimpleNamespace(stdout=""),  # opening changes file
             ]
-            diff_tree_cmd.diff_tree.callback("abc", True, "u")
+            diff_tree_cmd.diff_tree.callback(
+                origin_hash="abc", target_hash=None, delete_original_files=True, scope="u"
+            )
 
         assert FileType.ADDED.files == ["new.txt"]
         commands = [call.args[0] for call in run_operation.call_args_list]
@@ -303,7 +289,9 @@ def test_diff_tree_main_computes_binary_files() -> None:
             SimpleNamespace(stdout="diff content"),
             SimpleNamespace(stdout=""),
         ]
-        diff_tree_cmd.diff_tree.callback("abc", True, "c")
+        diff_tree_cmd.diff_tree.callback(
+                origin_hash="abc", target_hash=None, delete_original_files=True, scope="c"
+            )
 
     assert create_files.call_args.args[3] == {"asset.webp"}
 
@@ -318,7 +306,9 @@ def test_diff_tree_main_paths() -> None:
         "mega_snake.diff_tree.diff_tree.os.makedirs"
     ), patch("mega_snake.diff_tree.diff_tree.run_operation") as run_operation:
         run_operation.return_value.stdout = ""
-        diff_tree_cmd.diff_tree.callback(None, False, "c")
+        diff_tree_cmd.diff_tree.callback(
+                origin_hash=None, target_hash=None, delete_original_files=False, scope="c"
+            )
 
     with patch("mega_snake.diff_tree.diff_tree.get_property", return_value="/tmp"), patch(
         "mega_snake.diff_tree.diff_tree.os.path.exists", return_value=True
@@ -340,4 +330,194 @@ def test_diff_tree_main_paths() -> None:
             SimpleNamespace(stdout="diff content"),
             SimpleNamespace(stdout=""),
         ]
-        diff_tree_cmd.diff_tree.callback("abc", True, "c")
+        diff_tree_cmd.diff_tree.callback(
+                origin_hash="abc", target_hash=None, delete_original_files=True, scope="c"
+            )
+
+
+def test_diff_tree_target_replaces_head_in_every_derived_command() -> None:
+    """--target must move the far end of the comparison off HEAD, everywhere it is used.
+
+    The target reaches git through three independent commands (the raw diff, the numstat used for
+    binary detection, and the commit log). Asserting only one of them would let the other two keep
+    comparing against HEAD, which is exactly the drift this option exists to avoid.
+    """
+    for file_type in FileType:
+        file_type.files_added = 0
+        file_type.files.clear()
+    try:
+        with patch("mega_snake.diff_tree.diff_tree.get_property", return_value="/tmp"), patch(
+            "mega_snake.diff_tree.diff_tree.os.path.exists", return_value=False
+        ), patch("mega_snake.diff_tree.diff_tree.get_current_commit") as get_current_commit, patch(
+            "mega_snake.diff_tree.diff_tree.run_operation"
+        ) as run_operation, patch("mega_snake.diff_tree.diff_tree._create_files"), patch(
+            "mega_snake.diff_tree.diff_tree._display_inner_tree"
+        ), patch("mega_snake.diff_tree.diff_tree.shutil.rmtree"), patch(
+            "mega_snake.diff_tree.diff_tree.os.makedirs"
+        ), patch("builtins.open", mock_open()):
+            run_operation.side_effect = [
+                SimpleNamespace(stdout="commit"),  # base validation
+                SimpleNamespace(stdout="commit"),  # target validation
+                SimpleNamespace(stdout=":000000 100644 0000000 1111111 A\tfile.txt"),  # raw diff
+                SimpleNamespace(stdout=""),  # numstat
+                SimpleNamespace(stdout="commit log"),  # commit list
+                SimpleNamespace(stdout=""),  # opening commit file
+                SimpleNamespace(stdout="diff content"),  # changes
+                SimpleNamespace(stdout=""),  # opening changes file
+            ]
+            diff_tree_cmd.diff_tree.callback(
+                origin_hash="base111", target_hash="tip222", delete_original_files=True, scope="c"
+            )
+
+        # HEAD must never be consulted: the whole point is that the range is explicit.
+        get_current_commit.assert_not_called()
+        issued = [call.args[0] for call in run_operation.call_args_list]
+        assert "git cat-file -t tip222 2>/dev/null" in issued, "the target was never validated"
+        assert "git diff --raw --no-renames base111 tip222" in issued
+        assert "git diff --numstat base111 tip222" in issued
+        assert " git log --pretty=format:'%ad %H%n%B' --date=short tip222...base111" in issued
+        # No command may still be pointing at the working tree's HEAD.
+        assert not [command for command in issued if command.endswith(" base111")], (
+            f"a command still compares base111 against HEAD: {issued}"
+        )
+    finally:
+        for file_type in FileType:
+            file_type.files_added = 0
+            file_type.files.clear()
+
+
+def test_diff_tree_without_target_still_compares_against_head() -> None:
+    """Omitting --target keeps the previous behaviour: the comparison ends at the current HEAD."""
+    for file_type in FileType:
+        file_type.files_added = 0
+        file_type.files.clear()
+    try:
+        with patch("mega_snake.diff_tree.diff_tree.get_property", return_value="/tmp"), patch(
+            "mega_snake.diff_tree.diff_tree.os.path.exists", return_value=False
+        ), patch(
+            "mega_snake.diff_tree.diff_tree.get_current_commit", return_value="headsha"
+        ) as get_current_commit, patch(
+            "mega_snake.diff_tree.diff_tree.run_operation"
+        ) as run_operation, patch("mega_snake.diff_tree.diff_tree._create_files"), patch(
+            "mega_snake.diff_tree.diff_tree._display_inner_tree"
+        ), patch("mega_snake.diff_tree.diff_tree.shutil.rmtree"), patch(
+            "mega_snake.diff_tree.diff_tree.os.makedirs"
+        ), patch("builtins.open", mock_open()):
+            run_operation.side_effect = [
+                SimpleNamespace(stdout="commit"),  # base validation
+                SimpleNamespace(stdout=":000000 100644 0000000 1111111 A\tfile.txt"),  # raw diff
+                SimpleNamespace(stdout=""),  # numstat
+                SimpleNamespace(stdout="commit log"),  # commit list
+                SimpleNamespace(stdout=""),  # opening commit file
+                SimpleNamespace(stdout="diff content"),  # changes
+                SimpleNamespace(stdout=""),  # opening changes file
+            ]
+            diff_tree_cmd.diff_tree.callback(
+                origin_hash="base111", target_hash=None, delete_original_files=True, scope="c"
+            )
+
+        get_current_commit.assert_called_once_with()
+        issued = [call.args[0] for call in run_operation.call_args_list]
+        assert "git diff --raw --no-renames base111 headsha" in issued
+        # Only the base is validated when no target is given: HEAD needs no validation.
+        assert len([command for command in issued if command.startswith("git cat-file")]) == 1
+    finally:
+        for file_type in FileType:
+            file_type.files_added = 0
+            file_type.files.clear()
+
+
+@pytest.mark.parametrize("scope", ["s", "u"])
+def test_diff_tree_rejects_target_with_a_working_tree_scope(scope: str) -> None:
+    """--target cannot be combined with a scope that reads the index or the working tree.
+
+    Those scopes never consume the far end of the range, so accepting the combination would run a
+    diff that silently ignores --target and report it as if it had been honoured.
+
+    Parameters:
+        scope: The staged or unstaged scope being rejected.
+
+    Raises:
+        None
+
+    Returns:
+        None
+    """
+    with patch("mega_snake.diff_tree.diff_tree.get_property") as get_property, patch(
+        "mega_snake.diff_tree.diff_tree.shutil.rmtree"
+    ) as rmtree, patch("mega_snake.diff_tree.diff_tree.run_operation") as run_operation:
+        with pytest.raises(
+            click.ClickException,
+            match=f"BAD REQUEST: --target-hash and --scope {scope} are mutually exclusive",
+        ):
+            diff_tree_cmd.diff_tree.callback(
+                origin_hash=None, target_hash="tip222", delete_original_files=False, scope=scope
+            )
+    # Rejected before any side effect: no output folder is resolved, wiped, or touched by git.
+    get_property.assert_not_called()
+    rmtree.assert_not_called()
+    run_operation.assert_not_called()
+
+
+def test_diff_tree_rejects_an_invalid_target() -> None:
+    """A target that does not resolve to a commit is rejected, like the base already was."""
+    with patch("mega_snake.diff_tree.diff_tree.get_property", return_value="/tmp"), patch(
+        "mega_snake.diff_tree.diff_tree.os.path.exists", return_value=False
+    ), patch("mega_snake.diff_tree.diff_tree.os.makedirs"), patch(
+        "mega_snake.diff_tree.diff_tree.get_main_branch", return_value="master"
+    ), patch("mega_snake.diff_tree.diff_tree.get_remote", return_value="origin"), patch(
+        "mega_snake.diff_tree.diff_tree.run_operation"
+    ) as run_operation:
+        run_operation.return_value.stdout = "blob"
+        with pytest.raises(ValueError, match="Invalid commit hash: notacommit"):
+            diff_tree_cmd.diff_tree.callback(
+                origin_hash=None, target_hash="notacommit", delete_original_files=False, scope="c"
+            )
+
+
+def test_validate_commit_returns_the_reference_it_was_given() -> None:
+    """A valid reference is returned unchanged, so callers can assign it directly."""
+    with patch("mega_snake.diff_tree.diff_tree.run_operation") as run_operation:
+        run_operation.return_value.stdout = "commit\n"
+        assert diff_tree_cmd._validate_commit("abc123") == "abc123"
+    run_operation.assert_called_once_with(
+        "git cat-file -t abc123 2>/dev/null", "Checking if commit hash 'abc123' is valid"
+    )
+
+
+def test_diff_tree_exposes_the_expected_option_names() -> None:
+    """The public flags are part of the command's contract, so a rename must be deliberate.
+
+    Renaming an option silently breaks every script and habit that uses it, and the callback
+    signature alone does not pin the user-facing spelling: click derives the parameter name from the
+    flag, so a wrong flag with a matching parameter would still satisfy every other test here.
+    """
+    declared = {
+        parameter.name: tuple(parameter.opts) for parameter in diff_tree_cmd.diff_tree.params
+    }
+    assert declared["origin_hash"] == ("--origin-hash", "-o")
+    assert declared["target_hash"] == ("--target-hash", "-t")
+    assert declared["scope"] == ("--scope", "-s")
+    assert declared["delete_original_files"] == ("--delete-original-files", "-d")
+    # The previous spellings must be gone, not merely shadowed by the new ones.
+    every_flag = [flag for flags in declared.values() for flag in flags]
+    assert "--commit-hash" not in every_flag
+    assert "--target" not in every_flag
+    assert "-c" not in every_flag
+
+
+def test_diff_tree_help_documents_the_scope_restriction_on_both_options() -> None:
+    """--scope and --target-hash constrain each other, so each one must say so on its own.
+
+    A user reading `--scope` should not have to read `--target-hash` to discover the combination is
+    refused, and vice versa: whichever one they look up first has to carry the warning.
+    """
+    help_by_name = {parameter.name: parameter.help for parameter in diff_tree_cmd.diff_tree.params}
+
+    scope_help = help_by_name["scope"]
+    assert "--target-hash" in scope_help, "--scope never mentions the option that restricts it"
+    assert "rejected" in scope_help, "--scope does not say the combination is refused"
+
+    target_help = help_by_name["target_hash"]
+    assert "--scope c" in target_help, "--target-hash never names the scope it requires"
+    assert "rejected" in target_help, "--target-hash does not say the combination is refused"

@@ -235,6 +235,12 @@ Generates a visual tree representation of changed files.
 the same pre-flight check as the command.
 
 **Implementation Details:**
+- **Both ends of the comparison are movable.** `-o | --origin-hash` replaces the base (master by default) and
+  `-t | --target-hash` replaces the far end (HEAD by default); `_validate_commit` is shared by both, so a reference
+  that resolves to a tree or a blob is rejected before any diff runs. `--target-hash` is refused for the `s`/`u` scopes:
+  those read the index and the working tree, which exist only for HEAD, so honouring the flag is impossible and
+  ignoring it silently would misreport the range. That check runs **before** the output directory is wiped, so a
+  rejected invocation never destroys the previous run's files.
 - Uses `git diff --raw --no-renames {diff_target}` to get raw file lists. `_get_diff_target` builds `diff_target`
   from the `-s | --scope` flag, which selects how much of the work is included: `c` (default, committed only) →
   `{main_branch} {current_branch}`, `s` (committed + staged) → `--cached {main_branch}`, `u` (committed + staged +

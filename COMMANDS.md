@@ -208,7 +208,7 @@ already triaged and closed is not filed again on the next run.
 
 ### diff-tree
 
-Creates a diff tree of changes and a commit list of the current branch against master or a specified commit hash
+Creates a diff tree of changes and a commit list between two points in history. The comparison runs from master (or the commit given with --origin-hash) up to the current HEAD (or the commit given with --target-hash), which makes it possible to inspect a past range instead of only the current work.
 
 **Synopsis:** `mgsnake diff-tree [OPTIONS]`
 
@@ -216,13 +216,18 @@ Creates a diff tree of changes and a commit list of the current branch against m
 
 | Option | Description |
 | --- | --- |
-| `-c, --commit-hash TEXT` | Commit hash to compare against instead of master |
+| `-o, --origin-hash TEXT` | Commit hash to compare against instead of master |
+| `-t, --target-hash TEXT` | Commit hash to compare up to, instead of the current HEAD. Forces --scope c, since the index and the working tree only exist for HEAD; combining it with another scope is rejected. |
 | `-d, --delete-original-files` | Delete the generated copy of the original files in the diff tree |
-| `-s, --scope [c\|s\|u]` | Changes to include: (c)ommitted only [default], committed and (s)taged, or also (u)nstaged and untracked  [default: c] |
+| `-s, --scope [c\|s\|u]` | Changes to include: (c)ommitted only [default], committed and (s)taged, or also (u)nstaged and untracked. Only 'c' is compatible with --target-hash: the other two read the index and the working tree, which exist only for HEAD, so passing them together is rejected instead of silently ignoring one of them.  [default: c] |
 | `-h, --help` | Show this message and exit. |
 
 Useful for code reviews, progress comments on a ticket, and release notes: it answers "what did I
 touch since master?" without scrolling through `git log`.
+
+Both ends of the comparison move independently: `--origin-hash` sets where it starts, `--target-hash`
+sets where it ends. With both, the range is fully explicit and no longer anchored to the current checkout,
+which is what makes it possible to reconstruct a past release from the two commits that bound it.
 
 #### Output
 
@@ -236,10 +241,24 @@ The tree and the patch follow `--scope`. The commit list cannot, since uncommitt
 commits, so pending files are prepended instead as `Unstaged files:` and `Staged files:` sections
 above the newest commit — each one only when the scope covers it.
 
+#### Examples
+
+```bash
+# Everything on this branch that master does not have
+mgsnake dt
+
+# A past release, reconstructed from the two commits that bound it
+mgsnake dt -o 85652b7 -t 79108b6
+```
+
 #### Notes
 
 The output directory is wiped and recreated on every run. No remote is required: when the
 repository has none, the comparison falls back to the current local branch.
+
+`--target-hash` only applies to the committed scope (`--scope c`, the default). The staged and unstaged
+scopes read the index and the working tree, which exist only for HEAD, so combining them is rejected
+rather than silently ignoring one of the two.
 
 ## Documentation
 
