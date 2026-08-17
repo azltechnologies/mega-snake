@@ -29,6 +29,31 @@ class Color(Enum):
 # nobody classified. It is a real, deliverable status — not a placeholder for "exit 1".
 INTERNAL_ERROR_CODE: int = 100
 
+class InternalStateError(Exception):
+    """Raised when an invariant guaranteed upstream was violated: reaching the raise is a bug.
+
+    Use it **only** where the situation was already ruled out earlier in the same flow — a resource
+    validated during initialization, a value the code itself produced, a branch a previous graceful
+    check made unreachable. Anything the user or their environment can legitimately cause is not
+    this: a missing tool, an unconfigured remote, a declined prompt or bad input each get the
+    specific built-in that describes them, so ``ERROR_CODES`` can resolve a meaningful status.
+
+    Deliberately **not** a ``click.ClickException``. Those exist to give a user error clean,
+    traceback-free output; a bug wants the opposite. Resolving to ``INTERNAL_ERROR_CODE`` makes
+    ``_on_crash`` print the traceback, which is the only diagnostic that helps here.
+
+    It replaces the ``assert`` statements this codebase used for the same purpose: ``assert`` is
+    stripped by ``python -O``, which silently removed the check and let the failure surface later as
+    something unrelated.
+
+    **Deliberately absent from ``ERROR_CODES``.** It inherits ``INTERNAL_ERROR_CODE`` from
+    ``resolve_error_code``'s default, which is exactly right: 100 already means "a bug in mgsnake",
+    and this type only makes that diagnosis explicit at the raise site. Registering it would put 100
+    in the table's values, and a status a registered type shares with the unmapped fallback tells a
+    caller nothing the fallback did not already tell it.
+    """
+
+
 # Exit code of ValidationError / UserDeclinedError. They subclass click.ClickException so they keep
 # the clean, traceback-free output Click gives a user error; only the status number changes.
 VALIDATION_ERROR_CODE: int = 113

@@ -47,7 +47,11 @@ def remote_branches_cleanup() -> None:
         branches: str = file.read().strip()
     # check if branches is empty
     if not branches:
-        raise IOError(
+        # Not a bug: the "pipeline via files" design lets the user skip the refresh and hand-edit
+        # the report, so an empty file is user-supplied input. IOError is an alias of OSError, whose
+        # slot in ERROR_CODES is already taken by EnvironmentError, so it would resolve to 112 and
+        # read as an environment failure; ValueError says what this actually is.
+        raise ValueError(
             f"No branches found in the file {input_file}. No records in {input_file}, "
             "verify that the file is being written correctly"
         )

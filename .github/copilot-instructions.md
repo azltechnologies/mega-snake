@@ -878,6 +878,11 @@ would remove the stored token entirely and is the natural upgrade.)
         exception type instead.
     -   Raise `ValueError` for an invalid value, and the matching built-in for everything else
         (`FileNotFoundError`, `PermissionError`, …) so `ERROR_CODES` can resolve a meaningful status.
+    -   Raise `InternalStateError` **only** where reaching the line means `mgsnake` is defective —
+        typically a state an earlier graceful check already ruled out. Never use it for anything the
+        user or their environment can legitimately cause, and never use a built-in for a real bug.
+        See §7.6, which is the full rule and its rationale.
+    -   Never use `assert` for either. It is stripped by `python -O`, which deletes the check.
     -   Let unexpected errors bubble up. `main()` in `__main__.py` — **not** `cli()` — is the single
         place an exception becomes an exit code.
     -   **Every new custom exception must be registered in `ERROR_CODES` in the same change.** A test
@@ -1010,7 +1015,7 @@ fully written, never reached. Treat this section as a contract, not as documenta
 | `1` | The user invoked the command incorrectly | `click.ClickException` |
 | `2` | Malformed invocation / programming error in command registration | `click.UsageError` |
 | `29` | Success **+ the shell must reload its local environment files** | The signal, §7.4 |
-| `100` | Internal error with no mapped type | `WorkspaceError` default (`INTERNAL_ERROR_CODE`) |
+| `100` | A bug in `mgsnake`: a declared broken invariant, or an internal error with no mapped type | `InternalStateError` (§7.6) / `WorkspaceError` default (`INTERNAL_ERROR_CODE`) |
 | `101`–`112` | Error, by exception type | `ERROR_CODES` |
 | `113` | A validation reported stale or invalid content | `ValidationError` |
 | `114` | The user declined a required action | `UserDeclinedError` |
@@ -1055,6 +1060,10 @@ failure to the same number. `cli()` re-raises with the type intact instead.
 **Every custom exception introduced in this package must be registered in `ERROR_CODES` in the same change**, or —
 for a `click.ClickException` subclass — must declare its own `exit_code`. `test_every_custom_exception_in_the_package_has_a_registered_exit_code`
 walks the package and fails naming any that is not, so this is enforced mechanically rather than by convention.
+
+The single documented exception is `InternalStateError` (§7.6), which is listed in that test's `UNMAPPED_BY_DESIGN`
+because `INTERNAL_ERROR_CODE` already carries its exact meaning. Adding a second name to that set needs the same
+kind of argument, not just the wish to skip the registration.
 
 The table lives in `util/formatting.py`. A type owned by a module `formatting.py` cannot import (because that module
 already imports `formatting`) registers itself at its definition site instead — see `VersionSetException` in
@@ -1117,3 +1126,53 @@ The number is hard-coded in three places that must agree: `RELOAD_ENVIRONMENT_EX
   `ClickException`'s own `exit_code`). `subprocess` for anything decided *outside* it — the translation in `main()`
   and the except hook. `CliRunner` catches exceptions and reports `1` for all of them, so an in-process test of the
   hook would assert nothing at all.
+
+### 7.6 `InternalStateError` — the only exception that means "this is our bug"
+
+**`InternalStateError` may be raised in production code only where reaching the statement means `mgsnake` itself is
+defective.** Anything else must be typed to the built-in that actually describes it, so `ERROR_CODES` resolves a
+meaningful status. This is a rule about *provenance*, not about how bad the situation looks.
+
+**The test that decides it.** Ask: *could a correct build of `mgsnake`, running in a reasonable environment, reach
+this line?*
+
+| The situation was… | Then it is… | Raise |
+|---|---|---|
+| already ruled out upstream — a resource validated during initialization, a value this package itself produced, a branch a previous graceful check made unreachable | **a bug** | `InternalStateError` |
+| external, but from a vocabulary we committed to mirroring in full — a `git diff --raw` status letter, an OS we claim to support | **a bug** | `InternalStateError` |
+| never ruled out — a missing tool, an unconfigured remote, absent input, a file the user supplies or hand-edits, a declined prompt | **not a bug** | the specific built-in (`FileNotFoundError`, `EnvironmentError`, `ValueError`, `subprocess.SubprocessError`, `UserDeclinedError`, …) |
+
+The sharpest form of the first row, and the one that recurs: **a caller already did a graceful
+`ws_warning(...) + return` for the empty/missing case, and the callee re-checks it anyway.** That second check is
+unreachable by design — `select_version`'s empty list is exactly this, since all three of its callers return early
+when the system has no version installed. Reporting it as an environment problem would send the user hunting for
+something to install when the real defect is in the flow above.
+
+**"External" is not the same as "not our fault."** The second row is the subtle one: `FileType.from_symbol` receives
+a status letter straight from `git diff --raw`, so the value is external — yet the enum exists precisely to mirror
+git's full set of status letters. If git grows one we never added, keeping up with it was our job. The question is
+never *where did the value come from*, it is *whose job was it to handle this value*. Contrast with
+`_validate_commit`, which also inspects git output but is checking a reference **the user typed**: a bad one there
+is input, not a gap in our coverage.
+
+**Why a dedicated type instead of `assert`.** These checks used to be `assert x, "... This is a bug."`. `assert` is
+stripped by `python -O`, which removed the guard silently and let the failure resurface later as something
+unrelated. The message was also the only thing distinguishing a bug from an environment failure, and it vanished the
+moment someone rewrote the raise.
+
+**Why not a plain built-in either.** That is the failure this rule exists to prevent: retyping these to
+`FileNotFoundError`/`ValueError` makes them exit `102`/`103`, indistinguishable from a genuine missing file or bad
+value, and tells the user to fix something they neither caused nor can reach.
+
+**Mechanics.**
+
+- It does **not** subclass `click.ClickException`. Those exist to give a user error clean, traceback-free output; a
+  bug wants the traceback, and `_on_crash` prints one for `INTERNAL_ERROR_CODE`.
+- It is **deliberately absent from `ERROR_CODES`**, listed instead in `UNMAPPED_BY_DESIGN` in
+  `src/tests/test_exit_codes.py`. It inherits `100` from `resolve_error_code`'s default, which already means exactly
+  this. Registering it would put `100` among the table's values, and a status a registered type shares with the
+  unmapped fallback carries no information the fallback did not already carry. **This is the one documented
+  exception to §7.3** — every *other* custom exception still needs its own entry.
+- **Catching it is legitimate where the "impossible" state is actually expected.** `resolve_tag_pattern` catches it
+  around `get_property`, because `create-release` is light-weight and the properties singleton genuinely may not
+  exist there. That is the mirror image of the rule: same condition, different flow, different verdict.

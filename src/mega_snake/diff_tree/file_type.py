@@ -2,6 +2,7 @@
 
 import dataclasses
 from enum import Enum
+from mega_snake.util.formatting import InternalStateError
 
 
 @dataclasses.dataclass
@@ -59,12 +60,21 @@ class FileType(Enum):
         Returns the FileType with the given symbol.
 
         Args:
-            symbol: str
+            id_type: str - The status letter git emitted for the file (A, M, D, R, C, T, U).
+
+        Raises:
+            InternalStateError: If git reported a status letter this enum does not cover.
+
+        Returns:
+            FileType: The member matching the symbol.
         """
         for file_type in cls:
             if file_type.id_type == id_type:
                 return file_type
-        raise ValueError(f"No FileType with symbol '{id_type}' found.")
+        # The symbol comes from `git diff --raw`, whose status letters this enum is meant to mirror
+        # in full. An unknown one means git grew a status we never added here, which is our failure
+        # to keep up with it, not anything the user did or can correct.
+        raise InternalStateError(f"No FileType with symbol '{id_type}' found. This is a bug.")
 
     @classmethod
     def get_changes(cls) -> str:

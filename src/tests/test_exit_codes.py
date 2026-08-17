@@ -36,6 +36,7 @@ from mega_snake.util import formatting
 from mega_snake.util.formatting import (
     ERROR_CODES,
     INTERNAL_ERROR_CODE,
+    InternalStateError,
     USER_DECLINED_ERROR_CODE,
     VALIDATION_ERROR_CODE,
     UserDeclinedError,
@@ -72,6 +73,10 @@ EXPECTED_ERROR_CODES: tuple[tuple[type[BaseException], int], ...] = (
 # Exceptions that legitimately have no ERROR_CODES entry, with the reason.
 UNMAPPED_BY_DESIGN: dict[str, str] = {
     "WorkspaceError": "the carrier itself: its status is resolved from the exception it wraps",
+    "InternalStateError": (
+        "it declares a bug, which is exactly what INTERNAL_ERROR_CODE already means, so it inherits "
+        "that default instead of putting 100 into the table's values"
+    ),
 }
 
 # Raised inside the driver below to reach a WorkspaceError whose cause is not in ERROR_CODES.
@@ -85,6 +90,7 @@ import subprocess, sys
 from unittest.mock import patch
 from mega_snake.__main__ import main
 from mega_snake.config_environment.models.tools_version import VersionSetException
+from mega_snake.util.formatting import InternalStateError
 
 
 class Unmapped(Exception):
@@ -92,6 +98,7 @@ class Unmapped(Exception):
 
 
 CAUSES = {
+    "InternalStateError": InternalStateError("boom"),
     "RuntimeError": RuntimeError("boom"),
     "FileNotFoundError": FileNotFoundError("boom"),
     "ValueError": ValueError("boom"),
@@ -306,6 +313,9 @@ def test_a_command_that_leaves_the_environment_alone_does_not_emit_the_signal(tm
         # of falling to the generic one.
         ("CalledProcessError", 111),
         (UNMAPPED_EXCEPTION_NAME, INTERNAL_ERROR_CODE),
+        # Declares a bug at the raise site. Unregistered on purpose, so this row proves the default
+        # actually carries it to the shell rather than the table doing the work.
+        ("InternalStateError", INTERNAL_ERROR_CODE),
     ],
 )
 def test_an_unhandled_exception_reaches_the_shell_as_its_registered_code(cause_name: str, expected_code: int) -> None:
@@ -446,6 +456,8 @@ def test_error_codes_never_reassigns_the_internal_error_code() -> None:
         (UnicodeDecodeError("utf-8", b"", 0, 1, "x"), 103),
         # Nothing in the MRO is registered.
         (Exception("x"), INTERNAL_ERROR_CODE),
+        # Deliberately absent from the table: it must reach 100 through the default, not an entry.
+        (InternalStateError("x"), INTERNAL_ERROR_CODE),
     ],
 )
 def test_resolve_error_code_walks_the_mro(exception: BaseException, expected_code: int) -> None:

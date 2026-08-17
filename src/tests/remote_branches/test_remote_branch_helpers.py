@@ -9,6 +9,7 @@ import click
 import pytest
 
 from mega_snake.remote_branches.remote_branch import Commit, RemoteBranch
+from mega_snake.util.formatting import InternalStateError
 from mega_snake.remote_branches.parse_remote_branches import define_branches, parsing_branches, delete_branches
 from mega_snake.remote_branches.details_remote_branches import execute
 from mega_snake.remote_branches.cleanup_remote_branches import remote_branches_cleanup
@@ -156,10 +157,10 @@ def test_from_branch_rejects_a_branch_it_cannot_relate_to_the_remote() -> None:
             SimpleNamespace(stdout="1735689600"),
             SimpleNamespace(stdout=""),  # contains check: no branch holds the commit
         ]
-        with pytest.raises(LookupError, match="not found in any branch"):
+        with pytest.raises(InternalStateError, match="not found in any branch"):
             RemoteBranch.from_branch("'remotes/origin/feature'", "A", "main", "origin")
 
-    with pytest.raises(LookupError, match="Unable to parse local branch name"):
+    with pytest.raises(InternalStateError, match="Unable to parse local branch name"):
         RemoteBranch.from_branch('"remotes/other/feature"', "A", "main", "origin")
 
 
@@ -274,5 +275,5 @@ def test_details_and_cleanup_commands() -> None:
     ), patch(
         "mega_snake.remote_branches.cleanup_remote_branches.open", mock_open(read_data="")
     ):
-        with pytest.raises(IOError):
+        with pytest.raises(ValueError, match="No branches found in the file"):
             remote_branches_cleanup.callback()

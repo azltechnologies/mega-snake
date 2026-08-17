@@ -18,6 +18,7 @@ from mega_snake.util.props import (
     _check_forbidden_execution as check_forbidden_execution,
 )
 from mega_snake.constants import LOGGING_NAME_TO_LEVEL
+from mega_snake.util.formatting import InternalStateError
 
 ROOT = "src/tests"
 RESOURCE_FOLDER = "/resources"
@@ -90,7 +91,7 @@ def test_get_property() -> None:
 
 def test_get_instance_when_instance_is_none() -> None:
     """Test get_instance method when instance is None"""
-    with pytest.raises(RuntimeError):
+    with pytest.raises(InternalStateError, match="Properties Singleton not initialized yet"):
         AppProperties.get_instance()
 
 
@@ -272,7 +273,7 @@ def test_resources_path_validator(request) -> None:
 
         # Test when the resources location doesn't exist
         get_package_root.side_effect = [ROOT, non_existent_resource_folder]
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(InternalStateError, match="does not exist in PYTHONPATH"):
             init_app_properties(log_level, shell, light_weight)
         reset_mocks(*mocks.values())
 
@@ -327,7 +328,7 @@ def test__find_code_workspace_files(request) -> None:
         assert get_property("workspace_file").endswith(result)
 
         # Test create an AppProperties instance twice
-        with pytest.raises(RuntimeError):
+        with pytest.raises(InternalStateError, match="Properties Singleton already initialized"):
             init_app_properties(log_level, shell, True)
         reset_mocks(*mocks.values())
 
@@ -504,9 +505,10 @@ def test_fail_scenarios(request) -> None:
             result: str = check_property(prop, dic)
             return result
 
-        # Test when property is not found at check_property
+        # Test when property is not found at check_property. The properties file ships inside the
+        # distribution, so a key missing from it is a packaging defect, not user input.
         with patch("mega_snake.util.props._check_property", side_effect=check_property_side_effect):
-            with pytest.raises(KeyError):
+            with pytest.raises(InternalStateError, match="has not been set in the properties file"):
                 init_app_properties(log_level, shell, light_weight)
             reset_mocks(*mocks.values())
 
@@ -537,12 +539,13 @@ def test_fail_scenarios(request) -> None:
             instance._log_level = None  # pylint: disable=W0212
             original_method(instance)
 
-        # Test when property is not found at __post_init__
+        # Test when property is not found at __post_init__. Every attribute is assigned by the
+        # initialization that just ran, so one left as None means that initialization has a hole.
         with patch(
             "mega_snake.util.props.AppProperties.__post_init__",
             side_effect=post_init_side_effect,
         ):
-            with pytest.raises(ValueError):
+            with pytest.raises(InternalStateError, match="_log_level has not been set"):
                 init_app_properties(log_level, shell, light_weight)
             reset_mocks(*mocks.values())
 

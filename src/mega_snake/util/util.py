@@ -14,7 +14,14 @@ import inspect
 import click
 from colorama import init, Fore, Back, Style
 from jsoncomment import JsonComment
-from mega_snake.util.formatting import UserDeclinedError, ws_advice, ws_info, ws_success, ws_warning
+from mega_snake.util.formatting import (
+    InternalStateError,
+    UserDeclinedError,
+    ws_advice,
+    ws_info,
+    ws_success,
+    ws_warning,
+)
 from mega_snake.util.cli_group import ATTR_ALIAS, ATTR_DOCS, ATTR_GROUP, ATTR_METADATA
 from mega_snake.util.props import get_property
 
@@ -330,7 +337,7 @@ def ensure_working_path(decline_message: Optional[str] = None) -> str:
             a generic message mentioning the working path.
 
     Raises:
-        AssertionError: If the working path property is empty or points outside the current
+        InternalStateError: If the working path property is empty or points outside the current
             directory, which would mean the properties were built incorrectly.
         UserDeclinedError: If the working path is missing and the user declines to create it.
 
@@ -338,10 +345,13 @@ def ensure_working_path(decline_message: Optional[str] = None) -> str:
         str: The absolute path to the existing working path folder.
     """
     working_path: str = get_property("working_path")
+    # Both checks restate what initialization already guaranteed: _check_property refuses an empty
+    # value, and __working_path_validator resolves it against the cwd. Failing here means the
+    # properties were built wrong, so the user has nothing to act on.
     if not working_path:
-        raise ValueError("Working path is required but was not found in the properties.")
+        raise InternalStateError("Working path is required but was not found in the properties. This is a bug.")
     if not Path(working_path).resolve().is_relative_to(Path.cwd().resolve()):
-        raise ValueError("Working path is not in the current directory.")
+        raise InternalStateError("Working path is not in the current directory. This is a bug.")
     if os.path.exists(working_path):
         ws_info(f"Working path found: {working_path}")
         return working_path

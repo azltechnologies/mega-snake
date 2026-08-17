@@ -25,7 +25,7 @@ from mega_snake.config_environment.models.vscode_task import VscodeTask, TASKS_I
 from mega_snake.config_environment.models.vscode_input import VscodeInput
 from mega_snake.util.util import cli_metadata, run_operation, load_json_with_comments
 from mega_snake.util.props import get_property
-from mega_snake.util.formatting import ws_info, ws_success, ws_warning
+from mega_snake.util.formatting import InternalStateError, ws_info, ws_success, ws_warning
 
 MAVEN_ENV_VAR = "M2_HOME"
 ENV_VARIABLE = f"terminal.integrated.env.{OS_MAP[OS]}"
@@ -194,7 +194,10 @@ def _update_configurations(
     temp_file = f"{working_path}/maven_versions.json"
     json_data = set_version_path_for_query(typing.cast(list[ToolVersion], versions), json_data, MAVEN_HOME_QUERY)
     version: Optional[MavenVersion] = next((v for v in versions if v.default), None)
-    assert version, "Default Maven version not found in the list of Maven versions. This is a bug."
+    # set_version_path_for_query already refused the list unless exactly one version carries the
+    # default flag, so by this point one is guaranteed to be there.
+    if not version:
+        raise InternalStateError("Default Maven version not found in the list of Maven versions. This is a bug.")
     executable_path = os.path.join(version.path, "bin", MAVEN_EXECUTABLE).replace("\\", "/")
     json_data = jq.compile(f"{MAVEN_EXEC_QUERY} = {json.dumps(executable_path)}").input(json_data).first()
     update_workspace(json_data, temp_file, workspace_file)

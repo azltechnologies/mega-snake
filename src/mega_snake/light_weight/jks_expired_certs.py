@@ -3,6 +3,7 @@
 from typing import Optional
 from datetime import datetime
 import shutil
+import subprocess
 import click
 from mega_snake.util.formatting import ws_advice, ws_info, Color, ws_warning, ws_tip
 from mega_snake.util.util import run_operation, get_command_return_code
@@ -44,16 +45,20 @@ def expired_certs(jks_path: str, password: str, verbose: bool) -> None:
         verbose (bool): Print the full certificate details of expired certificates.
 
     Raises:
-        RuntimeError: If keytool is unavailable, the keystore cannot be read, or a
-            certificate cannot be processed (e.g. an unparseable date format).
+        FileNotFoundError: If keytool is not installed or not on the PATH.
+        subprocess.SubprocessError: If keytool rejects the keystore or the password.
+        RuntimeError: If a certificate cannot be processed (e.g. an unparseable date format).
 
     Returns:
         None
     """
 
-    # Verify keytool is available
+    # Verify keytool is available. A missing tool is a gap in the user's environment, not a misuse
+    # of the command, so it reports the same way every other missing-binary guard does.
     if not shutil.which("keytool"):
-        raise RuntimeError("keytool could not be found. Please ensure Java is installed and keytool is in your PATH.")
+        raise FileNotFoundError(
+            "keytool could not be found. Please ensure Java is installed and keytool is in your PATH."
+        )
 
     # Use default password if none provided
     ws_advice(f"JKS_PATH: {jks_path}")
@@ -61,8 +66,10 @@ def expired_certs(jks_path: str, password: str, verbose: bool) -> None:
 
     # Validate keytool parameters
     list_cmd: str = f"keytool -v -list -keystore '{jks_path}' -storepass '{password}'"
+    # An external command returned non-zero: a wrong password or an unreadable keystore, both of
+    # which the user can act on.
     if get_command_return_code(list_cmd) != 0:
-        raise RuntimeError("keytool command failed on implementing parameters.")
+        raise subprocess.SubprocessError("keytool command failed on implementing parameters.")
     ws_info("Validation of parameters in keytool command succeeded.")
 
     # Get all aliases
