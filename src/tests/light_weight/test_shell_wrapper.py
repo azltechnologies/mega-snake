@@ -91,12 +91,16 @@ def test_scripts_locate_load_env_by_its_registered_name(script_name: str) -> Non
 
     A renamed command would still exit 30, so the wrapper would still fire -- and then fail to find
     the name in the arguments and silently load the wrong file. Nothing else would report it.
+
+    Anchored on the assignment the wrapper reads, not on the name appearing anywhere: it also shows
+    up as the display prefix of the `msg -p` call inside the helper, so a bare `in` check would keep
+    passing after the variable itself was deleted.
     """
     script = _script(script_name)
 
-    assert f'"{LOAD_ENV_COMMAND}"' in script, (
-        f"{script_name} must look for the registered name {LOAD_ENV_COMMAND!r} to find its arguments"
-    )
+    assert re.search(
+        rf'LoadEnvCommand\s*=\s*"{LOAD_ENV_COMMAND}"|LOAD_ENV_COMMAND="{LOAD_ENV_COMMAND}"', script
+    ), f"{script_name} must bind the registered name {LOAD_ENV_COMMAND!r} to the variable the wrapper scans for"
 
 
 @pytest.mark.parametrize("script_name", ["config_setup.sh", "config_setup.ps1"])
@@ -174,6 +178,65 @@ def test_bash_argument_slicing_returns_only_the_commands_own_arguments(argv: str
     )
 
 
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash is not available on this platform")
+@pytest.mark.parametrize(
+    ("stub_status", "argv", "expected_status", "expected_marker"),
+    [
+        pytest.param(RELOAD_ENVIRONMENT_EXIT_CODE, "set-java", 0, "reloaded", id="reload-signal-is-served"),
+        pytest.param(LOAD_ENV_EXIT_CODE, f"{LOAD_ENV_COMMAND} foo.env", 0, "loaded:foo.env", id="load-env-signal-is-served"),
+        pytest.param(0, "diff-tree", 0, "", id="success-passes-through"),
+        pytest.param(3, "diff-tree", 3, "", id="a-real-failure-passes-through"),
+        pytest.param(1, "diff-tree", 1, "", id="a-misuse-status-passes-through"),
+    ],
+)
+def test_bash_wrapper_reports_success_once_it_has_served_the_signal(
+    tmp_path: Path, stub_status: int, argv: str, expected_status: int, expected_marker: str
+) -> None:
+    """A served signal must not reach the caller, and every other status must reach it unchanged.
+
+    The signal is a request. Once the wrapper has carried it out there is nothing left to report, so
+    propagating it would make `mgsnake set-java && echo ok` never print and abort any `set -e`
+    script on its happy path. Both halves are asserted here: the exact caller-visible status *and*
+    the marker proving the dispatch actually ran -- a wrapper that returned 0 without dispatching
+    would satisfy the status assertion alone.
+    """
+    script = _script("config_setup.sh")
+    wrapper = re.search(r"^mgsnake\(\) \{.*?^\}", script, re.MULTILINE | re.DOTALL)
+    slicing = re.search(r"^__mgsnake_args_after\(\) \{.*?^\}", script, re.MULTILINE | re.DOTALL)
+    assert wrapper, "the mgsnake wrapper function is no longer defined under its expected name"
+    assert slicing, "the argument-slicing helper is no longer defined under its expected name"
+
+    # Stands in for the real executable: `command mgsnake` resolves through PATH, never the function.
+    stub_dir = tmp_path / "bin"
+    stub_dir.mkdir()
+    stub = stub_dir / "mgsnake"
+    stub.write_text(f"#!/usr/bin/env bash\nexit {stub_status}\n", encoding="utf-8")
+    stub.chmod(0o755)
+
+    program = (
+        f'export PATH="{stub_dir}:$PATH"\n'
+        f"{slicing.group(0)}\n"
+        f"{wrapper.group(0)}\n"
+        f"MEGA_SNAKE_RELOAD_EXIT_CODE={RELOAD_ENVIRONMENT_EXIT_CODE}\n"
+        f"MEGA_SNAKE_LOAD_ENV_EXIT_CODE={LOAD_ENV_EXIT_CODE}\n"
+        f'MEGA_SNAKE_LOAD_ENV_COMMAND="{LOAD_ENV_COMMAND}"\n'
+        '__mgsnake_reload() { printf "reloaded"; }\n'
+        '__mgsnake_load_env() { printf "loaded:%s" "$1"; }\n'
+        f"mgsnake {argv}\n"
+        'printf "|%s" "$?"\n'
+    )
+    result = subprocess.run(["bash", "-c", program], capture_output=True, text=True, check=False)
+
+    marker, _, status = result.stdout.partition("|")
+    assert status == str(expected_status), (
+        f"`mgsnake {argv}` (executable exited {stub_status}) should leave the caller with "
+        f"{expected_status}, got {status!r}"
+    )
+    assert marker == expected_marker, (
+        f"`mgsnake {argv}` should have dispatched {expected_marker!r}, got {marker!r}"
+    )
+
+
 @pytest.mark.skipif(shutil.which("pwsh") is None, reason="pwsh is not available on this platform")
 @pytest.mark.parametrize(
     ("argv", "expected"),
@@ -225,6 +288,60 @@ def test_pwsh_argument_slicing_returns_only_the_commands_own_argument(argv: str,
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == f"[{expected}]", (
         f"for `mgsnake {argv}` the helper should receive {expected!r}, got {result.stdout.strip()!r}"
+    )
+
+
+@pytest.mark.skipif(shutil.which("pwsh") is None, reason="pwsh is not available on this platform")
+@pytest.mark.parametrize(
+    ("stub_status", "argv", "expected_status", "expected_marker"),
+    [
+        pytest.param(RELOAD_ENVIRONMENT_EXIT_CODE, '"set-java"', 0, "reloaded", id="reload-signal-is-served"),
+        pytest.param(LOAD_ENV_EXIT_CODE, f'"{LOAD_ENV_COMMAND}" "foo.env"', 0, "loaded:foo.env", id="load-env-signal-is-served"),
+        pytest.param(0, '"diff-tree"', 0, "", id="success-passes-through"),
+        pytest.param(3, '"diff-tree"', 3, "", id="a-real-failure-passes-through"),
+        pytest.param(1, '"diff-tree"', 1, "", id="a-misuse-status-passes-through"),
+    ],
+)
+def test_pwsh_wrapper_reports_success_once_it_has_served_the_signal(
+    tmp_path: Path, stub_status: int, argv: str, expected_status: int, expected_marker: str
+) -> None:
+    """The PowerShell half of the same contract: a served signal must not reach `$LASTEXITCODE`.
+
+    Asserted through the status the caller actually reads, and paired with the dispatch marker so a
+    wrapper that reported 0 without doing the work would still fail.
+    """
+    script = _script("config_setup.ps1")
+    slicing = re.search(r"^function __mgsnake_args_after.*?^\}", script, re.MULTILINE | re.DOTALL)
+    dispatch = re.search(r"^function mgsnake \{.*?^\}", script, re.MULTILINE | re.DOTALL)
+    assert slicing, "the argument-slicing helper is no longer defined under its expected name"
+    assert dispatch, "the mgsnake wrapper function is no longer defined under its expected name"
+
+    stub = tmp_path / "mgsnake_stub.ps1"
+    stub.write_text(f"exit {stub_status}\n", encoding="utf-8")
+
+    program = (
+        f"{slicing.group(0)}\n"
+        f"{dispatch.group(0)}\n"
+        f"$global:MegaSnakeReloadExitCode = {RELOAD_ENVIRONMENT_EXIT_CODE}\n"
+        f"$global:MegaSnakeLoadEnvExitCode = {LOAD_ENV_EXIT_CODE}\n"
+        f'$global:MegaSnakeLoadEnvCommand = "{LOAD_ENV_COMMAND}"\n'
+        f'$global:MegaSnakeExe = "{stub.as_posix()}"\n'
+        'function __mgsnake_reload { [Console]::Write("reloaded") }\n'
+        'function __mgsnake_load_env { param([string]$Path = "") [Console]::Write("loaded:$Path") }\n'
+        f"mgsnake {argv}\n"
+        '[Console]::Write("|$LASTEXITCODE")\n'
+    )
+    result = subprocess.run(
+        ["pwsh", "-NoProfile", "-Command", program], capture_output=True, text=True, check=False
+    )
+
+    marker, _, status = result.stdout.partition("|")
+    assert status == str(expected_status), (
+        f"`mgsnake {argv}` (executable exited {stub_status}) should leave $LASTEXITCODE at "
+        f"{expected_status}, got {status!r} ({result.stderr})"
+    )
+    assert marker == expected_marker, (
+        f"`mgsnake {argv}` should have dispatched {expected_marker!r}, got {marker!r}"
     )
 
 

@@ -1116,14 +1116,26 @@ mgsnake() {
     command mgsnake "$@"
     local exit_code=$?
     case "$exit_code" in
-        "$MEGA_SNAKE_RELOAD_EXIT_CODE")   __mgsnake_reload ;;
+        "$MEGA_SNAKE_RELOAD_EXIT_CODE")
+            __mgsnake_reload
+            return 0 ;;
         "$MEGA_SNAKE_LOAD_ENV_EXIT_CODE")
             env_file=$(__mgsnake_args_after "$MEGA_SNAKE_LOAD_ENV_COMMAND" "$@")
-            __mgsnake_load_env "$env_file" ;;
+            __mgsnake_load_env "$env_file"
+            return 0 ;;
     esac
     return "$exit_code"
 }
 ```
+
+**A served signal is reported to the caller as `0`, and this is part of the contract.** The signal is a *request*;
+once the wrapper has carried it out there is nothing left to tell the caller, and propagating it would mean every
+environment command looks like a failure — `mgsnake set-java && echo ok` would never print, and a `set -e` script
+would abort on the happy path of `mgsnake load-env`, contradicting the advice in `load-env.md` to load an optional
+`.env` unconditionally from a startup script. Every *other* status is passed through untouched, and a direct
+invocation that bypasses the function (`command mgsnake load-env`) still sees the raw `29`/`30`, which is what the
+CLI-level tests assert. `test_bash_wrapper_reports_success_once_it_has_served_the_signal` and its pwsh twin pin the
+caller-visible status **and** the dispatch marker, so a wrapper that returned `0` without doing the work fails too.
 
 **How arguments reach the shell — and why not stdout.** `load-env` takes a file path, which the helper needs. The
 obvious channel is stdout (`$(...)`, the way `direnv` and `ssh-agent` do it), and it was rejected: it makes the

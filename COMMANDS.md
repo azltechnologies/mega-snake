@@ -627,6 +627,10 @@ That function is the reason this works, so the command is only useful once
 `config_setup.sh` / `config_setup.ps1` is sourced from the shell profile — see `shell-path`. Run
 without it, the command exits with its status and nothing happens.
 
+Once the shell has performed the exports the request is fulfilled, so the function reports success
+to whoever called it. The command is therefore safe inside `&&` chains and under `set -e`; only a
+direct invocation that bypasses the function (`command mgsnake load-env`) shows the raw status.
+
 A missing file is not an error: nothing is exported and the command stays silent, so an optional
 `.env` can be loaded unconditionally from a startup script.
 
@@ -683,6 +687,10 @@ init script performs the sourcing inside the session that asked for it.
 That function is the reason this works, so the command is only useful once
 `config_setup.sh` / `config_setup.ps1` is sourced from the shell profile — see `shell-path`. Run
 without it, the command exits with its status and nothing happens.
+
+Once the shell has re-sourced the file the request is fulfilled, so the function reports success to
+whoever called it. Only a direct invocation that bypasses the function (`command mgsnake
+reload-config`) shows the raw status.
 
 Commands that rewrite the local files (`working-env`, `set-java`, `set-gradle`, `set-maven`,
 `init-local-config`) already emit the same request when they finish, so running this afterwards is
