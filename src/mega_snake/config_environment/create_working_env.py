@@ -46,7 +46,7 @@ from mega_snake.util.util import (
     " and git exclusions. Also configures Java, Gradle, and Maven when applicable.",
     epilog="usage: mgsnake working-env",
 )
-@cli_metadata(flags={"skip"})
+@cli_metadata(flags={"skip"}, reloads_environment=True)
 def create_working_env() -> None:  # previously untrackGradleProps
     """
     Sets up the VS Code workspace for the project.

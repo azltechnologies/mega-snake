@@ -19,6 +19,10 @@ ATTR_GROUP = "docs_group"
 # Metadata key holding the initialization flags read by the CLI entry point (hence the double
 # nesting: `@cli_metadata(flags={"skip"})` produces `callback.flags == {"flags": {"skip"}}`).
 META_FLAGS = "flags"
+# Metadata key marking a command that rewrites one of the local environment files, so the shell has
+# to re-source them once it finishes. Declared per command rather than per module: sitting in
+# config_environment is not what makes a command change the environment, touching those files is.
+META_RELOADS_ENV = "reloads_environment"
 DEFAULT_GROUP_KEY = "commands"
 
 

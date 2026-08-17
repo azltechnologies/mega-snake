@@ -8,7 +8,7 @@ import re
 import json
 import jq
 from mega_snake.util.util import get_validated_input
-from mega_snake.util.formatting import ws_advice, ws_success, ws_warning, ws_info
+from mega_snake.util.formatting import ERROR_CODES, ws_advice, ws_success, ws_warning, ws_info
 
 OS = platform.system()
 OS_MAP = {"Windows": "windows", "Linux": "linux", "Darwin": "osx"}
@@ -25,6 +25,13 @@ verify_os()
 
 class VersionSetException(Exception):
     """Custom exception to terminate execution."""
+
+
+# Registered here rather than in the ERROR_CODES literal because formatting.py cannot import this
+# module: this one already imports it. The rule it satisfies is the same one the literal states —
+# every custom exception carries its own exit status, so the shell can tell it apart from any other
+# failure. See the exit-code table in .github/copilot-instructions.md §6.1.
+ERROR_CODES[VersionSetException] = 115
 
 
 @dataclass(unsafe_hash=True)

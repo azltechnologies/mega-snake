@@ -9,6 +9,7 @@ import re
 import logging
 from types import TracebackType
 from typing import Optional
+import click
 from colorama import init, Fore, Style, Back
 
 # Initialize colopiprama
@@ -24,12 +25,31 @@ class Color(Enum):
     BLUE = Fore.BLUE
 
 
-ERROR_CODES: dict[type, int] = {
+# Exit code carried by a WorkspaceError whose cause has no entry in ERROR_CODES: an internal error
+# nobody classified. It is a real, deliverable status — not a placeholder for "exit 1".
+INTERNAL_ERROR_CODE: int = 100
+
+# Exit code of ValidationError / UserDeclinedError. They subclass click.ClickException so they keep
+# the clean, traceback-free output Click gives a user error; only the status number changes.
+VALIDATION_ERROR_CODE: int = 113
+USER_DECLINED_ERROR_CODE: int = 114
+
+# Exit status per exception type, resolved by walking the MRO (see resolve_error_code), so an
+# unlisted subclass inherits the code of its nearest listed ancestor instead of falling back to
+# INTERNAL_ERROR_CODE.
+#
+# MANDATORY: every custom exception introduced in this package must be registered here in the same
+# change. Types owned by modules this one cannot import register themselves at their definition site
+# (see VersionSetException in config_environment/models/tools_version.py); the invariant test in
+# src/tests/test_exit_codes.py fails naming any custom exception that is left unmapped.
+#
+# 105 is deliberately vacant. It used to be assigned to IOError, which *is* OSError, the very same
+# object EnvironmentError aliases — so the two entries collided silently and 105 was unreachable.
+ERROR_CODES: dict[type[BaseException], int] = {
     RuntimeError: 101,
     FileNotFoundError: 102,
     ValueError: 103,
     NotImplementedError: 104,
-    IOError: 105,
     NotADirectoryError: 106,
     LookupError: 107,
     IndexError: 108,
@@ -96,14 +116,81 @@ def config_log(path: str, level: int) -> None:
     logger.setLevel(level)
 
 
+def resolve_error_code(exception: BaseException, default: int = INTERNAL_ERROR_CODE) -> int:
+    """Resolve the exit status for an exception by walking its method resolution order.
+
+    An exact ``type(e) in ERROR_CODES`` lookup only recognises the types written in the table, which
+    left every unlisted subclass falling through to the generic code: a ``CalledProcessError`` is a
+    ``SubprocessError``, and a caller raising ``OSError`` gets nothing from an entry keyed on
+    ``EnvironmentError``. Walking the MRO makes a subclass inherit the code of its nearest listed
+    ancestor, while a type listed in its own right still wins over that ancestor (``FileNotFoundError``
+    resolves to 102, not to the 112 of the ``OSError`` it derives from).
+
+    Parameters:
+        exception: The exception whose exit status is needed.
+        default: Status returned when neither the type nor any of its ancestors is registered.
+
+    Raises:
+        None
+
+    Returns:
+        int: The registered exit status for the nearest mapped ancestor, or ``default``.
+    """
+    for ancestor in type(exception).__mro__:
+        code: Optional[int] = ERROR_CODES.get(ancestor)
+        if code is not None:
+            return code
+    return default
+
+
+class ValidationError(click.ClickException):
+    """Raised when a validation reports stale or invalid content.
+
+    Subclasses ``click.ClickException`` so the user still gets the clean, traceback-free message
+    Click prints for a user-facing error; only the exit status differs, which is what lets a caller
+    (a CI job running ``generate-docs --check``, say) tell "the content is stale" apart from "the
+    command was invoked wrong".
+    """
+
+    exit_code = VALIDATION_ERROR_CODE
+
+
+class UserDeclinedError(click.ClickException):
+    """Raised when the user declines an action the command cannot continue without.
+
+    Declining a prompt is not a misuse of the CLI, so it does not deserve the invocation-error
+    status: it gets its own code, which a script can branch on to stop retrying.
+    """
+
+    exit_code = USER_DECLINED_ERROR_CODE
+
+
 def _on_crash(exctype: type[BaseException], value: BaseException, trace: TracebackType | None) -> None:
+    """Translate an unhandled WorkspaceError into its registered exit status.
+
+    Installed as ``sys.excepthook`` by ``WorkspaceError.__init__``. ``sys.exit`` called from inside
+    an except hook does set the process status, which is what carries the code out to the shell.
+
+    An unmapped cause (``INTERNAL_ERROR_CODE``) is an error nobody classified, so the traceback is
+    printed first: it is the only diagnostic the user has on the console for it. A mapped cause was
+    anticipated and already reported through ``_ws_error``, so it exits without the noise.
+
+    Parameters:
+        exctype: The class of the unhandled exception.
+        value: The unhandled exception instance.
+        trace: The traceback of the unhandled exception, if any.
+
+    Raises:
+        SystemExit: Always, for a WorkspaceError, carrying its ``error_code``.
+
+    Returns:
+        None
     """
-    Custom exception hook to handle exceptions and exit with the appropriate error code.
-    """
-    if exctype == WorkspaceError:
-        err_code: int = getattr(value, "error_code")
-        if err_code != 100:
-            sys.exit(err_code)
+    if isinstance(value, WorkspaceError):
+        err_code: int = getattr(value, "error_code", INTERNAL_ERROR_CODE)
+        if err_code == INTERNAL_ERROR_CODE:
+            old_hook(exctype, value, trace)
+        sys.exit(err_code)
     old_hook(exctype, value, trace)
 
 
@@ -226,15 +313,16 @@ def ws_error(message: str, exception: Optional[BaseException] = None) -> None:
 class WorkspaceError(Exception):
     """Custom exception for workspace operations"""
 
-    def __init__(self, message: str, parent_exception: BaseException, error_code: int = 100) -> None:
+    def __init__(
+        self, message: str, parent_exception: BaseException, error_code: int = INTERNAL_ERROR_CODE
+    ) -> None:
         """Initialize a WorkspaceError with a message, the causing exception, and an optional error code."""
         sys.excepthook = _on_crash
         self.message = message
         self.parent_exception = parent_exception
-        self.error_code = error_code
-
-        if type(parent_exception) in ERROR_CODES:
-            self.error_code = ERROR_CODES[type(parent_exception)]
+        # A registered type wins over the caller's suggestion, so the same cause always leaves the
+        # process with the same status no matter which call site wrapped it.
+        self.error_code = resolve_error_code(parent_exception, error_code)
         # Get filename from FileHandler if it exists
         filename = None
         for handler in logger.handlers:

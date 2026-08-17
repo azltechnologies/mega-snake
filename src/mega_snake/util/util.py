@@ -14,7 +14,7 @@ import inspect
 import click
 from colorama import init, Fore, Back, Style
 from jsoncomment import JsonComment
-from mega_snake.util.formatting import ws_advice, ws_info, ws_success, ws_warning
+from mega_snake.util.formatting import UserDeclinedError, ws_advice, ws_info, ws_success, ws_warning
 from mega_snake.util.cli_group import ATTR_ALIAS, ATTR_DOCS, ATTR_GROUP, ATTR_METADATA
 from mega_snake.util.props import get_property
 
@@ -214,18 +214,23 @@ def require_remote() -> str:
     This is the single entry point for commands that cannot work without a remote, so they all
     share the same message and the same (cached) resolution.
 
+    A repository without a remote is not a misuse of the CLI — the user broke no contract — so this
+    raises an environment error rather than a ClickException: the exit status then says "the
+    environment is not set up", which is a different thing for a script to react to than "you called
+    this wrong".
+
     Parameters:
         None
 
     Raises:
-        click.ClickException: If the repository has no remote configured.
+        EnvironmentError: If the repository has no remote configured.
 
     Returns:
         str: The remote name.
     """
     remote: Optional[str] = get_remote()
     if not remote:
-        raise click.ClickException(NO_REMOTE_MESSAGE)
+        raise EnvironmentError(NO_REMOTE_MESSAGE)
     return remote
 
 
@@ -327,7 +332,7 @@ def ensure_working_path(decline_message: Optional[str] = None) -> str:
     Raises:
         AssertionError: If the working path property is empty or points outside the current
             directory, which would mean the properties were built incorrectly.
-        click.ClickException: If the working path is missing and the user declines to create it.
+        UserDeclinedError: If the working path is missing and the user declines to create it.
 
     Returns:
         str: The absolute path to the existing working path folder.
@@ -342,7 +347,9 @@ def ensure_working_path(decline_message: Optional[str] = None) -> str:
         return working_path
     ws_warning("Working path not found in current directory")
     if get_validated_input("Would you like to create a new default working path?", ["y", "n"]) == "n":
-        raise click.ClickException(
+        # Declining a prompt is a decision, not a mistake: it gets its own status so a caller can
+        # stop retrying instead of reading it as a bad invocation.
+        raise UserDeclinedError(
             decline_message or f"Cannot continue without the '{working_path}' folder. Please create it and try again."
         )
     os.makedirs(working_path, exist_ok=True)

@@ -18,7 +18,7 @@ from mega_snake.config_environment.models.tools_version import (
     OS_MAP,
     VersionSetException,
 )
-from mega_snake.util.util import run_operation, load_json_with_comments
+from mega_snake.util.util import cli_metadata, run_operation, load_json_with_comments
 from mega_snake.util.props import get_property
 from mega_snake.util.formatting import ws_info, ws_success, ws_warning
 
@@ -32,6 +32,7 @@ from mega_snake.util.formatting import ws_info, ws_success, ws_warning
         -o | --override: Optional[bool] - Override the current Gradle version\n
     """,
 )
+@cli_metadata(reloads_environment=True)
 @click.option("--override", "-o", is_flag=True, help="Override the current Gradle version")
 def set_gradle_version(override: bool) -> None:  # previously gradleSet
     """

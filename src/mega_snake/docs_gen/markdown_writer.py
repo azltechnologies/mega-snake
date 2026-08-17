@@ -6,9 +6,8 @@ from pathlib import Path
 import re
 from typing import Iterable
 
-import click
-
 from mega_snake.docs_gen.introspect import IntrospectedCommand
+from mega_snake.util.formatting import ValidationError
 
 GROUP_HEADING = "# Available Commands"
 CELL_LINE_BREAK = "<br>"
@@ -185,7 +184,7 @@ def write_or_check_document(output_path: Path, markdown: str, check: bool) -> No
         check: When True, validate instead of writing.
 
     Raises:
-        click.ClickException: If --check finds that the output is stale.
+        ValidationError: If --check finds that the output is stale.
 
     Returns:
         None
@@ -202,7 +201,10 @@ def write_or_check_document(output_path: Path, markdown: str, check: bool) -> No
                     lineterm="",
                 )
             )
-            raise click.ClickException(f"{output_path} is out of date.\n{diff}")
+            # Stale content is a validation result, not a misuse of the command: its own status
+            # lets a CI step tell "the committed file drifted" apart from "the check itself was
+            # invoked wrong", which are two very different things to act on.
+            raise ValidationError(f"{output_path} is out of date.\n{diff}")
         return
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8", newline="\n") as handle:

@@ -23,7 +23,7 @@ from mega_snake.config_environment.models.tools_version import (
 from mega_snake.config_environment.models.log_viewer_watcher import LogWatcher
 from mega_snake.config_environment.models.vscode_task import VscodeTask, TASKS_INPUT_QUERY, TASKS_TASKS_QUERY
 from mega_snake.config_environment.models.vscode_input import VscodeInput
-from mega_snake.util.util import run_operation, load_json_with_comments
+from mega_snake.util.util import cli_metadata, run_operation, load_json_with_comments
 from mega_snake.util.props import get_property
 from mega_snake.util.formatting import ws_info, ws_success, ws_warning
 
@@ -59,6 +59,7 @@ MAVEN_WATCHERS: list[LogWatcher] = [
         -m | --maven-home: Optional[str] - Explicit Maven home path (for example /opt/apache-maven-3.9.8)\n
     """,
 )
+@cli_metadata(reloads_environment=True)
 @click.option("--maven-home", "-m", type=click.STRING, default=None, help="Explicit Maven home directory")
 def set_maven_version(maven_home: Optional[str]) -> None:
     """Configure Maven paths for the current workspace."""

@@ -16,6 +16,13 @@ DOCS_DIR: str = "docs"
 DOCS_FILE_SUFFIX: str = ".md"
 DOCS_OUTPUT_FILE: str = "COMMANDS.md"
 
+# Exit status meaning "the command succeeded, and the shell must re-source its local environment
+# files". A child process cannot mutate its parent's environment, so the shell function installed by
+# config_setup.sh / config_setup.ps1 captures this status and calls `mgsnake_reload_all` itself.
+# Changing this number breaks that contract: both scripts hard-code it, and so does the test that
+# pins the signal end to end.
+RELOAD_ENVIRONMENT_EXIT_CODE: int = 29
+
 REMOTE_BRANCHES_OPT: list[str] = ["M", "U", "A"]
 
 LOGGING_NAME_TO_LEVEL = {

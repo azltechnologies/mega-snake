@@ -27,6 +27,7 @@ from mega_snake.util.util import (
     GIT_EXCLUDE_FILE,
     NO_REMOTE_MESSAGE,
 )
+from mega_snake.util.formatting import USER_DECLINED_ERROR_CODE, UserDeclinedError, resolve_error_code
 
 
 @pytest.fixture(autouse=True)
@@ -286,14 +287,25 @@ def test_get_remote_when_command_fails(mk_run_operation: MagicMock, mk_ws_warnin
 
 
 def test_require_remote(mk_run_operation: MagicMock) -> None:
-    """require_remote returns the remote, or fails with the shared friendly ClickException."""
+    """require_remote returns the remote, or reports a missing one as an environment error.
+
+    A repository without a remote is not a misuse of the CLI, so it must not carry the
+    invocation-error status: the negative assertion is what pins that distinction, since a
+    ClickException would also make a bare ``pytest.raises(Exception)`` pass.
+    """
     mk_run_operation.return_value.stdout = "origin"
     assert require_remote() == "origin"
 
     reset_remote_cache()
     mk_run_operation.return_value.stdout = ""
-    with pytest.raises(click.ClickException, match="No remote repository found"):
+    with pytest.raises(EnvironmentError, match="No remote repository found") as excinfo:
         require_remote()
+    assert not isinstance(excinfo.value, click.ClickException), (
+        "a missing remote must not be reported as an invocation error"
+    )
+    assert resolve_error_code(excinfo.value) == 112, (
+        f"a missing remote resolved to {resolve_error_code(excinfo.value)}, expected 112"
+    )
 
 
 def test_get_remote_url(mk_run_operation: MagicMock, mk_get_remote: MagicMock) -> None:
@@ -567,18 +579,28 @@ def test_ensure_working_path_when_user_declines(
     mk_get_validated_input: MagicMock,
     mk_ws_warning: MagicMock,
 ) -> None:
-    """Declining to create the folder fails with a friendly ClickException, not a raw error."""
+    """Declining to create the folder fails with UserDeclinedError, carrying its own exit status.
+
+    It stays a ClickException subclass so the output remains clean and traceback-free, but the
+    status has to be 114 and not the generic 1: a script that offered the prompt needs to tell
+    "the user said no" apart from "the command was called wrong".
+    """
     monkeypatch.chdir(tmp_path)
     working_path = tmp_path / "workspace_temp"
     mk_get_property.return_value = str(working_path)
     mk_get_validated_input.return_value = "n"
 
-    with pytest.raises(click.ClickException, match="Cannot continue without"):
+    with pytest.raises(UserDeclinedError, match="Cannot continue without") as excinfo:
         ensure_working_path()
     assert not working_path.exists()
+    assert isinstance(excinfo.value, click.ClickException), "must keep Click's traceback-free output"
+    assert excinfo.value.exit_code == USER_DECLINED_ERROR_CODE, (
+        f"declining exited {excinfo.value.exit_code}, expected {USER_DECLINED_ERROR_CODE}"
+    )
+    assert excinfo.value.exit_code != 1, "declining must not be reported as an invocation error"
 
     # Callers can customize the message shown when the user declines
-    with pytest.raises(click.ClickException, match="custom message"):
+    with pytest.raises(UserDeclinedError, match="custom message"):
         ensure_working_path("custom message")
 
 

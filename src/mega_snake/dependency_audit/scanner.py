@@ -19,8 +19,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Protocol
 
-import click
-
 from mega_snake.util.util import run_operation
 from mega_snake.util.formatting import ws_info, ws_warning
 
@@ -275,7 +273,7 @@ def run_osv_scanner(target: str = ".") -> list[Vulnerability]:
         target: Path to the project root to scan recursively.
 
     Raises:
-        click.ClickException: If `osv-scanner` produces no output and exits with a
+        FileNotFoundError: If `osv-scanner` produces no output and exits with a
             non-zero status, which signals the tool failed to run (e.g. it is not
             installed) rather than a clean scan.
 
@@ -290,7 +288,10 @@ def run_osv_scanner(target: str = ".") -> list[Vulnerability]:
     # PATH). Failing loudly here avoids a silent false negative that would report
     # "no vulnerabilities" for a scan that never actually happened.
     if not result.stdout.strip() and result.returncode != 0:
-        raise click.ClickException(
+        # A missing tool is a missing tool, not a bad invocation: raising FileNotFoundError gives
+        # the failure the status that says so, which is what a CI job needs to distinguish
+        # "install osv-scanner" from "you passed the wrong arguments".
+        raise FileNotFoundError(
             f"osv-scanner produced no output and exited with status {result.returncode}. "
             "Is it installed and on PATH? See the dependency-audit docs for installation."
         )

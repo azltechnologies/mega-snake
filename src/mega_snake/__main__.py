@@ -126,16 +126,32 @@ def cli(ctx: click.Context, log_level: str) -> None:
         if shell not in SHELL_OPT:
             raise ValueError(f"Unsupported shell: {shell}. Supported shells are: {', '.join(SHELL_OPT)}")
         init_app_properties(log_level, shell, light_weight)
+    except click.ClickException:
+        # Click already owns both halves of this: the message it prints and the status it exits
+        # with. Echoing it here too would print it twice.
+        raise
     except Exception as e:
         click.echo(f"Error during initialization: {e}", err=True)
         click.echo(get_traceback(e), err=True)
-        raise SystemExit(e) from e
+        # Deliberately re-raised with its type intact instead of being converted to a SystemExit.
+        # `SystemExit(e)` uses its argument as the status only when that argument is an int; given
+        # an exception it prints it and exits 1, which is what flattened every initialization
+        # failure to the same code. main() turns this into a WorkspaceError, whose registered
+        # status is what actually reaches the shell.
+        raise
 
 
 @cli.result_callback()
 @click.pass_context
 def post_command(ctx, result, **kwargs) -> None:
-    """Post-command execution logic"""
+    """Deliver the exit status a successful command asked for.
+
+    The only status that travels this way today is RELOAD_ENVIRONMENT_EXIT_CODE: the command
+    succeeded, and the shell wrapper installed by ``config_setup.sh`` / ``config_setup.ps1`` must
+    re-source the local environment files because a child process cannot mutate its parent's
+    environment. ``sys.exit`` here is what turns that request into something the shell can branch
+    on; without it the process would report a plain success and the signal would die in-process.
+    """
     if ctx.invoked_subcommand:
         ws_advice(
             f"Command '{ctx.invoked_subcommand}' completed successfully with result: {result} and kwargs: {kwargs}"
@@ -161,8 +177,36 @@ for group, add_wrapper in MODULES:
     for command in group.commands.values():
         cli.add_command(add_wrapper(command))
 
-if __name__ == "__main__":
+def main() -> None:
+    """Run the CLI: the single place where an exception becomes an exit code.
+
+    This is what ``[project.scripts]`` points at. Pointing it at ``cli`` instead meant the installed
+    executable called the group directly, so the translation below — and with it the installation of
+    ``_on_crash`` as the except hook — only ever ran under ``python -m mega_snake``. No user runs
+    that, which is how every failure came to report the same status.
+
+    ``click.ClickException`` is re-raised untouched because Click already knows its status
+    (``exit_code``); wrapping it would relabel a user error as an internal one. Anything else
+    becomes a ``WorkspaceError``, which resolves the status from ``ERROR_CODES`` and arms the except
+    hook that delivers it. ``SystemExit`` is a ``BaseException``, so the reload signal raised by
+    ``post_command`` passes straight through.
+
+    Parameters:
+        None
+
+    Raises:
+        WorkspaceError: Wrapping any unexpected exception, carrying its resolved exit code.
+
+    Returns:
+        None
+    """
     try:
         cli.main(prog_name=APP_NAME)
+    except click.ClickException:
+        raise
     except Exception as e:
         raise WorkspaceError("Error during cli execution", e) from e
+
+
+if __name__ == "__main__":
+    main()

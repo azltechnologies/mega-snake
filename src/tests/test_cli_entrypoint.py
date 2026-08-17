@@ -1,6 +1,7 @@
 """Focused tests for CLI initialization branches."""
 
 import os
+import re
 import runpy
 import sys
 from importlib.metadata import PackageNotFoundError
@@ -12,7 +13,7 @@ import pytest
 from click.testing import CliRunner
 
 from mega_snake import __main__ as app_main
-from mega_snake.util.formatting import WorkspaceError
+from mega_snake.util.formatting import WorkspaceError, resolve_error_code
 
 
 @pytest.mark.parametrize("command_name", ["shell-path", "generate-docs"])
@@ -46,7 +47,12 @@ def test_cli_uses_light_weight_mode_for_skip_commands() -> None:
 
 
 def test_cli_reports_missing_commands() -> None:
-    """Unknown subcommands should be reported through the shared error path."""
+    """An unknown subcommand stays a ClickException, and is not echoed a second time.
+
+    Click prints a ClickException itself and exits with its ``exit_code``. Echoing it here as well
+    would duplicate the message, so the assertion that nothing was echoed is as load-bearing as the
+    one on the exception type.
+    """
     ctx = click.Context(app_main.cli)
     ctx.invoked_subcommand = "missing"
     ctx.obj = {}
@@ -55,22 +61,37 @@ def test_cli_reports_missing_commands() -> None:
         with patch.object(app_main.cli, "get_command", return_value=None), patch(
             "mega_snake.__main__.get_traceback", return_value="TRACE"
         ), patch("click.echo") as echo_mock:
-            with pytest.raises(SystemExit, match="Command 'missing' not found"):
+            with pytest.raises(click.ClickException, match="Command 'missing' not found") as excinfo:
                 app_main.cli.callback("INFO")
 
-    echo_mock.assert_any_call("Error during initialization: Command 'missing' not found", err=True)
-    echo_mock.assert_any_call("TRACE", err=True)
+    assert excinfo.value.exit_code == 1, f"an unknown command exited {excinfo.value.exit_code}, expected 1"
+    echo_mock.assert_not_called()
 
 
 @pytest.mark.parametrize(
-    ("shell_value", "expected_message"),
+    ("shell_value", "expected_type", "expected_code", "expected_message"),
     [
-        (None, "Environment variable 'MEGA_SNAKE_SHELL' is not set"),
-        ("fish", "Unsupported shell: fish. Supported shells are: bash, zsh, powershell, pwsh"),
+        (None, EnvironmentError, 112, "Environment variable 'MEGA_SNAKE_SHELL' is not set"),
+        (
+            "fish",
+            ValueError,
+            103,
+            "Unsupported shell: fish. Supported shells are: bash, zsh, powershell, pwsh",
+        ),
     ],
 )
-def test_cli_requires_a_supported_shell_env(shell_value: str | None, expected_message: str) -> None:
-    """CLI initialization should validate the shell environment variable."""
+def test_cli_requires_a_supported_shell_env(
+    shell_value: str | None,
+    expected_type: type[BaseException],
+    expected_code: int,
+    expected_message: str,
+) -> None:
+    """CLI initialization validates the shell variable and propagates the failure with its type.
+
+    The type is what the exit status is derived from, so converting it (as ``raise SystemExit(e)``
+    used to) collapses both of these into 1. Asserting the type *and* the code it resolves to is
+    what makes that regression visible here rather than only in the shell.
+    """
     ctx = click.Context(app_main.cli)
     ctx.obj = {}
     env_patch = {} if shell_value is None else {"MEGA_SNAKE_SHELL": shell_value}
@@ -79,9 +100,13 @@ def test_cli_requires_a_supported_shell_env(shell_value: str | None, expected_me
         with patch.dict(os.environ, env_patch, clear=True), patch(
             "mega_snake.__main__.get_traceback", return_value="TRACE"
         ), patch("click.echo") as echo_mock:
-            with pytest.raises(SystemExit, match=expected_message):
+            with pytest.raises(expected_type, match=re.escape(expected_message)) as excinfo:
                 app_main.cli.callback("INFO")
 
+    assert not isinstance(excinfo.value, SystemExit), "the exception type must survive, not become a SystemExit"
+    assert resolve_error_code(excinfo.value) == expected_code, (
+        f"{expected_type.__name__} resolved to {resolve_error_code(excinfo.value)}, expected {expected_code}"
+    )
     echo_mock.assert_any_call(f"Error during initialization: {expected_message}", err=True)
     echo_mock.assert_any_call("TRACE", err=True)
 

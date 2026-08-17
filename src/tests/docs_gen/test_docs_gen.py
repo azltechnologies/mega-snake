@@ -10,6 +10,7 @@ import pytest
 from mega_snake import __main__ as app_main
 from mega_snake.docs_gen.introspect import iter_introspected_commands, normalize_help
 from mega_snake.docs_gen.markdown_writer import _render_code_cell, _render_epilog, render_markdown
+from mega_snake.util.formatting import VALIDATION_ERROR_CODE
 
 # Shorter strings are too generic to prove a real duplication between an epilog and a fragment.
 MIN_DUPLICATE_SENTENCE_LEN = 30
@@ -211,13 +212,19 @@ def test_generate_docs_writes_the_reference_file(tmp_path: Path) -> None:
 
 
 def test_generate_docs_check_reports_stale_output(tmp_path: Path) -> None:
-    """--check should fail when the target file differs from the rendered output."""
+    """--check should fail with the validation status when the target file differs from the output.
+
+    The number is the point: a CI step has to tell "the committed file drifted" (113) apart from
+    "the check itself was invoked wrong" (1), so asserting merely that it failed would not
+    distinguish the two.
+    """
     output_path = tmp_path / "COMMANDS.md"
     output_path.write_text("stale\n", encoding="utf-8")
 
     result = CliRunner().invoke(app_main.cli, ["generate-docs", "--output", str(output_path), "--check"])
 
-    assert result.exit_code == 1
+    assert result.exit_code == VALIDATION_ERROR_CODE, f"stale docs exited {result.exit_code}"
+    assert result.exit_code != 1, "stale docs must not be reported as a plain invocation error"
     # rich word-wraps the error panel to the terminal width, so "is out of date" can land split
     # across two lines with a "│" border in between; collapse panel borders and whitespace before
     # matching so the assertion does not depend on the environment's column width.

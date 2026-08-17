@@ -56,6 +56,12 @@ Custom shell function definitions are supported, not just environment variables.
 Reload it in the current session with `mgsnake_reload`, defined by the shell init script (see
 `shell-path`).
 
+This happens automatically: the command exits with status `29` when it succeeds, and the `mgsnake`
+shell function installed by the init script reads that status and runs `mgsnake_reload_all` for you.
+A child process cannot change its parent's environment, so the reload has to happen in your shell.
+If you invoke the executable directly — bypassing the function, or from a script — you will see the
+`29` and no reload will run.
+
 ### maven-project-setup
 
 Creates or updates Maven tasks and log watchers in the current code-workspace when pom.xml is present.
@@ -100,6 +106,10 @@ calls on the same version.
 As with `set-java`, the `.code-workspace` file is read with a comment-preserving loader, so your
 annotations are not stripped.
 
+Also as with `set-java`, a successful run exits with status `29`, which the `mgsnake` shell function
+(see `shell-path`) reads to re-source the local environment files, so the new `GRADLE_HOME` applies
+to the current session.
+
 ### set-java
 
 Detects installed Java versions and sets the default Java version for the workspace and shell config.
@@ -122,6 +132,11 @@ which JDK is in use. It also configures the Java formatter settings.
 The `.code-workspace` file is JSON with comments. It is read with a comment-preserving loader, so
 the annotations you leave in it survive the update.
 
+Because it rewrites a local environment file, the command exits with status `29` on success. The
+`mgsnake` shell function installed by the init script (see `shell-path`) reads that status and
+re-sources the local environment files, so the new `JAVA_HOME` applies to the current session
+without opening a new terminal.
+
 ### set-maven
 
 Detects Maven installation (or uses --maven-home) and sets Maven paths for VS Code and local shell config.
@@ -142,6 +157,10 @@ Code's Maven executable path at the detected installation.
 
 Intended for `pom.xml`-based projects. Run `maven-project-setup` afterwards to add the matching VS
 Code task definitions.
+
+A successful run exits with status `29`, which the `mgsnake` shell function (see `shell-path`) reads
+to re-source the local environment files, so the new `M2_HOME` applies to the current session.
+`maven-project-setup` writes no environment file and therefore exits `0`.
 
 ### working-env
 
@@ -167,6 +186,10 @@ On top of what the synopsis lists, it also sets up log watchers and GitHub query
 Requires a valid Git repository. Developer-specific overrides are loaded before the defaults are
 written, so anything you set through `init-local-config` wins over the values this command
 generates.
+
+Because it writes the local environment files, a successful run exits with status `29`. The
+`mgsnake` shell function installed by the init script (see `shell-path`) reads that status and
+re-sources them, so the environment it just configured applies to the current session.
 
 ## Dependency Audit
 
@@ -611,6 +634,14 @@ For PowerShell, in your profile (`$PROFILE`):
 
 #### Notes
 
-Sourcing that script sets `MEGA_SNAKE_SHELL` and defines `mgsnake_reload`. Because the profile calls
-this command *before* that variable exists, it is the one command that runs with no initialization
-at all — which is also why it prints the bare path and nothing else.
+Sourcing that script sets `MEGA_SNAKE_SHELL` and defines `mgsnake_reload`, `mgsnake_load_env` and
+`mgsnake_reload_all`. Because the profile calls this command *before* that variable exists, it is
+the one command that runs with no initialization at all — which is also why it prints the bare path
+and nothing else.
+
+It also defines `mgsnake` itself as a thin shell function around the real executable. That function
+is what makes the environment auto-reload work: a command that rewrites one of the local environment
+files exits with status `29`, and only the parent shell can act on it — a child process cannot
+change its parent's environment. The function forwards every argument, returns the real status, and
+calls the executable through `command mgsnake` (or its resolved path on PowerShell), so there is no
+recursion. The only visible difference is that `type mgsnake` reports a function.

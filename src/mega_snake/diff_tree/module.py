@@ -32,7 +32,7 @@ def wrapper(_ctx: click.Context, *_args, **_kwargs) -> None:
         _ctx: The click context (unused).
 
     Raises:
-        click.ClickException: If the working path folder is missing and the user declines to
+        UserDeclinedError: If the working path folder is missing and the user declines to
             create it.
 
     Returns:
