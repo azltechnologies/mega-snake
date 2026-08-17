@@ -4,6 +4,51 @@
 
 `mega_snake` is a robust Python 3.13+ CLI tool designed to standardize the local development lifecycle. It acts as a "Swiss Army Knife" for developers, primarily automating the complex configuration of VS Code environments for Java/Gradle, but extending into Git management, Release orchestration context, and Google Cloud observability.
 
+> ### ⚠️ THE FIRST RULE: `mgsnake` IS A PRODUCT FOR ITS USERS, NOT A SCRIPT FOR ITS AUTHOR
+>
+> **Every command is built for the developers who install `mega-snake`, never for this repository's own
+> convenience.** A command must never be shaped, restricted, or special-cased to fit how *this* project
+> happens to work.
+>
+> The reasoning is decisive: if the goal were to automate the maintainer's own workflow, `mgsnake` would be
+> massive overkill — a handful of shell scripts symlinked into `/usr/bin` would do the job. The entire cost
+> of this project (a packaged CLI, a published distribution, generated documentation, 95%+ coverage) is
+> justified **only** because the output is a tool for the world.
+>
+> **What this forbids, concretely:**
+>
+> - Reading this repository's `pyproject.toml`, `CHANGELOG.md`, or CI configuration from a user-facing
+>   command. A user's project has none of those, or has different ones.
+> - Assuming a Python/uv project. Most users of `working-env` and `set-java` are on Java/Gradle.
+> - Encoding this repository's conventions (branch names, tag shapes, release cadence) as command defaults.
+> - "Fixing" a user-facing command so that it fits a workflow of this repo. When the two conflict, **the
+>   repo's workflow bends, not the command.**
+>
+> **When a genuine need for repo-only tooling arises**, it does not become a user-facing command. Ask "would
+> a stranger installing `mega-snake` want this?" — if the answer is no, it does not belong in a user-facing
+> command group.
+>
+> #### ⚠️ Known violation — do not treat the current layout as the example to follow
+>
+> **`generate-docs` and `man` (§3.7) break this rule today.** They introspect **`mgsnake`'s own CLI**
+> (`from mega_snake.__main__ import cli`) and render **`mgsnake`'s own** command reference. A user running
+> `mgsnake generate-docs` in their project gets `COMMANDS.md` describing *mgsnake*, not their tool — the
+> command is development tooling for this repository, shipped as a public command.
+>
+> This is **accepted technical debt, not a precedent.** The agreed direction is to move every
+> mega-snake-only command (development, validation, CI/CD tooling) into a dedicated module, and to decide
+> separately whether such commands should be hidden from end users altogether. Until that lands:
+>
+> - **Do not add new repo-only commands to user-facing groups**, and do not cite `generate-docs` as
+>   justification for doing so.
+> - **Do not "fix" a user-facing command by making it repo-aware.** The rule above still governs everything
+>   else.
+> - When touching `docs_gen`, keep it self-contained so the eventual move stays mechanical.
+>
+> Everything outside `docs_gen` currently honours the rule: `dependency_audit` reads the *user's* lockfiles
+> through ecosystem auto-detection, and `create-release` derives tags from the *user's* GitHub releases —
+> neither reads this repository's `pyproject.toml` or `CHANGELOG.md`.
+
 **Core Philosophy:**
 - **Zero Config Start**: A developer should be able to run `mgsnake working-env` and have a fully functional IDE state immediately.
 - **Idempotency**: Commands should be safe to run multiple times without destructive side effects unless explicitly requested.
