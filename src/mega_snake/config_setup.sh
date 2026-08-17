@@ -83,17 +83,25 @@ __mgsnake_args_after() {
 # captures $?, which is exactly how the auto-reload stopped working when `mgsnake` became an
 # installed executable invoked directly instead of through a shell function.
 # `type mgsnake` reporting a function is the only visible difference.
+#
+# A dispatched signal is reported as success. The signal is a *request*, and once this function has
+# carried it out the request is fulfilled -- there is nothing left to tell the caller. Propagating it
+# would make every environment command look like a failure: `mgsnake set-java && echo ok` would never
+# print, and a `set -e` script would abort on the happy path of `mgsnake load-env`. Every other
+# status is passed through untouched.
 mgsnake() {
     command mgsnake "$@"
     local exit_code=$?
     case "$exit_code" in
         "$MEGA_SNAKE_RELOAD_EXIT_CODE")
             __mgsnake_reload
+            return 0
             ;;
         "$MEGA_SNAKE_LOAD_ENV_EXIT_CODE")
             local env_file
             env_file=$(__mgsnake_args_after "$MEGA_SNAKE_LOAD_ENV_COMMAND" "$@")
             __mgsnake_load_env "$env_file"
+            return 0
             ;;
     esac
     return "$exit_code"

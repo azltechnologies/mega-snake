@@ -46,8 +46,10 @@ lives in the GitHub Release body (`gh release create --generate-notes`); this fi
   terminal. The shell init script defines `mgsnake` as a thin function around the real executable: the command
   reports it rewrote the environment, and the function re-sources the local files for you. Only the commands
   that actually touch those files trigger it, so `graphql-schema` and `maven-project-setup` no longer force a
-  pointless reload. Also adds `mgsnake_reload_all`, which reloads the local config file and the `.env` in one
-  step, on both bash/zsh and PowerShell.
+  pointless reload. Once the function has reloaded for you the command reports success, so it still composes
+  with `&&` and does not abort a `set -e` script.
+- **`reload-config` and `load-env`.** Re-source the local configuration file, or export the variables declared in
+  an environment file, into the shell session you are already in — no new terminal, no `export` per variable.
 - **This changelog.**
 
 ### Changed
@@ -66,8 +68,23 @@ lives in the GitHub Release body (`gh release create --generate-notes`); this fi
   suffix is an option.
 - The PyPI long description is now assembled with `hatch-fancy-pypi-readme` instead of shipping `README.md`
   verbatim.
-- `ws_advice` writes to stderr, keeping the stdout of `no_init` commands clean for shell substitution
-  (`. "$(mgsnake shell-path bash)"`).
+- **Progress, status, warnings and errors now go to stderr**, not stdout. stdout carries only what a command
+  *produces*, so `. "$(mgsnake shell-path bash)"` and `$(mgsnake get-local-config-path)` capture the value alone
+  and `mgsnake <command> 2>/dev/null` keeps it. If you redirect stdout only (`mgsnake rbd > run.log`, or a CI
+  step archiving stdout), add `2>&1` to keep the diagnostics. Previously only `ws_advice` was on stderr.
+
+### Removed
+
+- **Breaking: the shell helpers are private now**, and the public interface is the CLI itself — `mgsnake_reload`
+  is `mgsnake reload-config`, `mgsnake_load_env` is `mgsnake load-env`, and `mgsnake_reload_all` is gone
+  outright (it loaded the `.env` of whatever directory you happened to be in, on top of the one the config file
+  had already loaded by absolute path). No compatibility shim is kept.
+
+  **If you generated a local config file before this release**, it calls `mgsnake_load_env` by name, and it is
+  sourced on every shell startup — so you will get `mgsnake_load_env: command not found` in each new terminal
+  and the environment file will stop loading. Fix the single line to call `__mgsnake_load_env` instead, or
+  regenerate the file with `mgsnake init-local-config -o`. Anything of your own that called `mgsnake_reload`
+  needs the same treatment.
 
 ### Fixed
 

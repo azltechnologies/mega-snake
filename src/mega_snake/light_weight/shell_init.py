@@ -8,6 +8,7 @@ path, plus the two commands whose real work is carried out by the shell itself (
 
 import sys
 from importlib.resources import files
+from typing import Optional
 import click
 from mega_snake.constants import (
     LOAD_ENV_COMMAND,
@@ -120,7 +121,7 @@ def reload_config() -> None:
 )
 @cli_metadata(flags={"no_init"})
 @click.argument("env_file", required=False, type=click.Path())
-def load_env(env_file: str) -> None:  # pylint: disable=unused-argument
+def load_env(env_file: Optional[str]) -> None:  # pylint: disable=unused-argument
     """Ask the shell to export the variables declared in an environment file.
 
     Like `reload-config`, the exporting itself has to happen in the caller's own session, so this

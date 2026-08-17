@@ -434,7 +434,7 @@ def complete_app_properties() -> None:
         None
 
     Raises:
-        RuntimeError: If the properties singleton was never initialized.
+        InternalStateError: If the properties singleton was never initialized.
 
     Returns:
         None

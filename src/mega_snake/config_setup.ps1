@@ -82,19 +82,30 @@ function __mgsnake_args_after {
 # The wrapper is the consumer of the signals. Without it the status is emitted and nothing ever
 # captures it, which is exactly how the auto-reload stopped working when `mgsnake` became an
 # installed executable invoked directly instead of through a shell function.
-# $LASTEXITCODE is restored at the end because the helpers run their own commands and would
+# $LASTEXITCODE is set explicitly at the end because the helpers run their own commands and would
 # otherwise overwrite the status the caller is about to read.
+#
+# A dispatched signal is reported as success. The signal is a *request*, and once this function has
+# carried it out the request is fulfilled -- there is nothing left to tell the caller. Propagating it
+# would make every environment command look like a failure to any `if ($LASTEXITCODE -ne 0)` check.
+# Every other status is passed through untouched.
 function mgsnake {
     & $global:MegaSnakeExe @args
     $exitCode = $LASTEXITCODE
+    # Reported to the caller; reset to 0 by whichever branch serves the request.
+    $callerCode = $exitCode
     switch ($exitCode) {
-        $global:MegaSnakeReloadExitCode { __mgsnake_reload }
+        $global:MegaSnakeReloadExitCode {
+            __mgsnake_reload
+            $callerCode = 0
+        }
         $global:MegaSnakeLoadEnvExitCode {
             $envFile = __mgsnake_args_after -Wanted $global:MegaSnakeLoadEnvCommand -Arguments $args
             if ($envFile) { __mgsnake_load_env -Path $envFile } else { __mgsnake_load_env }
+            $callerCode = 0
         }
     }
-    $global:LASTEXITCODE = $exitCode
+    $global:LASTEXITCODE = $callerCode
 }
 
 __mgsnake_reload
