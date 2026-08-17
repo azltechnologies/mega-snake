@@ -84,8 +84,8 @@ initialization to run. There are exactly **three** initialization levels, driven
 @click.pass_context
 def cli(ctx: click.Context, log_level: str) -> None:
     # ...
-    metadata = getattr(cmd.callback, ATTR_METADATA, {})   # ATTR_METADATA == "flags"
-    flags: Optional[set[str]] = metadata.get(META_FLAGS)  # META_FLAGS   == "flags"
+    metadata = getattr(cmd.callback, ATTR_METADATA, {})   # ATTR_METADATA == "_cli_metadata"
+    flags: Optional[set[str]] = metadata.get(META_FLAGS)  # META_FLAGS    == "flags"
     if flags and "no_init" in flags:
         return                      # No AppProperties at all, and no MEGA_SNAKE_SHELL check
     ws_advice(f"Invoking subcommand: {cmd_name}")
@@ -95,11 +95,13 @@ def cli(ctx: click.Context, log_level: str) -> None:
     init_app_properties(log_level, shell, light_weight)
 ```
 
-**Note the double nesting**: `cli_metadata(**metadata)` stores its kwargs under the callback's `flags` attribute, so
-`@cli_metadata(flags={"skip"})` produces `callback.flags == {"flags": {"skip"}}`. That is why the entry point reads
-`metadata.get("flags")` and not `metadata` directly. `wrapper_decorator.update_flags` propagates these from both the
-module wrapper *and* the command callback onto the wrapping command, which is what makes a module-level
-`@cli_metadata(flags={"skip"})` apply to every command in the module.
+**Note the nesting**: `cli_metadata(**metadata)` stores its kwargs under the callback's `ATTR_METADATA` attribute
+(`_cli_metadata`), so `@cli_metadata(flags={"skip"})` produces
+`getattr(callback, ATTR_METADATA) == {"flags": {"skip"}}`. That is why the entry point reads `metadata.get("flags")`
+and not `metadata` directly — `metadata` is the whole kwargs dict, `"flags"` is just one of its keys (`META_FLAGS`).
+`wrapper_decorator.update_flags` propagates these from both the module wrapper *and* the command callback onto the
+wrapping command, which is what makes a module-level `@cli_metadata(flags={"skip"})` apply to every command in the
+module.
 
 **When `no_init` is the only option**
 `no_init` exists for the **bootstrap problem**, not as a "lighter light-weight". Full and light-weight initialization
@@ -186,8 +188,8 @@ callbacks. Import them instead of writing the string literal:
 
 | Constant | Value | Meaning |
 |---|---|---|
-| `ATTR_METADATA` | `"flags"` | Attribute where `@cli_metadata` stores **all** its kwargs. |
-| `META_FLAGS` | `"flags"` | Metadata **key** holding the initialization flags (`skip` / `no_init`). Same string as above, different role — this is the "double nesting" explained in §2.1. |
+| `ATTR_METADATA` | `"_cli_metadata"` | Attribute where `@cli_metadata` stores **all** its kwargs. |
+| `META_FLAGS` | `"flags"` | Metadata **key** holding the initialization flags (`skip` / `no_init`), inside the dict stored under `ATTR_METADATA`. Deliberately a different string from `ATTR_METADATA` — see §2.1. |
 | `ATTR_ALIAS` | `"aliases"` | The alias list, read by rich-click and by the docs iterator. |
 | `ATTR_DOCS` | `"docs_fragment"` | Overrides the fragment filename (defaults to the command name). |
 | `ATTR_GROUP` | `"docs_group"` | Overrides the documentation group title (see §3.7). |

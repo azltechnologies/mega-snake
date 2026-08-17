@@ -333,6 +333,9 @@ class AppProperties:
         """
         Get the instance of the class
 
+        Raises:
+            InternalStateError: If the instance has not been initialized yet
+
         Returns:
             AppProperties: The instance of the class
         """

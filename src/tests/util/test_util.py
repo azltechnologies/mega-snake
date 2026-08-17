@@ -33,6 +33,7 @@ from mega_snake.util.formatting import (
     UserDeclinedError,
     resolve_error_code,
 )
+from mega_snake.util.cli_group import ATTR_METADATA
 
 
 @pytest.fixture(autouse=True)
@@ -409,8 +410,8 @@ def test_cli_metadata() -> None:
     def test_function() -> None:
         pass
 
-    assert hasattr(test_function, "flags")
-    assert test_function.flags == {
+    assert hasattr(test_function, ATTR_METADATA)
+    assert getattr(test_function, ATTR_METADATA) == {
         "name": "test_command",
         "short_help": "Test command",
         "help": "This is a test command",

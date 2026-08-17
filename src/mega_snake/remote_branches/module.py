@@ -35,6 +35,7 @@ def wrapper(_ctx, *_args, **_kwargs) -> None:
     Raises:
         EnvironmentError: If no remote repository is found.
         UserDeclinedError: If the working path folder is missing and the user declines to create it.
+        RuntimeError: If the AppProperties instance has not been initialized yet.
 
     Returns:
         None
