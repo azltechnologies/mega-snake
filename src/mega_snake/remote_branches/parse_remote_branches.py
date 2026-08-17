@@ -66,8 +66,22 @@ def delete_branches(garbage: list[str]) -> None:
     """
     for branch in garbage:
         try:
-            result = run_operation(f'git push -d origin "{branch}" --no-verify 2>&1', f"Deleting branch {branch}")
+            # Delete from remote
+            result = run_operation(
+                f'git push -d origin "{branch}" --no-verify 2>&1', f"Deleting remote branch {branch}"
+            )
             ws_success(result.stdout.strip())
+
+            # Delete local branch, only if it exists: remote branches from other authors are
+            # commonly never checked out locally, and `git branch -D` fails when the ref is absent.
+            local_ref_check = run_operation(
+                f'git rev-parse --verify --quiet "refs/heads/{branch}"',
+                f"Checking if local branch {branch} exists",
+                check=False,
+            )
+            if local_ref_check.returncode == 0:
+                run_operation(f'git branch -D "{branch}"', f"Deleting local branch {branch}")
+                ws_success(f"Local branch '{branch}' deleted successfully")
             continue  # Continue to the next branch
         except subprocess.SubprocessError:
             continue
