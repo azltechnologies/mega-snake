@@ -50,8 +50,11 @@ mgsnake cr p
 Light-weight: it runs from anywhere, no workspace required. When `branch` is omitted the release is
 cut from the current branch.
 
-The new tag is always derived from the release GitHub currently marks as `latest`, which is never a
-pre-release. A release tagged by hand in the GitHub UI *can* hold that mark with any tag text, so the
-command refuses to continue when that tag is not a `vX.Y.Z` version: there is nothing to increment.
-Publish a version-tagged release first, or create that one with `gh release create`. It also refuses when the derived
-tag already exists, which means the repository holds a tag without a matching release.
+The new tag is derived from the release GitHub currently marks as `latest`. Prereleases and `r`
+releases do not move that pointer, so when the derived tag is already taken the command falls back to
+the highest `vX.Y.Z` tag in the repository and increments that instead — every release type advances
+the sequence, and a new tag can never land below one that was already published.
+
+A release tagged by hand in the GitHub UI can hold the `latest` mark with any tag text, so the command
+refuses to continue when that tag is not a `vX.Y.Z` version: there is nothing to increment. Publish a
+version-tagged release first, or create that one with `gh release create`.

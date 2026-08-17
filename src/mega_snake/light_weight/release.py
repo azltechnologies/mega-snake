@@ -97,13 +97,22 @@ class Release:
             numbers[lower] = 0
         base_tag: str = f"{TAG_PREFIX}{'.'.join(str(number) for number in numbers)}"
         if not suffix:
-            # A tag that already exists means the latest release is not what the repository actually
-            # has, so publishing would either fail or silently attach to the wrong commit.
+            # Neither a prerelease nor a `--latest=false` release advances the `latest` pointer, so
+            # deriving from it twice in a row lands on a tag that already exists. Falling back to the
+            # highest version in the repository keeps every release type moving the sequence forward,
+            # and cannot produce a tag below one that was already published.
             if _tag_exists(base_tag):
-                raise subprocess.SubprocessError(
-                    f"Tag {base_tag} already exists, but it was derived from the latest release "
-                    f"{self.tag_name}. Fetch the repository and check for tags without a release."
-                )
+                ws_info(f"Tag {base_tag} already exists; deriving from the highest known version instead.")
+                numbers = _highest_version(fallback=numbers)
+                numbers[index] += 1
+                for lower in range(index + 1, len(numbers)):
+                    numbers[lower] = 0
+                base_tag = f"{TAG_PREFIX}{'.'.join(str(number) for number in numbers)}"
+                if _tag_exists(base_tag):
+                    raise subprocess.SubprocessError(
+                        f"Tag {base_tag} already exists even though it was derived from the highest "
+                        "version in the repository. Fetch the repository and try again."
+                    )
             ws_info(f"Tag {base_tag} is available!")
             return base_tag
         for attempt in range(SUFFIX_ATTEMPTS):
@@ -139,6 +148,37 @@ def _parse_version(tag_name: str) -> list[int]:
             "this one by hand with 'gh release create'."
         )
     return [int(group) for group in match.groups()]
+
+
+def _highest_version(fallback: list[int]) -> list[int]:
+    """
+    Finds the highest 'vX.Y.Z' tag in the repository.
+
+    Used when the version derived from the ``latest`` release is already taken, which happens because
+    prereleases and ``--latest=false`` releases publish tags without moving that pointer. Scanning
+    once for the maximum is what keeps a new tag from landing below one that already exists — walking
+    the version upwards instead would stop at the first free number, which can sit under a higher tag.
+
+    Args:
+        fallback: list[int] - Version components to return when no version tag is found.
+
+    Raises:
+        None
+
+    Returns:
+        list[int]: The highest version's components, or ``fallback`` when there is none.
+    """
+    listed: str = run_operation(
+        "git tag --list", "Listing tags to find the highest version", check=False
+    ).stdout.strip()
+    versions: list[list[int]] = []
+    for line in listed.split("\n"):
+        match: Optional[re.Match] = VERSION_PATTERN.match(line.strip())
+        if match:
+            versions.append([int(group) for group in match.groups()])
+    if not versions:
+        return fallback
+    return max(max(versions), fallback)
 
 
 def _tag_exists(tag_name: str) -> bool:

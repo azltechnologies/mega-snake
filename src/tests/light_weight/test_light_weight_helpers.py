@@ -209,17 +209,19 @@ def test_get_release_tag_rejects_an_unknown_version_part() -> None:
         Release.get_release_tag(release, "build")  # type: ignore[arg-type]
 
 
-def test_get_release_tag_refuses_to_reuse_an_existing_tag() -> None:
-    """A derived tag that already exists means the latest release is not what the repo has.
+def test_get_release_tag_refuses_to_reuse_a_tag_the_fallback_could_not_avoid() -> None:
+    """When even the highest known version is taken, publishing must stop rather than reuse a tag.
 
-    Publishing anyway would either fail in gh or attach the release to the wrong commit, so this
-    stops before either can happen.
+    Reaching this means the local view of the repository is stale: the derived tag exists but is not
+    accounted for by any known version, so publishing would attach the release to the wrong commit.
     """
     release = SimpleNamespace(tag_name="v1.2.3")
-    with patch("mega_snake.light_weight.release._tag_exists", return_value=True) as tag_exists:
-        with pytest.raises(subprocess.SubprocessError, match="Tag v1.2.4 already exists"):
+    listed = SimpleNamespace(stdout="v1.2.3\n", returncode=0)
+    with patch("mega_snake.light_weight.release._tag_exists", return_value=True), patch(
+        "mega_snake.light_weight.release.run_operation", return_value=listed
+    ):
+        with pytest.raises(subprocess.SubprocessError, match="derived from the highest"):
             Release.get_release_tag(release, "patch")  # type: ignore[arg-type]
-    tag_exists.assert_called_once_with("v1.2.4")
 
 
 def test_tag_exists_reports_the_git_lookup_result() -> None:
@@ -379,3 +381,63 @@ def test_get_release_tag_refuses_a_hand_written_latest_tag(hand_written_tag: str
     # The message must name the offending tag and tell the user where to go instead.
     assert hand_written_tag in message
     assert "gh release create" in message
+
+
+def test_get_release_tag_falls_back_to_the_highest_version_on_collision() -> None:
+    """A non-latest release must not make the next one impossible.
+
+    Neither a prerelease nor a `--latest=false` release moves the `latest` pointer, so deriving from
+    it twice lands on a tag that already exists. Without the fallback the command becomes single-use:
+    the second invocation of any type fails and the user cannot cut a release at all.
+    """
+    release = SimpleNamespace(tag_name="v1.2.3")
+    taken = {"v1.2.3", "v1.2.4"}
+    tags = SimpleNamespace(stdout="\n".join(sorted(taken)), returncode=0)
+    with patch("mega_snake.light_weight.release._tag_exists", side_effect=lambda tag: tag in taken), patch(
+        "mega_snake.light_weight.release.run_operation", return_value=tags
+    ):
+        assert Release.get_release_tag(release, "patch") == "v1.2.5"  # type: ignore[arg-type]
+
+
+def test_get_release_tag_never_derives_below_an_existing_tag() -> None:
+    """The fallback takes the highest version, not the first free one.
+
+    Walking upwards from the latest pointer would stop at v1.2.5 while v1.3.1 already exists, so the
+    new release would sort below one that was already published.
+    """
+    release = SimpleNamespace(tag_name="v1.2.3")
+    taken = {"v1.2.3", "v1.2.4", "v1.3.0", "v1.3.1"}
+    tags = SimpleNamespace(stdout="\n".join(sorted(taken)), returncode=0)
+    with patch("mega_snake.light_weight.release._tag_exists", side_effect=lambda tag: tag in taken), patch(
+        "mega_snake.light_weight.release.run_operation", return_value=tags
+    ):
+        result = Release.get_release_tag(release, "patch")  # type: ignore[arg-type]
+
+    assert result == "v1.3.2"
+    assert result != "v1.2.5", "walked upwards instead of taking the highest version"
+
+
+def test_highest_version_ignores_tags_that_are_not_versions() -> None:
+    """Only 'vX.Y.Z' tags participate; anything else in the repository is noise here.
+
+    The non-version tags are placed *after* the highest one on purpose: a parser that accepted them
+    would either crash or contribute a bogus version, and both would be invisible if the noise sat
+    below the answer.
+    """
+    listed = SimpleNamespace(stdout="v1.0.0\nv2.5.1\nrelease-2026\nv9.9.9-beta.0\nnightly\nv3\n", returncode=0)
+    with patch("mega_snake.light_weight.release.run_operation", return_value=listed):
+        assert release_module._highest_version(fallback=[0, 0, 0]) == [2, 5, 1]
+
+
+def test_highest_version_falls_back_when_no_version_tag_exists() -> None:
+    """A repository with no version tags must keep the version derived from the latest release."""
+    listed = SimpleNamespace(stdout="nightly\nrelease-2026\n", returncode=0)
+    with patch("mega_snake.light_weight.release.run_operation", return_value=listed):
+        assert release_module._highest_version(fallback=[1, 2, 3]) == [1, 2, 3]
+
+
+def test_highest_version_never_returns_below_the_fallback() -> None:
+    """When every tag is older than the latest release, the latest release still wins."""
+    listed = SimpleNamespace(stdout="v0.1.0\nv0.2.0\n", returncode=0)
+    with patch("mega_snake.light_weight.release.run_operation", return_value=listed):
+        assert release_module._highest_version(fallback=[1, 2, 3]) == [1, 2, 3]

@@ -68,6 +68,17 @@ def diff_tree(origin_hash: Optional[str], target_hash: Optional[str], delete_ori
             "--target-hash compares two commits, but that scope also reads the index or the working tree, "
             "which only exist for HEAD. Use one or the other: drop --target-hash, or use --scope c."
         )
+    # Both ends are resolved and validated before anything is written: a mistyped hash is the most
+    # likely rejection there is, and destroying the previous run's output to then abort would leave
+    # the user with an empty folder and nothing to fall back on.
+    main_branch: str
+    if origin_hash is None:
+        main_branch = get_main_branch(get_remote())
+        ws_info(f"Main branch: {main_branch}")
+    else:
+        main_branch = _validate_commit(origin_hash)
+    current_branch: str = _validate_commit(target_hash) if target_hash is not None else get_current_commit()
+
     tree_output: str = f"{get_property('working_path')}/diff_tree"
     diff_commit_file: str = f"{tree_output}/diff_commit.txt"
     diff_changes_file: str = f"{tree_output}/diff_changes.txt"
@@ -79,13 +90,6 @@ def diff_tree(origin_hash: Optional[str], target_hash: Optional[str], delete_ori
         shutil.rmtree(tree_output)
     os.makedirs(diff_tree_dummy_repo, exist_ok=True)
 
-    main_branch: str
-    if origin_hash is None:
-        main_branch = get_main_branch(get_remote())
-        ws_info(f"Main branch: {main_branch}")
-    else:
-        main_branch = _validate_commit(origin_hash)
-    current_branch: str = _validate_commit(target_hash) if target_hash is not None else get_current_commit()
     diff_target: str = _get_diff_target(scope, main_branch, current_branch)
     untracked_files: list[str] = _get_untracked_files(scope)
     # rename detection is disabled so every scope reports the same raw format, with one entry

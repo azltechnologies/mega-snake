@@ -521,3 +521,47 @@ def test_diff_tree_help_documents_the_scope_restriction_on_both_options() -> Non
     target_help = help_by_name["target_hash"]
     assert "--scope c" in target_help, "--target-hash never names the scope it requires"
     assert "rejected" in target_help, "--target-hash does not say the combination is refused"
+
+
+def test_diff_tree_validates_both_commits_before_touching_the_output() -> None:
+    """A rejected invocation must never destroy the previous run's output.
+
+    A mistyped hash is the likeliest rejection there is, so wiping the output directory first would
+    leave the user with an empty folder and no fallback, for a run that produced nothing.
+    """
+    with patch("mega_snake.diff_tree.diff_tree.get_property", return_value="/tmp"), patch(
+        "mega_snake.diff_tree.diff_tree.os.path.exists", return_value=True
+    ), patch("mega_snake.diff_tree.diff_tree.shutil.rmtree") as rmtree, patch(
+        "mega_snake.diff_tree.diff_tree.os.makedirs"
+    ) as makedirs, patch("mega_snake.diff_tree.diff_tree.get_current_commit", return_value="head"), patch(
+        "mega_snake.diff_tree.diff_tree.run_operation"
+    ) as run_operation:
+        run_operation.return_value.stdout = "blob"
+        with pytest.raises(ValueError, match="Invalid commit hash: typo"):
+            diff_tree_cmd.diff_tree.callback(
+                origin_hash="typo", target_hash=None, delete_original_files=False, scope="c"
+            )
+
+    rmtree.assert_not_called()
+    makedirs.assert_not_called()
+
+
+def test_diff_tree_validates_the_target_before_touching_the_output() -> None:
+    """The same guarantee must hold for the far end of the comparison, not just the base."""
+    with patch("mega_snake.diff_tree.diff_tree.get_property", return_value="/tmp"), patch(
+        "mega_snake.diff_tree.diff_tree.os.path.exists", return_value=True
+    ), patch("mega_snake.diff_tree.diff_tree.shutil.rmtree") as rmtree, patch(
+        "mega_snake.diff_tree.diff_tree.os.makedirs"
+    ) as makedirs, patch(
+        "mega_snake.diff_tree.diff_tree.get_main_branch", return_value="master"
+    ), patch("mega_snake.diff_tree.diff_tree.get_remote", return_value="origin"), patch(
+        "mega_snake.diff_tree.diff_tree.run_operation"
+    ) as run_operation:
+        run_operation.return_value.stdout = "tree"
+        with pytest.raises(ValueError, match="Invalid commit hash: typo"):
+            diff_tree_cmd.diff_tree.callback(
+                origin_hash=None, target_hash="typo", delete_original_files=False, scope="c"
+            )
+
+    rmtree.assert_not_called()
+    makedirs.assert_not_called()
