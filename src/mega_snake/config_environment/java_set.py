@@ -20,7 +20,7 @@ from mega_snake.config_environment.models.tools_version import (
     OS,
     VersionSetException,
 )
-from mega_snake.util.util import run_operation, load_json_with_comments
+from mega_snake.util.util import cli_metadata, run_operation, load_json_with_comments
 from mega_snake.util.props import get_property
 from mega_snake.util.formatting import ws_info, ws_success, ws_warning, ws_advice
 
@@ -34,6 +34,7 @@ from mega_snake.util.formatting import ws_info, ws_success, ws_warning, ws_advic
         -o | --override: Optional[bool] - Override the current Java version\n
     """,
 )
+@cli_metadata(reloads_environment=True)
 @click.option("--override", "-o", is_flag=True, help="Override the current Java version")
 def set_java_version(override: bool) -> None:
     """

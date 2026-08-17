@@ -41,9 +41,24 @@ lives in the GitHub Release body (`gh release create --generate-notes`); this fi
   its `patch`, `minor` or `major` component, instead of appending a free-form suffix. `--tag-suffix` still
   produces pre-release builds (`v1.2.4-beta.0`), and is rejected for `latest` releases, which GitHub only
   grants to a plain version.
+- **Automatic shell environment reload.** Configuring the environment (`working-env`, `set-java`, `set-gradle`,
+  `set-maven`, `init-local-config`) now takes effect in your *current* shell session, without opening a new
+  terminal. The shell init script defines `mgsnake` as a thin function around the real executable: the command
+  reports it rewrote the environment, and the function re-sources the local files for you. Only the commands
+  that actually touch those files trigger it, so `graphql-schema` and `maven-project-setup` no longer force a
+  pointless reload. Also adds `mgsnake_reload_all`, which reloads the local config file and the `.env` in one
+  step, on both bash/zsh and PowerShell.
 - **This changelog.**
 
 ### Changed
+
+- **`mgsnake` now reports a meaningful exit code instead of always exiting `1`.** Scripts and CI steps can tell
+  a missing `osv-scanner` (`102`) from a bad revision (`103`), an unset `MEGA_SNAKE_SHELL` (`112`) from a
+  mistyped flag (`1`), stale generated docs (`113`) from a declined prompt (`114`). The full table is in the
+  contributor docs. Previously every one of these exited `1`.
+- **Failures that are not your fault no longer look like misuse.** A repository without a remote, a missing
+  external tool and a prompt you declined were all reported with the "you called this wrong" status; each now
+  carries its own.
 
 - **`diff-tree` renamed its revision options** to `--origin-hash` / `-o` (was `--commit-hash` / `-c`), so
   the two ends of the comparison read as a pair with `--target-hash`.
@@ -59,6 +74,14 @@ lives in the GitHub Release body (`gh release create --generate-notes`); this fi
 - **Duplicate command and alias registrations are now rejected.** Click's registry silently replaced an
   existing command when a second one claimed its name, leaving the first unreachable while its tests kept
   passing. Registration now fails loudly, naming both colliding modules.
+- **The shell environment reload stopped working** when `mgsnake` became an installed executable: the wrapper
+  that captured its exit status was gone, so the signal was emitted into a void. Restored, and now tested
+  against a real process instead of a hand-built object.
+- **Exit codes never reached the shell.** The installed entry point called the command group directly, so the
+  translation from exception to status — and the hook that delivers it — only ran under `python -m mega_snake`.
+  Two more holes are closed with it: an internal error with no mapped type reported `1` instead of `100`, and
+  an exception type that was not listed verbatim (`subprocess.CalledProcessError`, for instance) fell back to
+  the generic code instead of inheriting its parent's.
 
 ## [0.1.5] - 2026-07-26
 

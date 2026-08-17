@@ -872,10 +872,16 @@ would remove the stored token entirely and is the natural upgrade.)
     -   Local Application
     -   Each group separated by a blank line
 
-4.  **Error Handling**:
-    -   Raise `ValueError` for invalid user input
-    -   Raise `click.ClickException` for expected CLI errors
-    -   Let unexpected errors bubble up to `__main__.py` to be caught by the global handler
+4.  **Error Handling** — see §7 for the full exit-code contract. In short:
+    -   Raise `click.ClickException` **only when the user invoked the command incorrectly**. A missing
+        tool, an unconfigured remote or a declined prompt is not misuse; those get their natural
+        exception type instead.
+    -   Raise `ValueError` for an invalid value, and the matching built-in for everything else
+        (`FileNotFoundError`, `PermissionError`, …) so `ERROR_CODES` can resolve a meaningful status.
+    -   Let unexpected errors bubble up. `main()` in `__main__.py` — **not** `cli()` — is the single
+        place an exception becomes an exit code.
+    -   **Every new custom exception must be registered in `ERROR_CODES` in the same change.** A test
+        walks the package and fails naming any that is not.
 
 5.  **Paths**: Always use `pathlib.Path` or `os.path` joins. Never use string concatenation for paths.
 
@@ -986,3 +992,128 @@ Plus `mgsnake generate-docs --check`, which catches a committed `COMMANDS.md` th
 tests and the check catch *different* failures: the tests catch missing/duplicated prose, the check catches a stale
 generated file. **After changing any command metadata, run `mgsnake generate-docs` and commit the regenerated
 `COMMANDS.md` in the same change.**
+
+---
+
+## 7. Exit Codes & the Shell Reload Signal
+
+The status `mgsnake` leaves behind is part of its public interface: a shell function and CI steps branch on it. It
+is also the part of the design that rotted the longest, because **no test ever looked at a real exit code** — every
+error condition silently exited `1` for a long time while the code that was supposed to prevent that sat there,
+fully written, never reached. Treat this section as a contract, not as documentation of an implementation detail.
+
+### 7.1 The table
+
+| Code | Meaning | Mechanism |
+|---|---|---|
+| `0` | Success | Default |
+| `1` | The user invoked the command incorrectly | `click.ClickException` |
+| `2` | Malformed invocation / programming error in command registration | `click.UsageError` |
+| `29` | Success **+ the shell must reload its local environment files** | The signal, §7.4 |
+| `100` | Internal error with no mapped type | `WorkspaceError` default (`INTERNAL_ERROR_CODE`) |
+| `101`–`112` | Error, by exception type | `ERROR_CODES` |
+| `113` | A validation reported stale or invalid content | `ValidationError` |
+| `114` | The user declined a required action | `UserDeclinedError` |
+| `115` | `VersionSetException` | `ERROR_CODES` |
+
+`105` is deliberately vacant: it used to be assigned to `IOError`, which **is** `OSError` — the same object
+`EnvironmentError` aliases — so the two entries collided and one of them was always unreachable. Do not fill the
+gap by re-adding an alias of a type already in the table.
+
+**`ClickException` is about invocation, not blame.** A missing tool, an unconfigured remote or a declined prompt is
+not misuse — the user broke no contract — so those must **not** be `ClickException`s. `require_remote` raises
+`EnvironmentError`, the `osv-scanner` guard raises `FileNotFoundError`, `ensure_working_path` raises
+`UserDeclinedError`, and `write_or_check_document` raises `ValidationError`. What legitimately stays a
+`ClickException` is a genuine invocation error: mutually exclusive flags (`diff-tree`, `create-release`), an unknown
+command name (`man`, `__main__`).
+
+`ValidationError` and `UserDeclinedError` subclass `click.ClickException` on purpose: they keep the clean,
+traceback-free output Click gives a user error and only change the number.
+
+### 7.2 How a code actually reaches the shell
+
+Three links, all of which were broken at once. Understand each before touching any of them.
+
+1. **`[project.scripts]` points at `main()`, never at `cli`.** The installed executable calls that symbol directly,
+   so a translation living anywhere else (in a `if __name__ == "__main__"` block, say) runs only under
+   `python -m mega_snake`, which no user ever types.
+2. **`main()` is the only place an exception becomes an exit code.** It re-raises `click.ClickException` untouched —
+   Click already knows its `exit_code`, and wrapping it would relabel a user error as an internal one — and wraps
+   everything else in `WorkspaceError`, whose `__init__` resolves the status and installs `_on_crash` as the except
+   hook. `SystemExit` is a `BaseException`, so the reload signal passes straight through.
+3. **`_on_crash` delivers it.** `sys.exit()` called from inside an except hook *does* set the process status; that is
+   the mechanism the whole design rests on. It exits for **every** `WorkspaceError`, including the unmapped `100` —
+   returning without exiting there handed the process back to Python's default handling and its status of `1`, which
+   made `100` the one code that could never be observed.
+
+**Never convert an exception into `SystemExit(e)`.** `SystemExit` uses its argument as the status *only when it is
+an `int`*; given an exception it prints it and exits `1`. That single line is what flattened every initialization
+failure to the same number. `cli()` re-raises with the type intact instead.
+
+### 7.3 Registering a new exception — mandatory
+
+**Every custom exception introduced in this package must be registered in `ERROR_CODES` in the same change**, or —
+for a `click.ClickException` subclass — must declare its own `exit_code`. `test_every_custom_exception_in_the_package_has_a_registered_exit_code`
+walks the package and fails naming any that is not, so this is enforced mechanically rather than by convention.
+
+The table lives in `util/formatting.py`. A type owned by a module `formatting.py` cannot import (because that module
+already imports `formatting`) registers itself at its definition site instead — see `VersionSetException` in
+`config_environment/models/tools_version.py`.
+
+Lookup goes through `resolve_error_code`, which **walks the MRO**: an unlisted subclass inherits its nearest listed
+ancestor's code (`subprocess.CalledProcessError` → 111), while a type listed in its own right still wins over its
+ancestor (`FileNotFoundError` → 102, not the 112 of the `OSError` it derives from). The old exact
+`type(e) in ERROR_CODES` lookup sent every unlisted subclass to the generic `100`.
+
+### 7.4 The `29` reload signal — what it does and who consumes it
+
+**What it does:** a command finished successfully *and* rewrote one of the two local environment files, so the
+user's shell has to re-source them. A child process cannot mutate its parent's environment, which is why this
+cannot be done in Python and has to be a status the shell reacts to.
+
+**Who consumes it:** the `mgsnake` **shell function** defined by `config_setup.sh` / `config_setup.ps1`. It calls
+the real executable through `command mgsnake` (bash/zsh) or the resolved application path (PowerShell), captures the
+status, and calls `mgsnake_reload_all` when it equals 29. There is no recursion — `command` and the resolved path
+both bypass the function — and the only visible difference is that `type mgsnake` reports a function.
+
+```bash
+mgsnake() {
+    command mgsnake "$@"
+    local exit_code=$?
+    if [ "$exit_code" -eq "$MEGA_SNAKE_RELOAD_EXIT_CODE" ]; then
+        mgsnake_reload_all
+    fi
+    return "$exit_code"
+}
+```
+
+**This is the link that was cut before.** The historical wrapper wrapped `python3 -m $PY_MODULE` and branched on
+`$?`; when `mgsnake` became an installed executable invoked directly, nothing captured the status any more. The
+Python side kept emitting it into a void. If you ever change how the CLI is invoked, **the wrapper is the thing to
+check**.
+
+**Emitting it:** a command declares `@cli_metadata(reloads_environment=True)`, and the `config_environment` module
+wrapper relays it into `ctx.obj["exit_code"]`; `post_command` turns that into the process status. It is per command,
+**not** per module: living in `config_environment` is not what makes a command change the environment, touching
+those files is.
+
+| Command | Emits `29` |
+|---|---|
+| `init-local-config`, `working-env` | Yes |
+| `set-java`, `set-gradle`, `set-maven` | Yes |
+| `maven-project-setup`, `graphql-schema` | No |
+
+The number is hard-coded in three places that must agree: `RELOAD_ENVIRONMENT_EXIT_CODE` in `constants.py`,
+`MEGA_SNAKE_RELOAD_EXIT_CODE` in `config_setup.sh`, and `$global:MegaSnakeReloadExitCode` in `config_setup.ps1`.
+
+### 7.5 Testing rule
+
+`src/tests/test_exit_codes.py` holds one test per row of the table above. Two rules it exists to enforce:
+
+- **Assert the exact number, and assert what it is *not*.** A bare "it failed" assertion is satisfied by the silent
+  fallback to `1`, which is precisely the bug that survived for so long. Every row asserts `== <code>` **and**
+  `!= 1`.
+- **Use the right level.** `CliRunner` for anything decided inside the click group (the reload signal, a
+  `ClickException`'s own `exit_code`). `subprocess` for anything decided *outside* it — the translation in `main()`
+  and the except hook. `CliRunner` catches exceptions and reports `1` for all of them, so an in-process test of the
+  hook would assert nothing at all.

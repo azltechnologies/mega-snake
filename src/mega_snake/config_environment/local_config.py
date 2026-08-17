@@ -4,6 +4,7 @@ import os
 import click
 from mega_snake.util.props import get_property
 from mega_snake.util.formatting import ws_success
+from mega_snake.util.util import cli_metadata
 from mega_snake.config_environment.util import get_local_file
 
 
@@ -16,6 +17,7 @@ from mega_snake.config_environment.util import get_local_file
         -o | --override: Optional[bool] - Override the current local configuration file with a new one\n
     """,
 )
+@cli_metadata(reloads_environment=True)
 @click.option("--override", "-o", is_flag=True, help="Override the current local configuration file with a new one")
 def initial_load(override: bool) -> None:  # previously initialLoad
     """

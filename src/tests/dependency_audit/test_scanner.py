@@ -22,6 +22,7 @@ from mega_snake.dependency_audit.scanner import (
     run_pip_audit,
     scan_dependencies,
 )
+from mega_snake.util.formatting import resolve_error_code
 
 
 @pytest.fixture(name="run_operation")
@@ -210,10 +211,21 @@ def test_run_osv_scanner(run_operation: MagicMock) -> None:
 
 
 def test_run_osv_scanner_raises_when_tool_fails(run_operation: MagicMock) -> None:
-    """Empty output with a non-zero exit means osv-scanner failed to run, not a clean scan."""
+    """Empty output with a non-zero exit means osv-scanner failed to run, not a clean scan.
+
+    A missing tool must be reported as a missing tool: raising a ClickException here would give the
+    failure the invocation-error status (1), which is what an unrelated bad invocation returns, so
+    the negative assertion is the load-bearing half of this test.
+    """
     run_operation.return_value = MagicMock(stdout="", returncode=127)
-    with pytest.raises(click.ClickException, match="osv-scanner produced no output"):
+    with pytest.raises(FileNotFoundError, match="osv-scanner produced no output") as excinfo:
         run_osv_scanner("some/target")
+    assert not isinstance(excinfo.value, click.ClickException), (
+        "a missing tool must not be reported as an invocation error"
+    )
+    assert resolve_error_code(excinfo.value) == 102, (
+        f"osv-scanner-missing resolved to {resolve_error_code(excinfo.value)}, expected 102"
+    )
 
 
 def test_run_osv_scanner_empty_output_clean_exit(run_operation: MagicMock) -> None:

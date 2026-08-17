@@ -41,7 +41,7 @@ def generate_docs(output: Path, check: bool) -> None:
         check: Whether to validate the file instead of writing it.
 
     Raises:
-        click.ClickException: If --check finds that the output file is stale.
+        ValidationError: If --check finds that the output file is stale.
 
     Returns:
         None
