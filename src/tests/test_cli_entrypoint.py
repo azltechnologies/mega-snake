@@ -120,3 +120,47 @@ def test_running_main_module_wraps_cli_errors() -> None:
         finally:
             # Restore the modules
             sys.modules.update(removed_modules)
+
+
+def test_cli_resolves_a_command_through_its_name_and_its_alias() -> None:
+    """The entry point must reach the same command by its real name and by a registered alias.
+
+    Aliases are separate hidden command objects, so resolving one is not implied by resolving the
+    other: this walks the actual registry the way a user's shell does.
+    """
+    runner = CliRunner()
+    with patch.dict(os.environ, {"MEGA_SNAKE_SHELL": "bash"}), patch(
+        "mega_snake.__main__.init_app_properties"
+    ):
+        by_name = runner.invoke(app_main.cli, ["diff-tree", "--help"])
+        by_alias = runner.invoke(app_main.cli, ["dt", "--help"])
+
+    assert by_name.exit_code == 0, by_name.output
+    assert by_alias.exit_code == 0, by_alias.output
+    # Both spellings must land on the same command, not merely both succeed.
+    assert "--origin-hash" in by_name.output
+    assert "--origin-hash" in by_alias.output
+
+
+def test_post_command_exits_with_the_exit_code_left_in_the_context() -> None:
+    """A non-zero `exit_code` in the context must terminate the process with that exact status.
+
+    The value is a channel between a module wrapper and the shell, so propagating *some* failure is
+    not enough: the specific number is what the caller branches on.
+    """
+    context = click.Context(app_main.cli)
+    context.invoked_subcommand = "x"
+    context.obj = {"exit_code": 2}
+    with pytest.raises(SystemExit) as excinfo, context.scope():
+        app_command_post = app_main.post_command
+        app_command_post(None)
+    assert excinfo.value.code == 2
+
+
+def test_post_command_does_not_exit_without_an_exit_code() -> None:
+    """A successful command must return normally: only a non-zero code terminates the process."""
+    context = click.Context(app_main.cli)
+    context.invoked_subcommand = "x"
+    context.obj = {}
+    with context.scope():
+        assert app_main.post_command(None) is None

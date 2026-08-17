@@ -1,0 +1,160 @@
+# Publishes `mega-snake` to PyPI when a GitHub Release is published as a real release.
+#
+# Trigger rationale: `released` fires only for non-prerelease publications, so
+# `mgsnake create-release p` (a prerelease) never reaches PyPI. Both `l` (latest) and `r` (regular)
+# do reach it, and `r` accepts `--tag-suffix` — `mgsnake create-release r --tag-suffix beta` is a
+# supported invocation that publishes a NON-prerelease tagged `vX.Y.Z-beta.N`. The job is gated on
+# the flags GitHub recorded for the release rather than on the tag text, and simply does not run for
+# the rest, instead of failing red on an intentional invocation. Using `push: tags` would publish
+# prereleases too.
+#
+# Publishing to PyPI is IRREVERSIBLE: a version number can never be reused, even after deleting the
+# file. Every validation below therefore runs *before* the build, and the job fails closed.
+name: Release
+
+on:
+  release:
+    types: [released]
+
+permissions:
+  contents: read
+
+# Never let two publications of the same tag race each other.
+concurrency:
+  group: release-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Validate and publish to PyPI
+    runs-on: ubuntu-latest
+    # Gate on what GitHub itself recorded, never on the shape of the tag: a project whose tags carry
+    # a hyphen (`rel-1_2_4`) would be skipped forever by a text filter, and `mgsnake create-release`
+    # supports exactly those patterns. `prerelease` is set by the platform, so it cannot disagree
+    # with what was actually published. The regex below stays as the fail-closed backstop.
+    if: ${{ !github.event.release.prerelease && !github.event.release.draft }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Release events resolve to the tag already, but pinning it makes the intent explicit and
+          # keeps the job correct if the trigger is ever widened.
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Set up environment
+        uses: ./.github/actions/setup-env
+
+      # --locked matters most here: without it uv re-resolves silently, so the checks below would
+      # validate a dependency set the lockfile does not describe, and the re-resolve can rewrite
+      # uv.lock before `uv build` runs. This is the last gate before a version number is burned.
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+
+      # The three facts that must agree before anything is published: the tag's shape, the version
+      # declared in pyproject.toml, and the changelog section describing the release.
+      - name: Validate the tag matches the declared version
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
+        run: |
+          # A build tag (vX.Y.Z-beta.N) is a legitimate product of `create-release r --tag-suffix`:
+          # there is simply no version to publish, so the job stops green instead of reporting a
+          # failure for an intentional invocation. Anything else that is not a plain version is a
+          # genuine mistake and fails the job.
+          if [[ "${TAG_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+- ]]; then
+            echo "::notice::'${TAG_NAME}' is a pre-release build, not a version. Nothing to publish."
+            echo "PUBLISHABLE=false" >> "${GITHUB_ENV}"
+            exit 0
+          fi
+          if [[ ! "${TAG_NAME}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag '${TAG_NAME}' does not match the required 'vX.Y.Z' format."
+            exit 1
+          fi
+          echo "PUBLISHABLE=true" >> "${GITHUB_ENV}"
+          VERSION="${TAG_NAME#v}"
+          # tomllib is stdlib on 3.11+, so this needs no dependency of its own.
+          PROJECT_VERSION="$(python -c "import tomllib, pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")"
+          if [[ "${VERSION}" != "${PROJECT_VERSION}" ]]; then
+            echo "::error::Tag '${TAG_NAME}' declares version '${VERSION}', but pyproject.toml declares '${PROJECT_VERSION}'. Bump one of them so they agree."
+            exit 1
+          fi
+          echo "RELEASE_VERSION=${VERSION}" >> "${GITHUB_ENV}"
+          echo "Publishing version ${VERSION}."
+
+      - name: Validate the changelog documents this version
+        if: ${{ env.PUBLISHABLE == 'true' }}
+        env:
+          RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
+        run: |
+          python - <<'PYTHON'
+          import os
+          import pathlib
+          import re
+          import sys
+
+          version = os.environ["RELEASE_VERSION"]
+          changelog = pathlib.Path("CHANGELOG.md")
+          if not changelog.is_file():
+              sys.exit(f"::error::CHANGELOG.md is missing; every release must document its changes.")
+
+          lines = changelog.read_text(encoding="utf-8").splitlines()
+          heading = re.compile(rf"^##\s+\[{re.escape(version)}\]")
+          start = next((i for i, line in enumerate(lines) if heading.match(line)), None)
+          if start is None:
+              sys.exit(
+                  f"::error::CHANGELOG.md has no '## [{version}]' section. "
+                  f"Add one describing what changed in this release before tagging it."
+              )
+
+          # The section runs until the next '## ' heading, or the end of the file.
+          end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
+          body = [line.strip() for line in lines[start + 1 : end]]
+          # A section that only carries empty lines, sub-headings or the seeded placeholder says nothing.
+          content = [
+              line
+              for line in body
+              if line and not line.startswith("#") and line.lower().rstrip(".") != "- nothing yet"
+          ]
+          if not content:
+              sys.exit(
+                  f"::error::The '## [{version}]' section in CHANGELOG.md is empty. "
+                  f"Describe the release instead of shipping a placeholder."
+              )
+          print(f"CHANGELOG.md documents {version} with {len(content)} line(s) of content.")
+          PYTHON
+
+      # A tag can point at any commit, so the PR checks are not proof that *this* tree is releasable.
+      # Republishing is impossible, which makes re-running them the cheapest insurance available.
+      - name: Run tests
+        if: ${{ env.PUBLISHABLE == 'true' }}
+        run: uv run pytest
+
+      - name: Run ruff check
+        if: ${{ env.PUBLISHABLE == 'true' }}
+        run: uv run ruff check src/mega_snake --output-format=concise
+
+      - name: Run mypy
+        if: ${{ env.PUBLISHABLE == 'true' }}
+        run: uv run mypy --show-column-numbers --no-error-summary src/mega_snake
+
+      - name: Check generated command docs are up to date
+        if: ${{ env.PUBLISHABLE == 'true' }}
+        run: uv run mgsnake generate-docs --check
+
+      - name: Build the distributions
+        if: ${{ env.PUBLISHABLE == 'true' }}
+        run: |
+          rm -rf dist
+          uv build
+
+      # `uv publish` uploads whatever it is given; it does not validate the metadata or render the
+      # README. twine does, and a README that fails to render on PyPI cannot be fixed without
+      # burning the version number, so this runs while that is still free.
+      - name: Validate the distributions
+        if: ${{ env.PUBLISHABLE == 'true' }}
+        run: uv run twine check dist/*
+
+      - name: Publish to PyPI
+        if: ${{ env.PUBLISHABLE == 'true' }}
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: uv publish

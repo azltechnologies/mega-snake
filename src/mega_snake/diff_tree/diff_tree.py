@@ -2,6 +2,7 @@
 
 import os
 import shutil
+import subprocess
 from typing import Optional
 import click
 from directory_tree import DisplayTree
@@ -14,12 +15,21 @@ from mega_snake.diff_tree.file_type import FileType
 @click.command(
     name="diff-tree",
     short_help="Creates diff tree and commit list of current changes",
-    help="Creates a diff tree of changes and a commit list of the current branch"
-    " against master or a specified commit hash",
+    help="Creates a diff tree of changes and a commit list between two points in history. The comparison"
+    " runs from master (or the commit given with --origin-hash) up to the current HEAD (or the commit"
+    " given with --target-hash), which makes it possible to inspect a past range instead of only the current work.",
     epilog="usage: mgsnake diff-tree [OPTIONS]",
 )
 @click.option(
-    "--commit-hash", "-c", type=click.STRING, default=None, help="Commit hash to compare against instead of master"
+    "--origin-hash", "-o", type=click.STRING, default=None, help="Commit hash to compare against instead of master"
+)
+@click.option(
+    "--target-hash",
+    "-t",
+    type=click.STRING,
+    default=None,
+    help="Commit hash to compare up to, instead of the current HEAD. Requires --scope c (the default),"
+    " since the index and the working tree only exist for HEAD; any other scope is rejected.",
 )
 @click.option(
     "--delete-original-files",
@@ -33,18 +43,43 @@ from mega_snake.diff_tree.file_type import FileType
     type=click.Choice(["c", "s", "u"], case_sensitive=False),
     default="c",
     show_default=True,
-    help="Changes to include: (c)ommitted only [default], committed and (s)taged, or also (u)nstaged and untracked",
+    help="Changes to include: (c)ommitted only [default], committed and (s)taged, or also (u)nstaged and untracked."
+    " Only 'c' is compatible with --target-hash: the other two read the index and the working tree, which"
+    " exist only for HEAD, so passing them together is rejected instead of silently ignoring one of them.",
 )
-def diff_tree(commit_hash: Optional[str], delete_original_files: bool, scope: str) -> None:
+def diff_tree(origin_hash: Optional[str], target_hash: Optional[str], delete_original_files: bool, scope: str) -> None:
     """
-    Creates a diff tree of the current branch against master or a specified commit hash.
+    Creates a diff tree between two points in history.
 
     Args:
-        commit_hash: str | None - Commit hash to compare against instead of master
+        origin_hash: str | None - Commit hash to compare against instead of master
+        target_hash: str | None - Commit hash to compare up to, instead of the current HEAD
         delete_original_files: bool - Delete the generated copy of the original files in the diff tree
         scope: str - Changes to include: (c)ommitted only [default], committed and (s)taged, or also (u)nstaged
                                             and untracked
+
+    Raises:
+        click.ClickException: If --target-hash is combined with a scope that reaches the index or the working tree.
+        ValueError: If a given commit hash does not resolve to a commit.
     """
+    # Validated before anything is written, so a rejected invocation never wipes the previous output.
+    if target_hash is not None and scope != "c":
+        raise click.ClickException(
+            f"BAD REQUEST: --target-hash and --scope {scope} are mutually exclusive. "
+            "--target-hash compares two commits, but that scope also reads the index or the working tree, "
+            "which only exist for HEAD. Use one or the other: drop --target-hash, or use --scope c."
+        )
+    # Both ends are resolved and validated before anything is written: a mistyped hash is the most
+    # likely rejection there is, and destroying the previous run's output to then abort would leave
+    # the user with an empty folder and nothing to fall back on.
+    main_branch: str
+    if origin_hash is None:
+        main_branch = get_main_branch(get_remote())
+        ws_info(f"Main branch: {main_branch}")
+    else:
+        main_branch = _validate_commit(origin_hash)
+    current_branch: str = _validate_commit(target_hash) if target_hash is not None else get_current_commit()
+
     tree_output: str = f"{get_property('working_path')}/diff_tree"
     diff_commit_file: str = f"{tree_output}/diff_commit.txt"
     diff_changes_file: str = f"{tree_output}/diff_changes.txt"
@@ -56,18 +91,6 @@ def diff_tree(commit_hash: Optional[str], delete_original_files: bool, scope: st
         shutil.rmtree(tree_output)
     os.makedirs(diff_tree_dummy_repo, exist_ok=True)
 
-    current_branch: str = get_current_commit()
-    main_branch: str
-    if commit_hash is None:
-        main_branch = get_main_branch(get_remote())
-        ws_info(f"Main branch: {main_branch}")
-    else:
-        commit_validation: str = run_operation(
-            f"git cat-file -t {commit_hash} 2>/dev/null", f"Checking if commit hash '{commit_hash}' is valid"
-        ).stdout.strip()
-        if commit_validation != "commit":
-            raise ValueError(f"Invalid commit hash: {commit_hash}")
-        main_branch = commit_hash
     diff_target: str = _get_diff_target(scope, main_branch, current_branch)
     untracked_files: list[str] = _get_untracked_files(scope)
     # rename detection is disabled so every scope reports the same raw format, with one entry
@@ -114,6 +137,37 @@ def diff_tree(commit_hash: Optional[str], delete_original_files: bool, scope: st
     if delete_original_files:
         shutil.rmtree(diff_tree_dummy_repo)
         ws_success("Deleted the generated copy of the original files in the diff tree")
+
+
+def _validate_commit(commit_hash: str) -> str:
+    """
+    Confirms a reference resolves to a commit before any diff is attempted against it.
+
+    Both ends of the comparison accept an arbitrary reference from the user, so this check is shared
+    by them: a typo that resolves to a tree or a blob would otherwise reach git as a valid-looking
+    revision and produce a diff nobody asked for.
+
+    Args:
+        commit_hash: str
+
+    Raises:
+        ValueError: If the reference does not resolve to a commit.
+
+    Returns:
+        str: The validated reference, unchanged.
+    """
+    # check=False because a reference that does not exist is the expected failure here, not an
+    # operational one: `git cat-file` exits 128 for it, which under the default check=True would be
+    # retried three times with a two-second sleep and reported as a subprocess failure instead of the
+    # typo it is. Same pattern as `_tag_exists` in light_weight/release.py.
+    result: subprocess.CompletedProcess[str] = run_operation(
+        f"git cat-file -t {commit_hash} 2>/dev/null",
+        f"Checking if commit hash '{commit_hash}' is valid",
+        check=False,
+    )
+    if result.returncode != 0 or result.stdout.strip() != "commit":
+        raise ValueError(f"Invalid commit hash: {commit_hash}")
+    return commit_hash
 
 
 def _get_diff_target(scope: str, main_branch: str, current_branch: str) -> str:

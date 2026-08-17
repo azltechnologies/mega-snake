@@ -4,6 +4,51 @@
 
 `mega_snake` is a robust Python 3.13+ CLI tool designed to standardize the local development lifecycle. It acts as a "Swiss Army Knife" for developers, primarily automating the complex configuration of VS Code environments for Java/Gradle, but extending into Git management, Release orchestration context, and Google Cloud observability.
 
+> ### ⚠️ THE FIRST RULE: `mgsnake` IS A PRODUCT FOR ITS USERS, NOT A SCRIPT FOR ITS AUTHOR
+>
+> **Every command is built for the developers who install `mega-snake`, never for this repository's own
+> convenience.** A command must never be shaped, restricted, or special-cased to fit how *this* project
+> happens to work.
+>
+> The reasoning is decisive: if the goal were to automate the maintainer's own workflow, `mgsnake` would be
+> massive overkill — a handful of shell scripts symlinked into `/usr/bin` would do the job. The entire cost
+> of this project (a packaged CLI, a published distribution, generated documentation, 95%+ coverage) is
+> justified **only** because the output is a tool for the world.
+>
+> **What this forbids, concretely:**
+>
+> - Reading this repository's `pyproject.toml`, `CHANGELOG.md`, or CI configuration from a user-facing
+>   command. A user's project has none of those, or has different ones.
+> - Assuming a Python/uv project. Most users of `working-env` and `set-java` are on Java/Gradle.
+> - Encoding this repository's conventions (branch names, tag shapes, release cadence) as command defaults.
+> - "Fixing" a user-facing command so that it fits a workflow of this repo. When the two conflict, **the
+>   repo's workflow bends, not the command.**
+>
+> **When a genuine need for repo-only tooling arises**, it does not become a user-facing command. Ask "would
+> a stranger installing `mega-snake` want this?" — if the answer is no, it does not belong in a user-facing
+> command group.
+>
+> #### ⚠️ Known violation — do not treat the current layout as the example to follow
+>
+> **`generate-docs` and `man` (§3.7) break this rule today.** They introspect **`mgsnake`'s own CLI**
+> (`from mega_snake.__main__ import cli`) and render **`mgsnake`'s own** command reference. A user running
+> `mgsnake generate-docs` in their project gets `COMMANDS.md` describing *mgsnake*, not their tool — the
+> command is development tooling for this repository, shipped as a public command.
+>
+> This is **accepted technical debt, not a precedent.** The agreed direction is to move every
+> mega-snake-only command (development, validation, CI/CD tooling) into a dedicated module, and to decide
+> separately whether such commands should be hidden from end users altogether. Until that lands:
+>
+> - **Do not add new repo-only commands to user-facing groups**, and do not cite `generate-docs` as
+>   justification for doing so.
+> - **Do not "fix" a user-facing command by making it repo-aware.** The rule above still governs everything
+>   else.
+> - When touching `docs_gen`, keep it self-contained so the eventual move stays mechanical.
+>
+> Everything outside `docs_gen` currently honours the rule: `dependency_audit` reads the *user's* lockfiles
+> through ecosystem auto-detection, and `create-release` derives tags from the *user's* GitHub releases —
+> neither reads this repository's `pyproject.toml` or `CHANGELOG.md`.
+
 **Core Philosophy:**
 - **Zero Config Start**: A developer should be able to run `mgsnake working-env` and have a fully functional IDE state immediately.
 - **Idempotency**: Commands should be safe to run multiple times without destructive side effects unless explicitly requested.
@@ -120,6 +165,22 @@ command under the `aliases` attribute, and it registers one extra `click.Command
   entries for `diff-tree` (itself plus `dt` and `tree`). Use `iter_documented_commands()` (§3.7), which filters
   `cmd.hidden` and folds the aliases back in.
 
+**Names and aliases are unique, and the CLI refuses to start otherwise.** Click's registry is a plain dict, so a
+second registration under an existing name *replaces* the first one: the shadowed command becomes unreachable while
+its own unit tests keep passing, because they exercise the command object directly and never go through the registry.
+That is not hypothetical — it is how a duplicate `scan-dependencies` implementation once shipped with 100% coverage on
+code that could never run. `CliGroup.add_command` and the alias registration therefore both call `__reject_duplicate`,
+which raises `click.UsageError` naming the two colliding origins:
+
+```text
+Command 'scan-dependencies' is already registered by 'Dependency Audit' and cannot be reused by 'Light Weight'.
+```
+
+Registration happens at import time, so a collision fails the whole suite immediately rather than at first use. The
+check is anchored on the **resolved** name (`name or cmd.name`), so an explicit `add_command(cmd, name)` override is
+covered too, and synthetic alias commands inherit their owner's `ATTR_GROUP` precisely so this message points at the
+owning command instead of at `cli_group`'s own module.
+
 **Attribute constants.** `cli_group.py` owns the names of every custom attribute the CLI hangs on commands and
 callbacks. Import them instead of writing the string literal:
 
@@ -235,6 +296,12 @@ Generates a visual tree representation of changed files.
 the same pre-flight check as the command.
 
 **Implementation Details:**
+- **Both ends of the comparison are movable.** `-o | --origin-hash` replaces the base (master by default) and
+  `-t | --target-hash` replaces the far end (HEAD by default); `_validate_commit` is shared by both, so a reference
+  that resolves to a tree or a blob is rejected before any diff runs. `--target-hash` is refused for the `s`/`u` scopes:
+  those read the index and the working tree, which exist only for HEAD, so honouring the flag is impossible and
+  ignoring it silently would misreport the range. That check runs **before** the output directory is wiped, so a
+  rejected invocation never destroys the previous run's files.
 - Uses `git diff --raw --no-renames {diff_target}` to get raw file lists. `_get_diff_target` builds `diff_target`
   from the `-s | --scope` flag, which selects how much of the work is included: `c` (default, committed only) →
   `{main_branch} {current_branch}`, `s` (committed + staged) → `--cached {main_branch}`, `u` (committed + staged +
@@ -518,13 +585,13 @@ annotation, since the synopsis already shows which arguments exist:
 
 ```python
 epilog="""
-usage: mgsnake create-release <tag_suffix> <release_type> [notes] [branch]\n
+usage: mgsnake create-release <release_type> [notes] [branch]\n
 Args:\n
-    tag_suffix: str - suffix to add to the tag\n
+    release_type: char - 'p' (prerelease) | 'l' (latest) | 'r' (regular release)\n
     branch: Optional[str] - branch to create the release from. Default is the current branch.
 """
 ```
-→ renders as `- \`tag_suffix\` — suffix to add to the tag`
+→ renders as `- \`branch\` — branch to create the release from. Default is the current branch.`
 
 **Never move detail out of an option `help=` into an epilog.** If a flag needs a long explanation, the explanation
 belongs in field #5, where both `--help` and `COMMANDS.md` show it. An epilog that documents a flag is dropped, so
@@ -582,12 +649,26 @@ in CI, so any instability turns into spurious failures.
 
 ### 4.2 Property Management (`src/mega_snake/util/props.py`)
 
-Configuration is layered:
-1. **Hardcoded Defaults**
-2. **`src/config.properties`**: Static project config (versions, default paths).
-3. **Local Overrides**: A local file (usually ignored by git) that overrides specific keys for a specific developer machine.
+#### ⚠️ CRITICAL: `config.properties` is repository-internal, never user-facing
 
-Access properties via `get_property(key)`.
+**`src/config.properties` is NOT a configuration file for users of `mega-snake`.** It is internal metadata
+for this repository's development — it contains build-time constants, version pins, and resource paths used by
+commands that touch this codebase (like `generate-docs` and `dependency_audit`). A user installing `mgsnake` from
+PyPI has no `src/config.properties` and will never need one.
+
+The only configuration users can or should edit is an optional local shell profile (sourced by `config_setup.sh` /
+`config_setup.ps1`), which receives shell-specific overrides like `PATH` extensions or alias definitions. That is
+separate from property management and is documented under `init-local-config` (§3.1).
+
+#### Configuration layers (internal, for reference)
+
+When initialized, `AppProperties` reads from three layers (lowest to highest priority):
+1. **Hardcoded Defaults** — built into the Python code as constants or fallback values.
+2. **`src/config.properties`** — a static file committed to this repository, used only by internal tooling and tests.
+3. **Local Overrides** — an optional, git-ignored shell script sourced by the user's shell profile (documented in
+   `init-local-config`, §3.1), which is the **only** configuration mechanism end-users have.
+
+Access properties programmatically via `get_property(key)`.
 
 **Note:** `no_init` commands (§2.1) cannot use any of this — `AppProperties` is never built for them. They must
 resolve packaged files through `importlib.resources` and the constants below instead.
@@ -692,6 +773,41 @@ When end-users install `mega_snake` via `uv tool install` or `pipx install`:
    ```bash
    mgsnake --help
    ```
+
+### Releasing to PyPI (`.github/workflows/release.yml`)
+
+Publication is automated and **gated**. Publishing a version to PyPI is irreversible — the number can never
+be reused, even after deleting the file — so every check runs before the build and the job fails closed.
+
+**Three facts must agree, or nothing is published:**
+
+| Fact | Source | Enforced by |
+|---|---|---|
+| Tag shape `vX.Y.Z` | The git tag | Regex; `v0.1.5-beta`, `0.1.5` and `v1.2` are all rejected |
+| The released version | `[project] version` in `pyproject.toml` | Must equal the tag with the `v` stripped |
+| What changed | A `## [X.Y.Z]` section in `CHANGELOG.md` | Must exist **and** carry content that is not the seeded placeholder |
+
+**The trigger is `release: types: [released]`, not `push: tags`.** `released` fires only for
+non-prerelease publications, so `mgsnake create-release p` (prerelease) never reaches PyPI while
+`l` and `r` do. A tag-push trigger would publish prereleases.
+
+**`CHANGELOG.md` is hand-written, and that is the point.** Merge commit subjects in this repository read
+`Merge pull request #58 from azltechnologies/upgrade`, which tells a user nothing. The exhaustive commit
+list already exists in the GitHub Release body (`gh release create --generate-notes`, which `create-release`
+passes); `CHANGELOG.md` is the curated half, written for people who install `mgsnake`. **Adding a
+`## [X.Y.Z]` section is part of the change that bumps the version**, not a release-day chore.
+
+Do not weaken the changelog gate into "the file grew" — a blank line satisfies that, which is precisely the
+weak-assertion failure mode the testing principles warn about. The check verifies the *specific* section
+exists and says something.
+
+**twine's role.** `uv publish` uploads; it does not validate metadata or render the README. `twine check`
+does, and a README that fails to render on PyPI cannot be fixed without burning the version number, so it
+runs on the built distributions before the upload. That is the only reason twine is a dev dependency — see
+the load-bearing floor comment in `pyproject.toml`.
+
+**Required secret:** `PYPI_API_TOKEN`, consumed as `UV_PUBLISH_TOKEN`. (PyPI Trusted Publishing via OIDC
+would remove the stored token entirely and is the natural upgrade.)
 
 ---
 

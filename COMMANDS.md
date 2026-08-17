@@ -208,7 +208,7 @@ already triaged and closed is not filed again on the next run.
 
 ### diff-tree
 
-Creates a diff tree of changes and a commit list of the current branch against master or a specified commit hash
+Creates a diff tree of changes and a commit list between two points in history. The comparison runs from master (or the commit given with --origin-hash) up to the current HEAD (or the commit given with --target-hash), which makes it possible to inspect a past range instead of only the current work.
 
 **Synopsis:** `mgsnake diff-tree [OPTIONS]`
 
@@ -216,13 +216,18 @@ Creates a diff tree of changes and a commit list of the current branch against m
 
 | Option | Description |
 | --- | --- |
-| `-c, --commit-hash TEXT` | Commit hash to compare against instead of master |
+| `-o, --origin-hash TEXT` | Commit hash to compare against instead of master |
+| `-t, --target-hash TEXT` | Commit hash to compare up to, instead of the current HEAD. Requires --scope c (the default), since the index and the working tree only exist for HEAD; any other scope is rejected. |
 | `-d, --delete-original-files` | Delete the generated copy of the original files in the diff tree |
-| `-s, --scope [c\|s\|u]` | Changes to include: (c)ommitted only [default], committed and (s)taged, or also (u)nstaged and untracked  [default: c] |
+| `-s, --scope [c\|s\|u]` | Changes to include: (c)ommitted only [default], committed and (s)taged, or also (u)nstaged and untracked. Only 'c' is compatible with --target-hash: the other two read the index and the working tree, which exist only for HEAD, so passing them together is rejected instead of silently ignoring one of them.  [default: c] |
 | `-h, --help` | Show this message and exit. |
 
 Useful for code reviews, progress comments on a ticket, and release notes: it answers "what did I
 touch since master?" without scrolling through `git log`.
+
+Both ends of the comparison move independently: `--origin-hash` sets where it starts, `--target-hash`
+sets where it ends. With both, the range is fully explicit and no longer anchored to the current checkout,
+which is what makes it possible to reconstruct a past release from the two commits that bound it.
 
 #### Output
 
@@ -236,10 +241,24 @@ The tree and the patch follow `--scope`. The commit list cannot, since uncommitt
 commits, so pending files are prepended instead as `Unstaged files:` and `Staged files:` sections
 above the newest commit — each one only when the scope covers it.
 
+#### Examples
+
+```bash
+# Everything on this branch that master does not have
+mgsnake dt
+
+# A past release, reconstructed from the two commits that bound it
+mgsnake dt -o 85652b7 -t 79108b6
+```
+
 #### Notes
 
 The output directory is wiped and recreated on every run. No remote is required: when the
 repository has none, the comparison falls back to the current local branch.
+
+`--target-hash` only applies to the committed scope (`--scope c`, the default). The staged and unstaged
+scopes read the index and the working tree, which exist only for HEAD, so combining them is rejected
+rather than silently ignoring one of the two.
 
 ## Documentation
 
@@ -375,17 +394,19 @@ Requires a remote. Feed the output to `remote-branches-cleanup` to act on it.
 
 ### create-release
 
-Creates a GitHub release and tag: the new tag is derived from the latest release tag plus the given suffix, and the publication is delegated to the gh CLI.
+Creates a GitHub release and tag: the new tag is the latest release's version with one of its components incremented, and the publication is delegated to the gh CLI.
 
-**Synopsis:** `mgsnake create-release [OPTIONS] TAG_SUFFIX {p|r|l} [NOTES] [BRANCH]`
+**Synopsis:** `mgsnake create-release [OPTIONS] {p|r|l} [NOTES] [BRANCH]`
 
 **Aliases:** `release`, `cr`
 
 | Option | Description |
 | --- | --- |
+| `-p, --tag-pattern TEXT` | Pattern describing this project's release tags, where `$1`, `$2` and `$3` stand for the major, minor and patch numbers and everything else is literal (`$$` is a literal `$`). Defaults to `v$1.$2.$3`, or to the `release_tag_pattern` property when the project sets one. The pattern must match the latest release's tag, or the command stops. |
+| `-s, --tag-suffix TEXT` | Pre-release label appended to the new tag (v1.2.4-<suffix>.N). Only valid for the 'p' and 'r' release types: a 'l' release takes over the latest pointer, which GitHub only ever grants to a plain version, so the two are mutually exclusive. |
+| `-v, --version-part [patch\|minor\|major]` | Which component of the latest release's version to increment: 'patch' (the last number), 'minor' (the middle one, resetting the patch to zero) or 'major' (the first one, resetting the other two to zero).  [default: patch] |
 | `-h, --help` | Show this message and exit. |
 
-- `tag_suffix` — suffix to add to the tag
 - `release_type` — 'p' (prerelease) | 'l' (latest) | 'r' (regular release)
 - `notes` — release notes
 - `branch` — branch to create the release from. Default is the current branch.
@@ -397,13 +418,80 @@ and becomes what users land on, which is why the command asks for confirmation f
 **release** publishes without touching that pointer, so an older version stays the recommended one;
 if GitHub moves it anyway, the command puts it back where it was.
 
+The new tag is **derived, never typed**: the command reads the latest release, increments one
+component of its version, and uses the result. That is what keeps the sequence continuous — the next
+release always follows the one actually published, so two people cutting releases from different
+checkouts cannot invent conflicting numbers.
+
+`--version-part` chooses which component moves, and everything to its right restarts:
+
+| From `v1.2.3` | Result | When to use it |
+|---|---|---|
+| `--version-part patch` *(default)* | `v1.2.4` | Fixes and changes that keep the same behaviour |
+| `--version-part minor` | `v1.3.0` | New functionality that stays backwards compatible |
+| `--version-part major` | `v2.0.0` | Breaking changes |
+
+Resetting is what keeps the order monotonic: a minor bump that produced `v1.3.3` would sit above the
+patches that follow it.
+
+`--tag-suffix` marks the result as a pre-release build of that version — `v1.2.4-beta.0` — with a
+counter that grows so the same version can be built repeatedly. The base version is derived the same
+way as for a plain release, so a pre-release always announces a version that has **not** shipped yet:
+`v1.2.5-beta.0` precedes `v1.2.5`, never trails `v1.2.4`. Pre-release tags do not raise the ceiling
+either, so one beta cannot push the next release past it. It is **rejected for the `l` type**:
+GitHub only grants the `latest` pointer to a plain version, so asking for a suffixed latest release
+is something the platform cannot honour.
+
 Publishing is delegated to the [`gh`](https://cli.github.com) CLI, which means it reuses the GitHub
 authentication you already have — there is no token to configure here.
+
+#### Examples
+
+```bash
+# A patch release from the current branch
+mgsnake cr l
+
+# A minor release with notes, cut from a specific branch
+mgsnake cr l "Adds the man command" release/2.1 --version-part minor
+
+# A prerelease build of the next patch: v1.2.4-beta.0, then -beta.1, ...
+mgsnake cr p --tag-suffix beta
+
+# A prerelease, which never takes over the latest pointer
+mgsnake cr p
+```
 
 #### Notes
 
 Light-weight: it runs from anywhere, no workspace required. When `branch` is omitted the release is
 cut from the current branch.
+
+The new tag is derived from the **highest `vX.Y.Z` tag in the repository**, not from the `latest`
+pointer alone. Prereleases and `r` releases publish tags without moving that pointer, so it can sit
+below tags that already exist; taking the maximum on every derivation is what makes the guarantee
+hold unconditionally — a new tag can never land below one that was already published. The `latest`
+release still decides whether the version is usable at all (see the note below).
+
+#### Tag patterns
+
+The tag format is **not** hard-coded. A pattern describes the tags this project already uses, with
+`$1`, `$2` and `$3` standing for the major, minor and patch numbers; everything else is literal, and
+`$$` is a literal `$`. The same string parses the current tag and renders the next one, so the two
+can never disagree.
+
+| Pattern | Latest tag | Next patch |
+|---|---|---|
+| `v$1.$2.$3` *(default)* | `v1.2.3` | `v1.2.4` |
+| `$1.$2.$3` | `1.2.3` | `1.2.4` |
+| `rel-$1_$2_$3` | `rel-1_2_3` | `rel-1_2_4` |
+
+Set it per invocation with `--tag-pattern`, or per project with the `release_tag_pattern` property.
+All three placeholders are required, since `--version-part` names exactly those three components.
+
+The pattern must match the tag of the latest release, and the command stops when it does not — a
+pattern that describes nothing in the repository would otherwise fail much later, with nothing
+pointing at it as the cause. Only tags the pattern recognises count towards the next version, so tags
+left over from a different scheme never raise the ceiling.
 
 ### expired-certs-jks
 

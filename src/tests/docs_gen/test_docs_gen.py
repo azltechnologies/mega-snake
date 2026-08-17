@@ -103,7 +103,8 @@ def test_fragment_never_repeats_the_epilog(entry) -> None:
 @pytest.mark.parametrize(
     ("command_name", "argument_name"),
     [
-        ("create-release", "tag_suffix"),
+        ("create-release", "release_type"),
+        ("create-release", "notes"),
         ("create-release", "branch"),
         ("expired-certs-jks", "jks_path"),
         ("msg", "message"),

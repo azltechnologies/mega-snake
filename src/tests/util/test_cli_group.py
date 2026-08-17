@@ -167,3 +167,151 @@ def test_add_command_keeps_an_explicit_group_title_verbatim() -> None:
     # The derived title comes from the module path, so it is turned into a display title.
     derived_key: str = derived_command.callback.__module__.split(".")[-1]
     assert getattr(group.commands["derived"], ATTR_GROUP) == derived_key.replace("_", " ").title()
+
+
+def make_command(name: str, docs_group: str) -> click.Command:
+    """Build a command carrying an explicit documentation group.
+
+    Parameters:
+        name: The command name to register.
+        docs_group: The documentation group reported as the command's origin.
+
+    Raises:
+        None
+
+    Returns:
+        click.Command: A command ready to be registered on a CliGroup.
+    """
+
+    @click.command(name=name, help=f"Command {name}")
+    def command() -> None:
+        """Command used to exercise duplicate registration."""
+
+    setattr(command, ATTR_GROUP, docs_group)
+    return command
+
+
+def test_add_command_rejects_a_name_already_registered_by_another_group() -> None:
+    """Registering a second command under a taken name must fail instead of shadowing the first.
+
+    This is the exact failure that let a duplicated `scan-dependencies` implementation reach the
+    repository: click's registry is a plain dict, so the later registration silently replaced the
+    earlier one and the shadowed command became unreachable while its own tests kept passing.
+    """
+    group = CliGroup(name="root")
+    first: click.Command = make_command("scan-dependencies", "Dependency Audit")
+    second: click.Command = make_command("scan-dependencies", "Light Weight")
+    group.add_command(first)
+
+    with pytest.raises(click.UsageError) as excinfo:
+        group.add_command(second)
+
+    assert str(excinfo.value) == (
+        "Command 'scan-dependencies' is already registered by 'Dependency Audit' "
+        "and cannot be reused by 'Light Weight'. "
+        "Rename one of them or drop the duplicate registration."
+    )
+    # The rejection must leave the registry untouched: the first command stays reachable...
+    assert group.commands["scan-dependencies"] is first
+    # ...and the second one is not registered under any name at all.
+    assert second not in group.commands.values()
+
+
+def test_add_command_rejects_a_duplicate_explicit_name_override() -> None:
+    """The collision is detected on the resolved name, not on the command's own attribute.
+
+    ``add_command(cmd, name)`` registers under ``name``, so a command whose own ``name`` differs
+    must still be rejected when the override collides.
+    """
+    group = CliGroup(name="root")
+    group.add_command(make_command("taken", "First Group"))
+
+    with pytest.raises(click.UsageError) as excinfo:
+        group.add_command(make_command("its-own-name", "Second Group"), "taken")
+
+    assert str(excinfo.value) == (
+        "Command 'taken' is already registered by 'First Group' and cannot be reused by 'Second Group'. "
+        "Rename one of them or drop the duplicate registration."
+    )
+    assert "its-own-name" not in group.commands
+
+
+@pytest.mark.parametrize(
+    "existing_name, existing_aliases, colliding_alias",
+    [
+        pytest.param("alpha", None, "alpha", id="alias-shadows-a-command-name"),
+        pytest.param("alpha", ["a"], "a", id="alias-shadows-another-alias"),
+    ],
+)
+def test_add_command_with_alias_rejects_a_taken_alias(
+    existing_name: str, existing_aliases: Any, colliding_alias: str
+) -> None:
+    """An alias must never shadow an existing command name or an alias already registered.
+
+    Aliases are registered as separate hidden commands, so without this check they overwrite
+    whatever occupies the name and silently reroute an existing command to a different callback.
+
+    Parameters:
+        existing_name: The name of the command registered first.
+        existing_aliases: The aliases registered for that first command.
+        colliding_alias: The alias the second command tries to claim.
+
+    Raises:
+        None
+
+    Returns:
+        None
+    """
+    group = CliGroup(name="root")
+    group.add_command_with_alias(make_command(existing_name, "First Group"), existing_aliases)
+    shadowed_callback: Callable = group.commands[colliding_alias].callback
+
+    with pytest.raises(click.UsageError) as excinfo:
+        group.add_command_with_alias(make_command("beta", "Second Group"), [colliding_alias])
+
+    assert str(excinfo.value) == (
+        f"Alias '{colliding_alias}' is already registered by 'First Group' "
+        "and cannot be reused by 'Second Group'. "
+        "Rename one of them or drop the duplicate registration."
+    )
+    # The occupied name must still resolve to the command that owned it.
+    assert group.commands[colliding_alias].callback is shadowed_callback
+
+
+def test_duplicate_registration_reports_the_module_when_no_group_is_declared() -> None:
+    """Without an explicit docs group the message must still locate both commands, by module."""
+
+    @click.command(name="clash", help="First clash")
+    def first() -> None:
+        """First command."""
+
+    @click.command(name="clash", help="Second clash")
+    def second() -> None:
+        """Second command."""
+
+    group = CliGroup(name="root")
+    group.add_command(first)
+
+    with pytest.raises(click.UsageError) as excinfo:
+        group.add_command(second)
+
+    derived: str = CliGroup._derive_group_name_from_callback(first.callback)  # pylint: disable=protected-access
+    assert str(excinfo.value) == (
+        f"Command 'clash' is already registered by '{derived}' and cannot be reused by '{derived}'. "
+        "Rename one of them or drop the duplicate registration."
+    )
+
+
+def test_real_cli_registers_every_command_and_alias_exactly_once() -> None:
+    """The shipped CLI must expose no shadowed command, across every registered module.
+
+    Importing the entry point performs the whole registration, so a duplicate name introduced by any
+    module now raises during import. This asserts the resulting registry matches the commands the
+    modules actually declare, so a shadowed command cannot hide behind a passing import.
+    """
+    from mega_snake.__main__ import MODULES, cli as root_cli  # pylint: disable=import-outside-toplevel
+
+    declared: list[str] = [name for group, _ in MODULES for name in group.commands]
+
+    assert sorted(declared) == sorted(set(declared)), "a module declares the same name twice"
+    assert sorted(root_cli.commands) == sorted(declared)
