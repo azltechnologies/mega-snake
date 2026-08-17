@@ -41,6 +41,7 @@ from mega_snake.config_environment.models.vscode_launch import (
 from mega_snake.config_environment.models.vscode_input import VscodeInput, InputType
 from mega_snake.constants import WORKSPACE_EXTENSIONS
 from mega_snake.util.util import load_json_with_comments
+from mega_snake.util.formatting import UserDeclinedError
 
 
 GRADLE_CMD_NAME = "gradle_command"
@@ -530,7 +531,7 @@ def test_get_workspace_file(
 
         # test when property is empty and denied to create workspace file
         get_validated_input.return_value = "n"
-        with pytest.raises(RuntimeError):
+        with pytest.raises(UserDeclinedError, match="Vscode workspace file is required"):
             get_workspace_file()
         get_property.assert_called_once()
         ws_warning.assert_called_once_with("Vscode workspace file not found in current directory")

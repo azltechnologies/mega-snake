@@ -16,6 +16,7 @@ from mega_snake.config_environment.models.tools_version import (
     VersionSetException,
 )
 from mega_snake.constants import SHELL_OPT
+from mega_snake.util.formatting import InternalStateError
 
 VERSIONS = ["1.2.3", "1.2.4", "1.2.5"]
 PATHS = ["path/to/tool3", "path/to/tool4", "path/to/tool5"]
@@ -136,7 +137,7 @@ def test_select_version(get_validated_input: MagicMock) -> None:
     """Test select_version"""
     # Test when list is empty
     list_tools: list[ToolVersion] = []
-    with pytest.raises(RuntimeError):
+    with pytest.raises(InternalStateError, match="No Tool versions found"):
         select_version(list_tools)
     get_validated_input.assert_not_called()
 
@@ -158,7 +159,7 @@ def test_select_version(get_validated_input: MagicMock) -> None:
     # Test when list selection fails with a non existent version
     get_validated_input.side_effect = None
     get_validated_input.return_value = 10
-    with pytest.raises(RuntimeError):
+    with pytest.raises(InternalStateError, match="Tool version with id 10 not found"):
         select_version(list_tools)
     get_validated_input.assert_called_once()
     get_validated_input.reset_mock()
@@ -168,12 +169,12 @@ def test_set_version_path_for_query() -> None:
     """Test set_version_path_for_query"""
     # Test when list is empty
     list_tools: list[ToolVersion] = []
-    with pytest.raises(RuntimeError):
+    with pytest.raises(InternalStateError, match="Default Tool version not found"):
         set_version_path_for_query(list_tools, get_data(), VERSION_TEST_QUERY)
 
     # Test when no default version is found
     list_tools: list[ToolVersion] = list(ToolVersion(v, p) for v, p in zip(VERSIONS, PATHS))
-    with pytest.raises(RuntimeError):
+    with pytest.raises(InternalStateError, match="Default Tool version not found"):
         set_version_path_for_query(list_tools, get_data(), VERSION_TEST_QUERY)
 
     # Test when default version is found
@@ -187,7 +188,7 @@ def test_set_version_path_for_query() -> None:
 
     # Test when default version is found but has multiple entries
     list_tools[2].default = True
-    with pytest.raises(RuntimeError):
+    with pytest.raises(InternalStateError, match="Multiple default Tool versions found"):
         set_version_path_for_query(list_tools, get_data(), VERSION_TEST_QUERY)
 
 

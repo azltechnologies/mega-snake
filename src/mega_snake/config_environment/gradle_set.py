@@ -20,7 +20,7 @@ from mega_snake.config_environment.models.tools_version import (
 )
 from mega_snake.util.util import cli_metadata, run_operation, load_json_with_comments
 from mega_snake.util.props import get_property
-from mega_snake.util.formatting import ws_info, ws_success, ws_warning
+from mega_snake.util.formatting import InternalStateError, ws_info, ws_success, ws_warning
 
 
 @click.command(
@@ -143,7 +143,10 @@ def _update_configurations(
 
     # Update local configuration
     version: Optional[GradleVersion] = next((v for v in versions if v.default), None)
-    assert version, "Default Gradle version not found in the list of Gradle versions. This is a bug"
+    # set_version_path_for_query already refused the list unless exactly one version carries the
+    # default flag, so by this point one is guaranteed to be there.
+    if not version:
+        raise InternalStateError("Default Gradle version not found in the list of Gradle versions. This is a bug.")
     set_version_local_config(version, local_file, shell, "GRADLE_HOME")
 
 

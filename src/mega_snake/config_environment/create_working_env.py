@@ -26,7 +26,7 @@ from mega_snake.config_environment.java_set import execute as set_java
 from mega_snake.config_environment.gradle_set import execute as set_gradle, set_gradle_version as gradle_command
 from mega_snake.config_environment.maven_set import execute as set_maven, set_maven_version as maven_command
 from mega_snake.config_environment.local_config import execute as initial_load
-from mega_snake.util.formatting import ws_advice, ws_info, ws_warning
+from mega_snake.util.formatting import UserDeclinedError, ws_advice, ws_info, ws_warning
 from mega_snake.util.util import (
     get_command_return_code,
     get_validated_input,
@@ -166,7 +166,11 @@ def _get_workspace_file() -> str:
     else:
         ws_warning("Vscode workspace file not found in current directory")
         if get_validated_input("Would you like to create a new default workspace file?", ["y", "n"]).lower() == "n":
-            raise RuntimeError("Vscode workspace file is required to configure the working environment. Exiting...")
+            # Declining a prompt is a decision, not a failure: it carries the same status as every
+            # other declined prompt so a script can tell it apart and stop retrying.
+            raise UserDeclinedError(
+                "Vscode workspace file is required to configure the working environment. Exiting..."
+            )
     workspace_file = f"{os.getcwd()}/{FOLDER}.code-workspace"
     with open(workspace_file, "w", encoding="utf-8") as file:
         json.dump(NEW_WORKSPACE_CONTENTS, file, indent=4)

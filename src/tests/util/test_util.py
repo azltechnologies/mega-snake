@@ -27,7 +27,12 @@ from mega_snake.util.util import (
     GIT_EXCLUDE_FILE,
     NO_REMOTE_MESSAGE,
 )
-from mega_snake.util.formatting import USER_DECLINED_ERROR_CODE, UserDeclinedError, resolve_error_code
+from mega_snake.util.formatting import (
+    USER_DECLINED_ERROR_CODE,
+    InternalStateError,
+    UserDeclinedError,
+    resolve_error_code,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -609,13 +614,18 @@ def test_ensure_working_path_invalid_property(
     monkeypatch: pytest.MonkeyPatch,
     mk_get_property: MagicMock,
 ) -> None:
-    """An empty working path, or one outside the current directory, is a bug and asserts."""
+    """An empty working path, or one outside the current directory, is a bug: InternalStateError.
+
+    Both conditions were already ruled out when the properties were built, so neither is something
+    the user caused or can fix. Asserting the type is what keeps them from being reported as an
+    ordinary bad value the user should go correct.
+    """
     monkeypatch.chdir(tmp_path)
 
     mk_get_property.return_value = ""
-    with pytest.raises(ValueError, match="not found in the properties"):
+    with pytest.raises(InternalStateError, match="not found in the properties"):
         ensure_working_path()
 
     mk_get_property.return_value = str(tmp_path.parent / "somewhere_else")
-    with pytest.raises(ValueError, match="not in the current directory"):
+    with pytest.raises(InternalStateError, match="not in the current directory"):
         ensure_working_path()

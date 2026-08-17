@@ -4,6 +4,7 @@ from unittest.mock import patch, MagicMock, call, mock_open
 from typing import Generator
 import pytest
 from mega_snake.config_environment.util import get_local_file, update_workspace, get_version_number
+from mega_snake.util.formatting import InternalStateError
 
 
 @pytest.fixture(name="get_property")
@@ -69,7 +70,7 @@ def test_update_workspace(mk_open: MagicMock, os_replace: MagicMock, json_dump: 
     os_replace.assert_called_once_with(temp_path, workspace_file)
 
     # Test when json_data is None
-    with pytest.raises(RuntimeError):
+    with pytest.raises(InternalStateError, match="Failed to set Tool version"):
         update_workspace(None, temp_path, workspace_file)
 
     # Test when os.replace fails

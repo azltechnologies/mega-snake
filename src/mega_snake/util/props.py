@@ -10,6 +10,7 @@ import inspect
 import os
 from datetime import datetime
 from mega_snake.util import formatting
+from mega_snake.util.formatting import InternalStateError
 from mega_snake.constants import SHELL_OPT, LOGGING_NAME_TO_LEVEL, LOGGING_LEVEL_TO_NANE, MODULE_NAME
 
 
@@ -80,7 +81,9 @@ def _check_property(prop: str, dic: dict[str, str]) -> str:
     """
     value: Optional[str] = dic.get(prop)
     if not value:
-        raise KeyError(f"property {prop} has not been set in the properties file")
+        # Read from the distribution's own properties file, which ships with the package: a missing
+        # key is a packaging defect, not something the user can supply.
+        raise InternalStateError(f"property {prop} has not been set in the properties file. This is a bug.")
     return value
 
 
@@ -147,10 +150,13 @@ class AppProperties:
     def __resources_path_validator(self, value: str) -> None:
         resources_path = f"{_get_package_root()}/{value}"
         # Check if the path exists
+        # The properties file this path comes from is internal to the distribution, not something a
+        # user can edit or fix: a missing resources folder means the package was built or installed
+        # wrong, never that the user is missing something.
         if not os.path.exists(resources_path):
-            raise FileNotFoundError(
+            raise InternalStateError(
                 f"Path {resources_path} does not exist in PYTHONPATH, please check the "
-                "properties file as it should be a relative path."
+                "properties file as it should be a relative path. This is a bug."
             )
         # Check if the path is a directory
         if not os.path.isdir(resources_path):
@@ -315,10 +321,12 @@ class AppProperties:
         self.__post_init__()
 
     def __post_init__(self) -> None:
-        """Raise ValueError if any attribute is still None after initialisation."""
+        """Raise InternalStateError if any attribute is still None after initialisation."""
         for attr_name, attr_value in vars(self).items():
             if attr_value is None:
-                raise ValueError(f"{attr_name} has not been set")
+                # Every attribute is assigned by the initialization that just ran; one left as None
+                # means that initialization has a hole in it.
+                raise InternalStateError(f"{attr_name} has not been set. This is a bug.")
 
     @staticmethod
     def get_instance() -> "AppProperties":
@@ -329,7 +337,9 @@ class AppProperties:
             AppProperties: The instance of the class
         """
         if AppProperties._instance is None:
-            raise RuntimeError("Properties Singleton not initialized yet")
+            # cli() initializes the singleton before dispatching to any command, so asking for it
+            # first means a caller ran outside that order.
+            raise InternalStateError("Properties Singleton not initialized yet. This is a bug.")
         return AppProperties._instance
 
     def __new__(cls, log_level: str, shell: str, properties: dict[str, str]) -> "AppProperties":
@@ -338,7 +348,7 @@ class AppProperties:
         if not cls._instance:
             cls._instance = super().__new__(cls)
             return cls._instance
-        raise RuntimeError("Properties Singleton already initialized")
+        raise InternalStateError("Properties Singleton already initialized. This is a bug.")
 
 
 def _read_properties(file_path: str) -> dict:
