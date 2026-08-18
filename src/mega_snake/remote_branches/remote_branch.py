@@ -98,21 +98,35 @@ class RemoteBranch:
         raise ValueError("Invalid input string. String is empty or None")
 
     @classmethod
-    def from_branch(cls, branch: str, filter_by: str, main_branch: str, remote: str) -> Optional["RemoteBranch"]:
+    def from_branch(
+        cls, branch: str, filter_by: str, main_branch: str, remote: str, local_only: bool = False
+    ) -> Optional["RemoteBranch"]:
         """
         Initialize a RemoteBranch instance from a branch name, filtering by merge status against the main branch.
         First, it parses the branch name to extract the local branch name. Then, it retrieves the commit information
         for the branch, checks if the branch is merged into the main branch, and finally constructs a RemoteBranch
         instance if the branch meets the specified filter criteria.
 
+        The merge status is always resolved against ``remotes/{remote}/{main_branch}``, so a branch is judged
+        against the main branch as the remote has it and never against a local copy that may be behind. That is
+        what makes ``local_only`` meaningful: a branch that only exists locally is still measured against the
+        remote main branch, which is where its work was integrated.
+
         Args:
-            branch: str: The full reference name of the remote branch (e.g., 'remotes/origin/feature-branch').
+            branch: str: The reference name of the branch. A remote one carries the full reference
+                (e.g., 'remotes/origin/feature-branch'); a local-only one is the plain name (e.g., 'feature-branch').
             filter_by: str: Filter criteria ('M' for merged, 'U' for unmerged).
             main_branch: str: The name of the main branch (e.g., 'main').
             remote: str: The name of the remote repository (e.g., 'origin').
+            local_only: bool: Whether the reference is a local branch with no counterpart on the remote, in which
+                case the ``remotes/{remote}/`` prefix is legitimately absent.
+
+        Raises:
+            InternalStateError: If a remote reference cannot be related back to the remote it was selected from,
+                or if the branch tip commit is reported as contained in no branch at all.
 
         Returns:
-            RemoteBranch
+            Optional[RemoteBranch]: The described branch, or None when it does not match the requested filter.
         """
         pattern_branch = branch
         if pattern_branch.startswith("'") and pattern_branch.endswith("'"):
@@ -122,11 +136,12 @@ class RemoteBranch:
         ws_advice(f"Parsing branch: {pattern_branch} with remote: {remote}")
         pattern1 = rf"(?<=^remotes/{remote}/)\S+"
         match = re.search(pattern1, pattern_branch)
-        # The caller selects branches with a regex that already requires the `remotes/{remote}/`
-        # prefix this one matches, so a failure here means the two patterns drifted apart.
-        if not match:
+        # A local-only branch has no `remotes/{remote}/` prefix by definition, and its own name is
+        # already the local one. For a remote reference the caller selects branches with a regex that
+        # requires that same prefix, so a failure here means the two patterns drifted apart.
+        if not match and not local_only:
             raise InternalStateError(f"Unable to parse local branch name for remote branch: {branch}. This is a bug.")
-        local_branch: str = match.group(0)
+        local_branch: str = match.group(0) if match else pattern_branch
         commit: Commit = Commit.from_branch(branch)
         within_branches: str = run_operation(
             f"git branch -a --contains {commit.commit_hash}", "Getting branches containing commit"

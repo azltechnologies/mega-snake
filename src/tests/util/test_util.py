@@ -20,6 +20,7 @@ from mega_snake.util.util import (
     get_remote_url,
     get_main_branch,
     get_current_commit,
+    ref_exists,
     cli_metadata,
     require_remote,
     reset_remote_cache,
@@ -167,6 +168,29 @@ def test_get_command_return_code() -> None:
     expected_return_code = 127  # Typically, this is the return code for command not found
     result = get_command_return_code(command)
     assert result == expected_return_code
+
+
+def test_ref_exists_reports_presence_from_the_return_code() -> None:
+    """A reference is reported as present only for a zero status, and the probe must ask git about
+    the exact fully qualified reference it was given."""
+    with patch("mega_snake.util.util.get_command_return_code", return_value=0) as return_code:
+        assert ref_exists("refs/heads/feature") is True
+    return_code.assert_called_once_with('git show-ref --verify --quiet "refs/heads/feature"')
+
+    with patch("mega_snake.util.util.get_command_return_code", return_value=1) as return_code:
+        assert ref_exists("refs/remotes/origin/feature") is False
+    return_code.assert_called_once_with('git show-ref --verify --quiet "refs/remotes/origin/feature"')
+
+
+def test_ref_exists_does_not_go_through_run_operation() -> None:
+    """A missing reference is an expected answer, not a failure: routing the probe through
+    ``run_operation`` would retry three times with a two second pause and log the miss as a
+    successful operation, so the probe must not use it."""
+    with patch("mega_snake.util.util.run_operation") as run_operation, patch(
+        "mega_snake.util.util.get_command_return_code", return_value=1
+    ):
+        assert ref_exists("refs/heads/never-checked-out") is False
+    run_operation.assert_not_called()
 
 
 def test_get_input_or_default(mk_input: MagicMock, mk_ws_warning: MagicMock) -> None:

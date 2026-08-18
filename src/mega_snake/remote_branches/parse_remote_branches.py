@@ -5,9 +5,15 @@ that was already been merged into main branch.
 
 import subprocess
 from typing import Optional
-from mega_snake.util.formatting import ws_success
+from mega_snake.util.formatting import ws_info, ws_success
 from mega_snake.remote_branches.remote_branch import RemoteBranch
-from mega_snake.util.util import run_operation, get_main_branch, get_validated_input, require_remote
+from mega_snake.util.util import (
+    get_main_branch,
+    get_validated_input,
+    ref_exists,
+    require_remote,
+    run_operation,
+)
 
 
 def define_branches(line: str) -> Optional[RemoteBranch]:
@@ -59,27 +65,40 @@ def parsing_branches(branches: list[RemoteBranch], remote: str) -> list[str]:
 
 def delete_branches(garbage: list[str]) -> None:
     """
-    Deletes the branches in the garbage list
+    Deletes the branches in the garbage list, from the remote and from the local repository.
 
-    Args:
-        garbage: list[str]
+    A selected branch does not necessarily exist on both sides: a remote branch from another author
+    is commonly never checked out locally, and a branch whose remote counterpart was deleted when its
+    pull request was merged only survives locally. Each side is therefore attempted only when its
+    reference is actually there, since ``git push -d`` and ``git branch -D`` both fail on a missing
+    reference and would report a deletion that never had anything to delete as an error.
+
+    A failure deleting a branch from the remote leaves the local copy alone and moves on to the next
+    branch, so a single unreachable or protected branch does not abort the whole cleanup.
+
+    Parameters:
+        garbage: The branch names selected for deletion.
+
+    Raises:
+        EnvironmentError: If no remote repository is configured and there is something to delete.
+
+    Returns:
+        None
     """
+    if not garbage:
+        return
+    remote: str = require_remote()
     for branch in garbage:
         try:
-            # Delete from remote
-            result = run_operation(
-                f'git push -d "{require_remote()}" "{branch}" --no-verify 2>&1', f"Deleting remote branch {branch}"
-            )
-            ws_success(result.stdout.strip())
+            if ref_exists(f"refs/remotes/{remote}/{branch}"):
+                result = run_operation(
+                    f'git push -d "{remote}" "{branch}" --no-verify 2>&1', f"Deleting remote branch {branch}"
+                )
+                ws_success(result.stdout.strip())
+            else:
+                ws_info(f"Branch '{branch}' has no counterpart on '{remote}'; skipping the remote deletion")
 
-            # Delete local branch, only if it exists: remote branches from other authors are
-            # commonly never checked out locally, and `git branch -D` fails when the ref is absent.
-            local_ref_check = run_operation(
-                f'git rev-parse --verify --quiet "refs/heads/{branch}"',
-                f"Checking if local branch {branch} exists",
-                check=False,
-            )
-            if local_ref_check.returncode == 0:
+            if ref_exists(f"refs/heads/{branch}"):
                 run_operation(f'git branch -D "{branch}"', f"Deleting local branch {branch}")
                 ws_success(f"Local branch '{branch}' deleted successfully")
             continue  # Continue to the next branch
