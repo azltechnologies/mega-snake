@@ -7,7 +7,7 @@ import subprocess
 from typing import Optional
 from mega_snake.util.formatting import ws_success
 from mega_snake.remote_branches.remote_branch import RemoteBranch
-from mega_snake.util.util import run_operation, get_main_branch, get_validated_input
+from mega_snake.util.util import run_operation, get_main_branch, get_validated_input, require_remote
 
 
 def define_branches(line: str) -> Optional[RemoteBranch]:
@@ -68,7 +68,7 @@ def delete_branches(garbage: list[str]) -> None:
         try:
             # Delete from remote
             result = run_operation(
-                f'git push -d origin "{branch}" --no-verify 2>&1', f"Deleting remote branch {branch}"
+                f'git push -d "{require_remote()}" "{branch}" --no-verify 2>&1', f"Deleting remote branch {branch}"
             )
             ws_success(result.stdout.strip())
 
