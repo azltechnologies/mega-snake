@@ -56,15 +56,11 @@ def execute(override: bool) -> None:  # previously initialLoad
         # shell, so the exports already land in the right session.
         match shell:
             case "bash":
-                contents += (
-                    f'{LOAD_ENV_HELPER} "$(cd "$(dirname "${{BASH_SOURCE[0]:-$0}}")" && pwd)"/{env_name}\n'
-                )
+                contents += f'{LOAD_ENV_HELPER} "$(cd "$(dirname "${{BASH_SOURCE[0]:-$0}}")" && pwd)"/{env_name}\n'
             case "zsh":
                 contents += f'{LOAD_ENV_HELPER} "$(cd "$(dirname "${{(%):-%N}}")" && pwd)"/{env_name}\n'
             case "powershell" | "pwsh":
-                contents += (
-                    f'{LOAD_ENV_HELPER} "$(Split-Path -Parent $MyInvocation.MyCommand.Definition)/{env_name}"\n'
-                )
+                contents += f'{LOAD_ENV_HELPER} "$(Split-Path -Parent $MyInvocation.MyCommand.Definition)/{env_name}"\n'
             case _:
                 raise NotImplementedError(f"Shell type not supported: {shell}")
         contents += "\n# ----\n# You can add custom functions and configurations here.\n"

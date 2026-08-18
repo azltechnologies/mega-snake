@@ -1,1 +1,1 @@
-""" init file for the remote_branches module """
+"""init file for the remote_branches module"""

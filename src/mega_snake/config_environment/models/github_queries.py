@@ -53,7 +53,6 @@ class PrQueries(BaseQueries, Enum):
         return super().add_query_record(json_data, GH_PR_QUERY)
 
 
-
 class IssuesQueries(BaseQueries, Enum):
     """Enum for the different PR queries."""
 

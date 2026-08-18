@@ -125,9 +125,7 @@ class RemoteBranch:
         # The caller selects branches with a regex that already requires the `remotes/{remote}/`
         # prefix this one matches, so a failure here means the two patterns drifted apart.
         if not match:
-            raise InternalStateError(
-                f"Unable to parse local branch name for remote branch: {branch}. This is a bug."
-            )
+            raise InternalStateError(f"Unable to parse local branch name for remote branch: {branch}. This is a bug.")
         local_branch: str = match.group(0)
         commit: Commit = Commit.from_branch(branch)
         within_branches: str = run_operation(

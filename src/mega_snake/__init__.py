@@ -1,1 +1,1 @@
-""" init file for setup configuration package """
+"""init file for setup configuration package"""
