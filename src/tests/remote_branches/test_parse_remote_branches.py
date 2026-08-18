@@ -2,18 +2,17 @@
 
 import subprocess
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import call, patch
+
 from mega_snake.remote_branches import parse_remote_branches as module
 
 
 def test_delete_branches_deletes_local_branch_when_it_exists() -> None:
-    """When the local ref exists, both the remote push -d and the local `git branch -D`
-    must be issued, in that order, and the remote result must not be swallowed by the
-    local deletion step."""
-    calls: list[str] = []
+    """When the local ref exists, the operations must occur in order:
+    (1) remote push -d, (2) local ref check, (3) local branch -D.
+    The remote success message must be reported, followed by the local deletion message."""
 
     def fake_run_operation(cwd: str, _description: str, check: bool = True) -> SimpleNamespace:
-        calls.append(cwd)
         if cwd.startswith("git push -d"):
             return SimpleNamespace(stdout="deleted remote", returncode=0)
         if cwd.startswith("git rev-parse"):
@@ -22,14 +21,19 @@ def test_delete_branches_deletes_local_branch_when_it_exists() -> None:
         return SimpleNamespace(stdout="deleted local", returncode=0)
 
     with patch.object(module, "run_operation", side_effect=fake_run_operation) as run_operation, patch.object(
-        module, "ws_success"
-    ) as ws_success:
+        module, "require_remote", return_value="origin"
+    ), patch.object(module, "ws_success") as ws_success:
         module.delete_branches(["feature/foo"])
 
     assert run_operation.call_count == 3
-    assert any(c.startswith('git push -d origin "feature/foo"') for c in calls)
-    assert any(c.startswith('git rev-parse --verify --quiet "refs/heads/feature/foo"') for c in calls)
-    assert any(c == 'git branch -D "feature/foo"' for c in calls)
+    first_call, second_call, third_call = run_operation.call_args_list
+    assert first_call == call('git push -d "origin" "feature/foo" --no-verify 2>&1', "Deleting remote branch feature/foo")
+    assert second_call == call(
+        'git rev-parse --verify --quiet "refs/heads/feature/foo"',
+        "Checking if local branch feature/foo exists",
+        check=False,
+    )
+    assert third_call == call('git branch -D "feature/foo"', "Deleting local branch feature/foo")
     assert ws_success.call_count == 2
 
 
@@ -49,8 +53,8 @@ def test_delete_branches_skips_local_delete_when_branch_never_checked_out() -> N
         raise AssertionError("git branch -D must not be called when the local ref does not exist")
 
     with patch.object(module, "run_operation", side_effect=fake_run_operation) as run_operation, patch.object(
-        module, "ws_success"
-    ) as ws_success:
+        module, "require_remote", return_value="origin"
+    ), patch.object(module, "ws_success") as ws_success:
         module.delete_branches(["someone-elses/branch"])
 
     assert run_operation.call_count == 2
@@ -59,18 +63,26 @@ def test_delete_branches_skips_local_delete_when_branch_never_checked_out() -> N
 
 
 def test_delete_branches_continues_when_remote_deletion_fails() -> None:
-    """A failed remote deletion (after retries) must not stop the loop, and must not
-    attempt the local branch check/deletion for that branch."""
+    """A failed remote deletion must not stop the loop. The function must continue to the
+    next branch and complete its full remote + local deletion cycle for that branch."""
+    calls: list[str] = []
 
     def fake_run_operation(cwd: str, _description: str, check: bool = True) -> SimpleNamespace:
-        if cwd.startswith("git push -d"):
+        calls.append(cwd)
+        if "broken-branch" in cwd and cwd.startswith("git push -d"):
             raise subprocess.SubprocessError("push failed")
-        raise AssertionError("no further git operation should run for a branch whose remote push failed")
+        if "good-branch" in cwd and cwd.startswith("git push -d"):
+            return SimpleNamespace(stdout="deleted remote", returncode=0)
+        if "good-branch" in cwd and cwd.startswith("git rev-parse"):
+            return SimpleNamespace(stdout="", returncode=1)
+        raise AssertionError(f"Unexpected call: {cwd}")
 
     with patch.object(module, "run_operation", side_effect=fake_run_operation) as run_operation, patch.object(
-        module, "ws_success"
-    ) as ws_success:
-        module.delete_branches(["broken-branch"])
+        module, "require_remote", return_value="origin"
+    ), patch.object(module, "ws_success") as ws_success:
+        module.delete_branches(["broken-branch", "good-branch"])
 
-    assert run_operation.call_count == 1
-    ws_success.assert_not_called()
+    assert run_operation.call_count == 3
+    assert any("broken-branch" in c and c.startswith("git push -d") for c in calls)
+    assert not any("good-branch" in c and c.startswith("git branch -D") for c in calls)
+    ws_success.assert_called_once_with("deleted remote")

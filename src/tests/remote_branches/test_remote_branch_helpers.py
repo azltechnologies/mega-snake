@@ -196,8 +196,11 @@ def test_parse_and_delete_helpers() -> None:
         garbage = parsing_branches([branch_main, branch_feature], "origin")
         assert garbage == ["feature"]
 
-    with patch("mega_snake.remote_branches.parse_remote_branches.run_operation") as run_operation:
+    with patch("mega_snake.remote_branches.parse_remote_branches.require_remote", return_value="origin"), patch(
+        "mega_snake.remote_branches.parse_remote_branches.run_operation"
+    ) as run_operation:
         run_operation.return_value.stdout = "deleted"
+        run_operation.return_value.returncode = 0
         delete_branches(["f1"])
         run_operation.side_effect = subprocess.SubprocessError()
         delete_branches(["f2"])
