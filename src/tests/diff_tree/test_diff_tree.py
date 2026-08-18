@@ -6,14 +6,16 @@ import click
 import pytest
 
 from mega_snake.diff_tree.file_type import FileType
+from mega_snake.util.formatting import InternalStateError
 from mega_snake.diff_tree import module as diff_module
 from mega_snake.diff_tree import diff_tree as diff_tree_cmd
+from mega_snake.util.cli_group import ATTR_METADATA
 
 
 def test_diff_tree_wrapper_has_skip_flag() -> None:
     """diff-tree is light-weight (skip), so a missing workspace_temp folder doesn't crash the CLI
     before its own pre-flight check gets the chance to offer creating it."""
-    assert diff_module.wrapper.flags == {"flags": {"skip"}}
+    assert getattr(diff_module.wrapper, ATTR_METADATA) == {"flags": {"skip"}}
 
 
 def test_diff_tree_wrapper_only_ensures_the_working_path() -> None:
@@ -43,7 +45,9 @@ def test_file_type_and_diff_tree_helpers() -> None:
     FileType.ADDED.add("a.txt")
     assert FileType.from_symbol("A") == FileType.ADDED
     assert "files changed" in FileType.get_changes()
-    with pytest.raises(ValueError):
+    # A status letter this enum does not cover means git grew one we never added: our bug, not
+    # a bad value the user supplied, so it must not report as an ordinary ValueError.
+    with pytest.raises(InternalStateError, match="No FileType with symbol 'X' found"):
         FileType.from_symbol("X")
 
     # Reset global enum state for test isolation

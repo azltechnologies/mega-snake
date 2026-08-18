@@ -8,7 +8,7 @@ import re
 import json
 import jq
 from mega_snake.util.util import get_validated_input
-from mega_snake.util.formatting import ws_advice, ws_success, ws_warning, ws_info
+from mega_snake.util.formatting import ERROR_CODES, InternalStateError, ws_advice, ws_success, ws_warning, ws_info
 
 OS = platform.system()
 OS_MAP = {"Windows": "windows", "Linux": "linux", "Darwin": "osx"}
@@ -25,6 +25,13 @@ verify_os()
 
 class VersionSetException(Exception):
     """Custom exception to terminate execution."""
+
+
+# Registered here rather than in the ERROR_CODES literal because formatting.py cannot import this
+# module: this one already imports it. The rule it satisfies is the same one the literal states —
+# every custom exception carries its own exit status, so the shell can tell it apart from any other
+# failure. See the exit-code table in .github/copilot-instructions.md §6.1.
+ERROR_CODES[VersionSetException] = 115
 
 
 @dataclass(unsafe_hash=True)
@@ -68,8 +75,10 @@ def select_version(versions: list[ToolVersion]) -> ToolVersion:
     Returns:
         ToolVersion: The selected Tool version
     """
+    # Every caller returns gracefully with a warning when the system has no version installed, so an
+    # empty list can only reach this function through a defect in that flow.
     if not versions:
-        raise RuntimeError("No Tool versions found")
+        raise InternalStateError("No Tool versions found. This is a bug.")
     version_list: list[str] = [str(v.id) for v in versions]
     prompt = "Select a Tool version to set as default on the workspace"
     prompt += "\nAvailable versions:\n"
@@ -78,8 +87,10 @@ def select_version(versions: list[ToolVersion]) -> ToolVersion:
     prompt += "\nSelect a version by entering its Id"
     selection: str = get_validated_input(prompt, version_list)
     version = next((v for v in versions if v.id == int(selection)), None)
+    # get_validated_input only returns a value from version_list, which was derived from `versions`
+    # two lines above: the lookup cannot miss unless that invariant was broken.
     if not version:
-        raise RuntimeError(f"Tool version with id {selection} not found")
+        raise InternalStateError(f"Tool version with id {selection} not found. This is a bug.")
     return version
 
 
@@ -96,10 +107,12 @@ def set_version_path_for_query(versions: list[ToolVersion], json_data: dict, too
         str: Updated JSON data
     """
     vers_list: list[ToolVersion] = [v for v in versions if v.default]
+    # The default flag is set by this package alone — either by determine_tool_version or right
+    # after select_version — so neither "none" nor "more than one" is reachable from user input.
     if not vers_list:
-        raise RuntimeError("Default Tool version not found in the list of Tool versions")
+        raise InternalStateError("Default Tool version not found in the list of Tool versions. This is a bug.")
     if len(vers_list) > 1:
-        raise RuntimeError("Multiple default Tool versions found in the list of Tool versions")
+        raise InternalStateError("Multiple default Tool versions found in the list of Tool versions. This is a bug.")
     vers: ToolVersion = vers_list[0]
     jq_query = f"{tool_jq_query} = {json.dumps(str(vers.path))}"
     updated_json_data: Optional[str] = jq.compile(jq_query).input(json_data).first()

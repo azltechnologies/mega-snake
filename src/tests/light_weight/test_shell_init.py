@@ -46,7 +46,7 @@ def test_shell_path_rejects_unknown_shell() -> None:
 
 
 def test_get_local_config_path_prints_helper_value() -> None:
-    """get-local-config-path should print the resolved config file path."""
+    """local-config-path should print the resolved config file path."""
     runner = CliRunner()
 
     with patch("mega_snake.light_weight.shell_init.get_local_file", return_value="/tmp/local-config.sh"):
@@ -62,13 +62,62 @@ def test_get_local_config_path_stdout_stays_clean_at_debug_level() -> None:
     Regression guard: `ws_advice` is emitted by the CLI entry point and the result callback around
     every subcommand. If it ever printed to stdout again, the captured value would become the
     advice lines plus the path, and `mgsnake_reload` would source a non-existent file.
+
+    The advice is fired from *inside* the invoked command (not before `runner.invoke`, which would
+    print to the real test-process stderr and prove nothing about what the command itself emits) so
+    it lands in the streams `CliRunner` actually captures, and both halves of the split are asserted:
+    the value stays the only thing on stdout, and the advice text really did fire on stderr.
     """
     runner = CliRunner()
 
-    with patch("mega_snake.light_weight.shell_init.get_local_file", return_value="/tmp/local-config.sh"):
+    def _advise_then_resolve() -> str:
+        formatting.ws_advice("Invoking subcommand: local-config-path")
+        return "/tmp/local-config.sh"
+
+    with patch("mega_snake.light_weight.shell_init.get_local_file", side_effect=_advise_then_resolve):
         with patch.object(formatting.logger, "level", logging.DEBUG):
-            formatting.ws_advice("Invoking subcommand: get-local-config-path")
             result = runner.invoke(shell_init.get_local_config_path)
 
     assert result.exit_code == 0
-    assert result.output.strip() == "/tmp/local-config.sh"
+    assert result.stdout.strip() == "/tmp/local-config.sh"
+    assert "Invoking subcommand: local-config-path" in result.stderr
+    assert "Invoking subcommand: local-config-path" not in result.stdout
+
+
+def test_get_local_env_path_prints_helper_value() -> None:
+    """local-env-path should print the resolved env file path."""
+    runner = CliRunner()
+
+    with patch("mega_snake.light_weight.shell_init.get_local_env", return_value="/tmp/.mgsnake.env"):
+        result = runner.invoke(shell_init.get_local_env_path)
+
+    assert result.exit_code == 0
+    assert result.output.strip() == "/tmp/.mgsnake.env"
+
+
+def test_get_local_env_path_stdout_stays_clean_at_debug_level() -> None:
+    """`config_setup.sh` reads this command with `$(...)`, so DEBUG advice must not reach stdout.
+
+    Regression guard: `ws_advice` is emitted by the CLI entry point and the result callback around
+    every subcommand. If it ever printed to stdout again, the captured value would become the
+    advice lines plus the path, and `mgsnake_reload` would source a non-existent file.
+
+    The advice is fired from *inside* the invoked command (not before `runner.invoke`, which would
+    print to the real test-process stderr and prove nothing about what the command itself emits) so
+    it lands in the streams `CliRunner` actually captures, and both halves of the split are asserted:
+    the value stays the only thing on stdout, and the advice text really did fire on stderr.
+    """
+    runner = CliRunner()
+
+    def _advise_then_resolve() -> str:
+        formatting.ws_advice("Invoking subcommand: local-env-path")
+        return "/tmp/.mgsnake.env"
+
+    with patch("mega_snake.light_weight.shell_init.get_local_env", side_effect=_advise_then_resolve):
+        with patch.object(formatting.logger, "level", logging.DEBUG):
+            result = runner.invoke(shell_init.get_local_env_path)
+
+    assert result.exit_code == 0
+    assert result.stdout.strip() == "/tmp/.mgsnake.env"
+    assert "Invoking subcommand: local-env-path" in result.stderr
+    assert "Invoking subcommand: local-env-path" not in result.stdout

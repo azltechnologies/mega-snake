@@ -33,8 +33,9 @@ def wrapper(_ctx, *_args, **_kwargs) -> None:
         _ctx: The click context (unused).
 
     Raises:
-        click.ClickException: If no remote repository is found, or if the working path folder is
-            missing and the user declines to create it.
+        EnvironmentError: If no remote repository is found.
+        UserDeclinedError: If the working path folder is missing and the user declines to create it.
+        InternalStateError: If the AppProperties instance has not been initialized yet.
 
     Returns:
         None

@@ -6,3 +6,7 @@ calls on the same version.
 
 As with `set-java`, the `.code-workspace` file is read with a comment-preserving loader, so your
 annotations are not stripped.
+
+Also as with `set-java`, a successful run exits with status `29`, which the `mgsnake` shell function
+(see `shell-path`) reads to re-source the local environment files, so the new `GRADLE_HOME` applies
+to the current session.

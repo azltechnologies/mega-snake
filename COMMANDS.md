@@ -53,8 +53,13 @@ Custom shell function definitions are supported, not just environment variables.
 
 #### Notes
 
-Reload it in the current session with `mgsnake_reload`, defined by the shell init script (see
-`shell-path`).
+Reload it in the current session with `mgsnake reload-config`.
+
+This happens automatically: the command exits with status `29` when it succeeds, and the `mgsnake`
+shell function installed by the init script reads that status and reloads the file for you.
+A child process cannot change its parent's environment, so the reload has to happen in your shell.
+If you invoke the executable directly — bypassing the function, or from a script — you will see the
+`29` and no reload will run.
 
 ### maven-project-setup
 
@@ -100,6 +105,10 @@ calls on the same version.
 As with `set-java`, the `.code-workspace` file is read with a comment-preserving loader, so your
 annotations are not stripped.
 
+Also as with `set-java`, a successful run exits with status `29`, which the `mgsnake` shell function
+(see `shell-path`) reads to re-source the local environment files, so the new `GRADLE_HOME` applies
+to the current session.
+
 ### set-java
 
 Detects installed Java versions and sets the default Java version for the workspace and shell config.
@@ -122,6 +131,11 @@ which JDK is in use. It also configures the Java formatter settings.
 The `.code-workspace` file is JSON with comments. It is read with a comment-preserving loader, so
 the annotations you leave in it survive the update.
 
+Because it rewrites a local environment file, the command exits with status `29` on success. The
+`mgsnake` shell function installed by the init script (see `shell-path`) reads that status and
+re-sources the local environment files, so the new `JAVA_HOME` applies to the current session
+without opening a new terminal.
+
 ### set-maven
 
 Detects Maven installation (or uses --maven-home) and sets Maven paths for VS Code and local shell config.
@@ -142,6 +156,10 @@ Code's Maven executable path at the detected installation.
 
 Intended for `pom.xml`-based projects. Run `maven-project-setup` afterwards to add the matching VS
 Code task definitions.
+
+A successful run exits with status `29`, which the `mgsnake` shell function (see `shell-path`) reads
+to re-source the local environment files, so the new `M2_HOME` applies to the current session.
+`maven-project-setup` writes no environment file and therefore exits `0`.
 
 ### working-env
 
@@ -167,6 +185,10 @@ On top of what the synopsis lists, it also sets up log watchers and GitHub query
 Requires a valid Git repository. Developer-specific overrides are loaded before the defaults are
 written, so anything you set through `init-local-config` wins over the values this command
 generates.
+
+Because it writes the local environment files, a successful run exits with status `29`. The
+`mgsnake` shell function installed by the init script (see `shell-path`) reads that status and
+re-sources them, so the environment it just configured applies to the current session.
 
 ## Dependency Audit
 
@@ -527,11 +549,85 @@ version. An alias without date information is warned about and skipped; a date i
 format aborts the run with an error rather than reporting a wrong status. For expired
 certificates the command prints the `keytool` commands to delete and re-import them.
 
-### get-local-config-path
+### load-env
+
+Exports the variables declared in an environment file into the current shell session. The file is a plain list of KEY=value lines: no `export` keyword, one pair per line, `#` starts a comment, and surrounding single or double quotes around a value are stripped.
+
+**Synopsis:** `mgsnake load-env [OPTIONS] [ENV_FILE]`
+
+| Option | Description |
+| --- | --- |
+| `-h, --help` | Show this message and exit. |
+
+- `env_file` — Path to the environment file to load. When omitted, the local environment file (see `local-env-path`, e.g. `.mgsnake.env` under workspace_temp) is loaded if it exists; otherwise `.env` in the current directory is loaded instead.
+
+Exports the variables declared in an environment file into the shell session that runs the command,
+so a project's settings can be picked up without restarting the terminal or writing an `export` for
+each one.
+
+The file format is deliberately plain, and is **not** a shell script:
+
+```bash
+# Comments start with a hash
+DATABASE_URL=postgres://localhost:5432/dev
+API_TOKEN="quoted values work too"
+```
+
+One `KEY=value` per line, no `export` keyword, blank lines and `#` comments ignored, and a matching
+pair of surrounding single or double quotes stripped from the value. Because the file is parsed
+rather than executed, it holds values only: command substitutions and variable references are not
+expanded.
+
+#### Examples
+
+```bash
+# No argument: loads the local environment file (see `local-env-path`) if it exists,
+# otherwise falls back to .env in the current directory
+mgsnake load-env
+
+# Load a specific file
+mgsnake load-env config/staging.env
+```
+
+#### Notes
+
+A process cannot change the environment of the process that started it, which is a guarantee of the
+operating system rather than a limitation of this tool. The command therefore does no work itself:
+it reports the request through its exit status, and the `mgsnake` shell function installed by the
+init script performs the exports inside the session that asked for it. That function finds the file
+name by re-reading the arguments it was given, so global options are handled normally and
+`mgsnake --log-level DEBUG load-env staging.env` loads `staging.env`.
+
+That function is the reason this works, so the command is only useful once
+`config_setup.sh` / `config_setup.ps1` is sourced from the shell profile — see `shell-path`. Run
+without it, the command exits with its status and nothing happens.
+
+Once the shell has performed the exports the request is fulfilled, so the function reports success
+to whoever called it. The command is therefore safe inside `&&` chains and under `set -e`; only a
+direct invocation that bypasses the function (`command mgsnake load-env`) shows the raw status.
+
+A missing file is not an error: nothing is exported and the command stays silent, so an optional
+`.env` can be loaded unconditionally from a startup script.
+
+Called with no `env_file`, the shell first looks for the local environment file (the path
+`local-env-path` prints, e.g. `.mgsnake.env` under `workspace_temp`) and loads that if it exists;
+only when it does not does it fall back to `.env` in the current directory. That fallback applies
+when you type `mgsnake load-env` yourself with no argument; a future release will let it be turned
+on or off.
+
+`config_setup.sh` / `config_setup.ps1` also load the local environment file automatically every time
+a new session starts, but they do it by resolving `local-env-path` themselves and passing it in
+explicitly, precisely so that automatic, unattended call never takes the `.env`-in-the-current-
+directory fallback — only a local environment file that actually exists gets loaded at startup.
+
+The environment file created by `init-local-config` is already loaded by the generated configuration
+file, so it needs no explicit call here. Use this command for the other ones.
+
+### local-config-path
 
 Prints to stdout the path of the local configuration file (.sh or .ps1 depending on the active shell).
 
-**Synopsis:** `mgsnake get-local-config-path [OPTIONS]`
+**Synopsis:** `mgsnake local-config-path [OPTIONS]`
 
 **Aliases:** `lcp`
 
@@ -547,7 +643,33 @@ variant according to the active shell.
 Its stdout is consumed by command substitution inside `config_setup.sh`:
 
 ```bash
-local_config_file=$(mgsnake get-local-config-path)
+local_config_file=$(mgsnake local-config-path)
+```
+
+so the command prints the path and nothing else. Diagnostics go to stderr precisely so this stays
+parseable at any log level.
+
+### local-env-path
+
+Prints to stdout the path of the local environment file.
+
+**Synopsis:** `mgsnake local-env-path [OPTIONS]`
+
+**Aliases:** `lep`
+
+| Option | Description |
+| --- | --- |
+| `-h, --help` | Show this message and exit. |
+
+Resolves the local environment file created by `init-local-config` — the `KEY=value` file whose
+variables the generated configuration file exports on every shell startup.
+
+#### Notes
+
+Its stdout is consumed by command substitution inside `config_setup.sh`:
+
+```bash
+local_env_file=$(mgsnake local-env-path)
 ```
 
 so the command prints the path and nothing else. Diagnostics go to stderr precisely so this stays
@@ -577,6 +699,43 @@ same format as the Python commands, instead of each one inventing its own `echo`
 #### Notes
 
 The message is both printed to the console and written to the workspace log file.
+
+### reload-config
+
+Re-sources the local configuration file (and the environment file it loads) into the current shell session, so edits to it take effect without opening a new terminal.
+
+**Synopsis:** `mgsnake reload-config [OPTIONS]`
+
+| Option | Description |
+| --- | --- |
+| `-h, --help` | Show this message and exit. |
+
+Applies edits to the local configuration file without opening a new terminal. Sourcing that file is
+what makes its functions, aliases and exported variables available, and a shell only does it at
+startup — so after editing it, the running session keeps the old definitions until something
+re-sources it. This is that something.
+
+#### Notes
+
+A process cannot change the environment of the process that started it, which is a guarantee of the
+operating system rather than a limitation of this tool. The command therefore does no work itself:
+it reports the request through its exit status, and the `mgsnake` shell function installed by the
+init script performs the sourcing inside the session that asked for it.
+
+That function is the reason this works, so the command is only useful once
+`config_setup.sh` / `config_setup.ps1` is sourced from the shell profile — see `shell-path`. Run
+without it, the command exits with its status and nothing happens.
+
+Once the shell has re-sourced the file the request is fulfilled, so the function reports success to
+whoever called it. Only a direct invocation that bypasses the function (`command mgsnake
+reload-config`) shows the raw status.
+
+Commands that rewrite the local files (`working-env`, `set-java`, `set-gradle`, `set-maven`,
+`init-local-config`) already emit the same request when they finish, so running this afterwards is
+usually unnecessary. Reach for it after editing the file by hand.
+
+Reloading the configuration file also reloads the environment file, because the generated
+configuration file loads it on the way through.
 
 ### shell-path
 
@@ -611,6 +770,17 @@ For PowerShell, in your profile (`$PROFILE`):
 
 #### Notes
 
-Sourcing that script sets `MEGA_SNAKE_SHELL` and defines `mgsnake_reload`. Because the profile calls
-this command *before* that variable exists, it is the one command that runs with no initialization
-at all — which is also why it prints the bare path and nothing else.
+Sourcing that script sets `MEGA_SNAKE_SHELL` and defines the private helpers behind `reload-config`
+and `load-env`. Because the profile calls this command *before* that variable exists, it is the one
+command that runs with no initialization at all — which is also why it prints the bare path and
+nothing else.
+
+It also defines `mgsnake` itself as a thin shell function around the real executable. That function
+is what makes the environment auto-reload work: a command that rewrites one of the local environment
+files exits with status `29`, and only the parent shell can act on it — a child process cannot
+change its parent's environment. The function forwards every argument and calls the executable
+through `command mgsnake` (or its resolved path on PowerShell), so there is no recursion. A served
+`29`/`30` signal is reported to the caller as `0` once the function has carried it out — the signal
+is a request, and propagating it would make every environment command look like a failure to a
+`set -e` script or an `&&` chain; every other status passes through unchanged. The only visible
+difference is that `type mgsnake` reports a function.

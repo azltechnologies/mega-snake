@@ -8,7 +8,7 @@ from typing import Optional
 import click
 import mega_snake.light_weight.release_handler as handler
 from mega_snake.constants import VERSION_PART_OPT
-from mega_snake.util.formatting import ws_info, ws_advice
+from mega_snake.util.formatting import InternalStateError, ws_info, ws_advice
 from mega_snake.util.props import get_property
 from mega_snake.util.util import run_operation
 
@@ -164,9 +164,11 @@ def resolve_tag_pattern(tag_pattern: Optional[str] = None) -> str:
         return tag_pattern
     try:
         configured: str = get_property(TAG_PATTERN_PROPERTY)
-    except (KeyError, RuntimeError):
+    except (KeyError, InternalStateError):
         # Absent key, or no properties at all in light-weight mode: neither is an error, both just
-        # mean the project did not configure a pattern.
+        # mean the project did not configure a pattern. The singleton reports "not initialized yet"
+        # as an InternalStateError because reaching it usually *is* a bug — but this command is
+        # light-weight by design, so here it is the expected answer and stays caught.
         return DEFAULT_TAG_PATTERN
     return configured or DEFAULT_TAG_PATTERN
 

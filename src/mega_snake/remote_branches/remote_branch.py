@@ -5,7 +5,7 @@ import re
 from typing import Optional
 from datetime import datetime, timezone
 from mega_snake.util.util import run_operation
-from mega_snake.util.formatting import ws_advice, ws_info
+from mega_snake.util.formatting import InternalStateError, ws_advice, ws_info
 
 
 @dataclasses.dataclass
@@ -122,15 +122,20 @@ class RemoteBranch:
         ws_advice(f"Parsing branch: {pattern_branch} with remote: {remote}")
         pattern1 = rf"(?<=^remotes/{remote}/)\S+"
         match = re.search(pattern1, pattern_branch)
+        # The caller selects branches with a regex that already requires the `remotes/{remote}/`
+        # prefix this one matches, so a failure here means the two patterns drifted apart.
         if not match:
-            raise LookupError(f"Unable to parse local branch name for remote branch: {branch}")
+            raise InternalStateError(
+                f"Unable to parse local branch name for remote branch: {branch}. This is a bug."
+            )
         local_branch: str = match.group(0)
         commit: Commit = Commit.from_branch(branch)
         within_branches: str = run_operation(
             f"git branch -a --contains {commit.commit_hash}", "Getting branches containing commit"
         ).stdout.strip()
+        # The commit was just read off this very branch, so it belongs to at least that one.
         if not within_branches:
-            raise LookupError(f"Commit {commit.commit_hash} not found in any branch")
+            raise InternalStateError(f"Commit {commit.commit_hash} not found in any branch. This is a bug.")
         main_ref: str = f"remotes/{remote}/{main_branch}"
         pattern: str = rf"\s*{main_ref}\s*$"
         merged_on_main: bool = bool(re.search(pattern, within_branches, re.MULTILINE))

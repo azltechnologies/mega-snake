@@ -41,9 +41,30 @@ lives in the GitHub Release body (`gh release create --generate-notes`); this fi
   its `patch`, `minor` or `major` component, instead of appending a free-form suffix. `--tag-suffix` still
   produces pre-release builds (`v1.2.4-beta.0`), and is rejected for `latest` releases, which GitHub only
   grants to a plain version.
+- **Automatic shell environment reload.** Configuring the environment (`working-env`, `set-java`, `set-gradle`,
+  `set-maven`, `init-local-config`) now takes effect in your *current* shell session, without opening a new
+  terminal. The shell init script defines `mgsnake` as a thin function around the real executable: the command
+  reports it rewrote the environment, and the function re-sources the local files for you. Only the commands
+  that actually touch those files trigger it, so `graphql-schema` and `maven-project-setup` no longer force a
+  pointless reload. Once the function has reloaded for you the command reports success, so it still composes
+  with `&&` and does not abort a `set -e` script.
+- **`reload-config` and `load-env`.** Re-source the local configuration file, or export the variables declared in
+  an environment file, into the shell session you are already in — no new terminal, no `export` per variable.
+- **`local-config-path` and `local-env-path`.** Print the resolved path of the local configuration file or the
+  local environment file (`.mgsnake.env`), so a shell profile or script can locate them without duplicating the
+  resolution logic. (`local-config-path` was briefly named `get-local-config-path` earlier in this same
+  unreleased cycle; nothing under the old name has shipped in a release.)
 - **This changelog.**
 
 ### Changed
+
+- **`mgsnake` now reports a meaningful exit code instead of always exiting `1`.** Scripts and CI steps can tell
+  a missing `osv-scanner` (`102`) from a bad revision (`103`), an unset `MEGA_SNAKE_SHELL` (`112`) from a
+  mistyped flag (`1`), stale generated docs (`113`) from a declined prompt (`114`). The full table is in the
+  contributor docs. Previously every one of these exited `1`.
+- **Failures that are not your fault no longer look like misuse.** A repository without a remote, a missing
+  external tool and a prompt you declined were all reported with the "you called this wrong" status; each now
+  carries its own.
 
 - **`diff-tree` renamed its revision options** to `--origin-hash` / `-o` (was `--commit-hash` / `-c`), so
   the two ends of the comparison read as a pair with `--target-hash`.
@@ -51,14 +72,37 @@ lives in the GitHub Release body (`gh release create --generate-notes`); this fi
   suffix is an option.
 - The PyPI long description is now assembled with `hatch-fancy-pypi-readme` instead of shipping `README.md`
   verbatim.
-- `ws_advice` writes to stderr, keeping the stdout of `no_init` commands clean for shell substitution
-  (`. "$(mgsnake shell-path bash)"`).
+- **Progress, status, warnings and errors now go to stderr**, not stdout. stdout carries only what a command
+  *produces*, so `. "$(mgsnake shell-path bash)"` and `$(mgsnake local-config-path)` capture the value alone
+  and `mgsnake <command> 2>/dev/null` keeps it. If you redirect stdout only (`mgsnake rbd > run.log`, or a CI
+  step archiving stdout), add `2>&1` to keep the diagnostics. Previously only `ws_advice` was on stderr.
+
+### Removed
+
+- **Breaking: the shell helpers are private now**, and the public interface is the CLI itself — `mgsnake_reload`
+  is `mgsnake reload-config`, `mgsnake_load_env` is `mgsnake load-env`, and `mgsnake_reload_all` is gone
+  outright (it loaded the `.env` of whatever directory you happened to be in, on top of the one the config file
+  had already loaded by absolute path). No compatibility shim is kept.
+
+  **If you generated a local config file before this release**, it calls `mgsnake_load_env` by name, and it is
+  sourced on every shell startup — so you will get `mgsnake_load_env: command not found` in each new terminal
+  and the environment file will stop loading. Fix the single line to call `__mgsnake_load_env` instead, or
+  regenerate the file with `mgsnake init-local-config -o`. Anything of your own that called `mgsnake_reload`
+  needs the same treatment.
 
 ### Fixed
 
 - **Duplicate command and alias registrations are now rejected.** Click's registry silently replaced an
   existing command when a second one claimed its name, leaving the first unreachable while its tests kept
   passing. Registration now fails loudly, naming both colliding modules.
+- **The shell environment reload stopped working** when `mgsnake` became an installed executable: the wrapper
+  that captured its exit status was gone, so the signal was emitted into a void. Restored, and now tested
+  against a real process instead of a hand-built object.
+- **Exit codes never reached the shell.** The installed entry point called the command group directly, so the
+  translation from exception to status — and the hook that delivers it — only ran under `python -m mega_snake`.
+  Two more holes are closed with it: an internal error with no mapped type reported `1` instead of `100`, and
+  an exception type that was not listed verbatim (`subprocess.CalledProcessError`, for instance) fell back to
+  the generic code instead of inheriting its parent's.
 
 ## [0.1.5] - 2026-07-26
 

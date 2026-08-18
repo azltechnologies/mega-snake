@@ -7,6 +7,7 @@ import pytest
 from click.testing import CliRunner
 from mega_snake.remote_branches import module
 from mega_snake.util.util import require_remote, reset_remote_cache
+from mega_snake.util.cli_group import ATTR_METADATA
 
 def test_main_group() -> None:
     """Test the main command group"""
@@ -19,8 +20,8 @@ def test_main_group() -> None:
 def test_wrapper_has_skip_flag() -> None:
     """The wrapper should be flagged for light-weight (skip) initialization, so a missing
     working path folder doesn't crash the CLI before the wrapper's own check can run."""
-    assert module.wrapper.flags["flags"] == {"skip"}
-    assert module.wrapper.flags["docs_group"] == "Git & Release Management"
+    assert getattr(module.wrapper, ATTR_METADATA)["flags"] == {"skip"}
+    assert getattr(module.wrapper, ATTR_METADATA)["docs_group"] == "Git & Release Management"
 
 
 def test_wrapper_delegates_to_the_shared_utilities() -> None:

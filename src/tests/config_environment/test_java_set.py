@@ -7,6 +7,7 @@ from click.testing import CliRunner
 import pytest
 from mega_snake.config_environment.java_set import set_java_version, execute, JavaVersion, _set_version_runtime
 from mega_snake.util.util import load_json_with_comments
+from mega_snake.util.formatting import InternalStateError
 
 FILE_WK = "wk_file"
 PATH_WK = "wk_path"
@@ -652,7 +653,7 @@ def test_add_java_formatter(
         os_path_exists.return_value = False
         result = runner.invoke(set_java_version)
         assert result.exit_code == 1
-        assert isinstance(result.exception, AssertionError)
+        assert isinstance(result.exception, InternalStateError)
         assert get_property.call_count == 4
         get_local_file.assert_called_once()
         java_set.assert_called_once()

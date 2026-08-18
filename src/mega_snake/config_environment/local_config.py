@@ -2,8 +2,10 @@
 
 import os
 import click
+from mega_snake.constants import APP_NAME, LOAD_ENV_HELPER, RELOAD_CONFIG_COMMAND
 from mega_snake.util.props import get_property
 from mega_snake.util.formatting import ws_success
+from mega_snake.util.util import cli_metadata
 from mega_snake.config_environment.util import get_local_file
 
 
@@ -16,6 +18,7 @@ from mega_snake.config_environment.util import get_local_file
         -o | --override: Optional[bool] - Override the current local configuration file with a new one\n
     """,
 )
+@cli_metadata(reloads_environment=True)
 @click.option("--override", "-o", is_flag=True, help="Override the current local configuration file with a new one")
 def initial_load(override: bool) -> None:  # previously initialLoad
     """
@@ -44,14 +47,24 @@ def execute(override: bool) -> None:  # previously initialLoad
     if not os.path.exists(local_file) or override:
         shell = get_property("shell")
         env_name = os.path.basename(env_file)
+        # The shell init script no longer announces its helpers on every new terminal, so this
+        # header is where a user finds out how to reload the file they are looking at.
         contents = "# This file is used to store local configurations for the project.\n"
+        contents += f"# Reload it in your current terminal with: {APP_NAME} {RELOAD_CONFIG_COMMAND}\n"
+        contents += f"# See every available command with: {APP_NAME} --help\n"
+        # Calls the private helper rather than `mgsnake load-env`: this file is sourced *by* the
+        # shell, so the exports already land in the right session.
         match shell:
             case "bash":
-                contents += f'mgsnake_load_env "$(cd "$(dirname "${{BASH_SOURCE[0]:-$0}}")" && pwd)"/{env_name}\n'
+                contents += (
+                    f'{LOAD_ENV_HELPER} "$(cd "$(dirname "${{BASH_SOURCE[0]:-$0}}")" && pwd)"/{env_name}\n'
+                )
             case "zsh":
-                contents += f'mgsnake_load_env "$(cd "$(dirname "${{(%):-%N}}")" && pwd)"/{env_name}\n'
+                contents += f'{LOAD_ENV_HELPER} "$(cd "$(dirname "${{(%):-%N}}")" && pwd)"/{env_name}\n'
             case "powershell" | "pwsh":
-                contents += f'mgsnake_load_env "$(Split-Path -Parent $MyInvocation.MyCommand.Definition)/{env_name}"\n'
+                contents += (
+                    f'{LOAD_ENV_HELPER} "$(Split-Path -Parent $MyInvocation.MyCommand.Definition)/{env_name}"\n'
+                )
             case _:
                 raise NotImplementedError(f"Shell type not supported: {shell}")
         contents += "\n# ----\n# You can add custom functions and configurations here.\n"

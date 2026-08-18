@@ -11,6 +11,7 @@ import subprocess
 
 import pytest
 
+from mega_snake.util.formatting import InternalStateError
 from mega_snake.light_weight.create_release import _get_notes, create_release
 from mega_snake.light_weight.echo import echo
 from mega_snake.light_weight.jks_expired_certs import expired_certs
@@ -131,8 +132,9 @@ def test_echo_and_expired_certs() -> None:
         with pytest.raises(ValueError):
             echo.callback("msg", None, None, "X")
 
+    # A missing keytool is a gap in the user's environment, not a bug and not a misuse.
     with patch("mega_snake.light_weight.jks_expired_certs.shutil.which", return_value=None):
-        with pytest.raises(RuntimeError):
+        with pytest.raises(FileNotFoundError, match="keytool could not be found"):
             expired_certs.callback("/tmp/a.jks", "p", False)
 
     valid_cert = "Alias name: a\nValid from: Mon Jan 01 00:00:00 UTC 2024 until: Mon Jan 01 00:00:00 UTC 2099"
@@ -145,7 +147,8 @@ def test_echo_and_expired_certs() -> None:
     with patch("mega_snake.light_weight.jks_expired_certs.shutil.which", return_value="/bin/keytool"), patch(
         "mega_snake.light_weight.jks_expired_certs.get_command_return_code", return_value=1
     ):
-        with pytest.raises(RuntimeError):
+        # keytool ran and rejected the keystore or the password: an external command failure.
+        with pytest.raises(subprocess.SubprocessError, match="keytool command failed"):
             expired_certs.callback("/tmp/a.jks", "p", False)
 
     expired_cert = "Alias name: a\nValid from: Mon Jan 01 00:00:00 UTC 2020 until: Mon Jan 01 00:00:00 UTC 2021"
@@ -767,7 +770,9 @@ def test_resolve_tag_pattern_prefers_the_invocation_then_the_project_then_the_de
     # An unconfigured project is the normal case, not an error: both lookups fall back cleanly.
     with patch("mega_snake.light_weight.release.get_property", side_effect=KeyError("absent")):
         assert resolve_tag_pattern(None) == DEFAULT_TAG_PATTERN
-    with patch("mega_snake.light_weight.release.get_property", side_effect=RuntimeError("no properties")):
+    # Light-weight mode never builds the singleton, so "not initialized yet" is the expected
+    # answer here rather than the bug it signals everywhere else.
+    with patch("mega_snake.light_weight.release.get_property", side_effect=InternalStateError("no properties")):
         assert resolve_tag_pattern(None) == DEFAULT_TAG_PATTERN
 
 

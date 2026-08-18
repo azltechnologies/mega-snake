@@ -20,9 +20,9 @@ from mega_snake.config_environment.models.tools_version import (
     OS,
     VersionSetException,
 )
-from mega_snake.util.util import run_operation, load_json_with_comments
+from mega_snake.util.util import cli_metadata, run_operation, load_json_with_comments
 from mega_snake.util.props import get_property
-from mega_snake.util.formatting import ws_info, ws_success, ws_warning, ws_advice
+from mega_snake.util.formatting import InternalStateError, ws_info, ws_success, ws_warning, ws_advice
 
 
 @click.command(
@@ -34,6 +34,7 @@ from mega_snake.util.formatting import ws_info, ws_success, ws_warning, ws_advic
         -o | --override: Optional[bool] - Override the current Java version\n
     """,
 )
+@cli_metadata(reloads_environment=True)
 @click.option("--override", "-o", is_flag=True, help="Override the current Java version")
 def set_java_version(override: bool) -> None:
     """
@@ -170,7 +171,10 @@ def _update_configurations(
 
     # Update local configuration
     version: Optional[JavaVersion] = next((v for v in versions if v.default), None)
-    assert version, "Default Java version not found in the list of Java versions. This is a bug."
+    # set_version_path_for_query already refused the list unless exactly one version carries the
+    # default flag, so by this point one is guaranteed to be there.
+    if not version:
+        raise InternalStateError("Default Java version not found in the list of Java versions. This is a bug.")
     set_version_local_config(version, local_file, shell, "JAVA_HOME")
 
 
@@ -188,15 +192,17 @@ def _set_version_runtime(versions: list[JavaVersion], json_data: Any) -> str:
     # adding each version to the list of runtimes
     for v in versions:
         vers_pattern: str = r"(\d+).*"
+        # _get_versions only builds a JavaVersion when its own `"([0-9\._]+)"` group matched, so the
+        # version string is always digits and dots by the time it reaches here.
         java_version: Optional[re.Match[str]] = re.match(vers_pattern, v.version)
         if not java_version:
-            raise RuntimeError(f"Failed to extract the Java version from {v.version}")
+            raise InternalStateError(f"Failed to extract the Java version from {v.version}. This is a bug.")
         java_name: str
         if java_version.group(1) == "1":
             vers_pattern = r"(1\.\d).*"
             java_version = re.match(vers_pattern, v.version)
             if not java_version:
-                raise RuntimeError(f"Failed to extract the Java version from {v.version}")
+                raise InternalStateError(f"Failed to extract the Java version from {v.version}. This is a bug.")
         java_name = f"JavaSE-{java_version.group(1)}"
         jq_query = (
             f"{JAVA_RUNTIME_QUERY} |= . + "
@@ -266,9 +272,13 @@ def _get_versions() -> list[JavaVersion]:
 def _add_java_formatter(workspace_file: str, resources_path: str) -> None:
     """Add Java formatter xml to the vscode folder"""
     formatter_path: str = f"{resources_path}/java-formatter.xml"
-    assert os.path.exists(formatter_path), (
-        f"Java formatter file not found at {formatter_path}. Its supposed to be in the resources folder. This is a bug."
-    )
+    # resources_path was validated during initialization, and java-formatter.xml ships inside the
+    # package: missing it means the distribution is broken, not that the user is missing a file.
+    if not os.path.exists(formatter_path):
+        raise InternalStateError(
+            f"Java formatter file not found at {formatter_path}. Its supposed to be in the resources folder. "
+            "This is a bug."
+        )
     vscode_path: str = f"{os.getcwd()}/.vscode"
     if not os.path.exists(vscode_path):
         os.makedirs(vscode_path, exist_ok=True)

@@ -14,7 +14,14 @@ import inspect
 import click
 from colorama import init, Fore, Back, Style
 from jsoncomment import JsonComment
-from mega_snake.util.formatting import ws_advice, ws_info, ws_success, ws_warning
+from mega_snake.util.formatting import (
+    InternalStateError,
+    UserDeclinedError,
+    ws_advice,
+    ws_info,
+    ws_success,
+    ws_warning,
+)
 from mega_snake.util.cli_group import ATTR_ALIAS, ATTR_DOCS, ATTR_GROUP, ATTR_METADATA
 from mega_snake.util.props import get_property
 
@@ -214,18 +221,23 @@ def require_remote() -> str:
     This is the single entry point for commands that cannot work without a remote, so they all
     share the same message and the same (cached) resolution.
 
+    A repository without a remote is not a misuse of the CLI — the user broke no contract — so this
+    raises an environment error rather than a ClickException: the exit status then says "the
+    environment is not set up", which is a different thing for a script to react to than "you called
+    this wrong".
+
     Parameters:
         None
 
     Raises:
-        click.ClickException: If the repository has no remote configured.
+        EnvironmentError: If the repository has no remote configured.
 
     Returns:
         str: The remote name.
     """
     remote: Optional[str] = get_remote()
     if not remote:
-        raise click.ClickException(NO_REMOTE_MESSAGE)
+        raise EnvironmentError(NO_REMOTE_MESSAGE)
     return remote
 
 
@@ -325,24 +337,29 @@ def ensure_working_path(decline_message: Optional[str] = None) -> str:
             a generic message mentioning the working path.
 
     Raises:
-        AssertionError: If the working path property is empty or points outside the current
+        InternalStateError: If the working path property is empty or points outside the current
             directory, which would mean the properties were built incorrectly.
-        click.ClickException: If the working path is missing and the user declines to create it.
+        UserDeclinedError: If the working path is missing and the user declines to create it.
 
     Returns:
         str: The absolute path to the existing working path folder.
     """
     working_path: str = get_property("working_path")
-    assert working_path, "Working path is required but was not found in the properties. This is a bug."
-    assert Path(working_path).resolve().is_relative_to(Path.cwd().resolve()), (
-        "Working path is not in the current directory. This is a bug."
-    )
+    # Both checks restate what initialization already guaranteed: _check_property refuses an empty
+    # value, and __working_path_validator resolves it against the cwd. Failing here means the
+    # properties were built wrong, so the user has nothing to act on.
+    if not working_path:
+        raise InternalStateError("Working path is required but was not found in the properties. This is a bug.")
+    if not Path(working_path).resolve().is_relative_to(Path.cwd().resolve()):
+        raise InternalStateError("Working path is not in the current directory. This is a bug.")
     if os.path.exists(working_path):
         ws_info(f"Working path found: {working_path}")
         return working_path
     ws_warning("Working path not found in current directory")
     if get_validated_input("Would you like to create a new default working path?", ["y", "n"]) == "n":
-        raise click.ClickException(
+        # Declining a prompt is a decision, not a mistake: it gets its own status so a caller can
+        # stop retrying instead of reading it as a bad invocation.
+        raise UserDeclinedError(
             decline_message or f"Cannot continue without the '{working_path}' folder. Please create it and try again."
         )
     os.makedirs(working_path, exist_ok=True)

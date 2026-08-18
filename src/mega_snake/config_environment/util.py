@@ -3,7 +3,7 @@
 import os
 from typing import Any
 import json
-from mega_snake.util.formatting import ws_advice
+from mega_snake.util.formatting import InternalStateError, ws_advice
 from mega_snake.util.props import get_property
 
 
@@ -26,6 +26,16 @@ def get_local_file() -> str:
     return local_file
 
 
+def get_local_env() -> str:
+    """
+    Returns the local environment file path.
+
+    Returns:
+        str: The local environment file path.
+    """
+    return get_property("local_env_file")
+
+
 def update_workspace(json_data: Any, temp_path: str, workspace_file: str) -> None:
     """
     Updates the workspace settings file with the selected Tool version.
@@ -33,13 +43,15 @@ def update_workspace(json_data: Any, temp_path: str, workspace_file: str) -> Non
     Args:
         json_data (Any): Workspace settings data
         temp_path (str): Path to the temporary file
-        workspace_parh (str): Path to the workspace settings file
+        workspace_file (str): Path to the workspace settings file
     """
+    # json_data is whatever the caller's own jq query produced; an empty result means that query is
+    # wrong, which the user has no part in and no way to correct.
     if not json_data:
-        raise RuntimeError("Failed to set Tool version in workspace settings")
+        raise InternalStateError("Failed to set Tool version in workspace settings. This is a bug.")
     with open(temp_path, "w", encoding="utf-8") as file:
         json.dump(json_data, file, indent=2)
-    ws_advice(f"attemping to replace {workspace_file} with {temp_path}")
+    ws_advice(f"attempting to replace {workspace_file} with {temp_path}")
     try:
         os.replace(temp_path, workspace_file)
     except OSError as e:

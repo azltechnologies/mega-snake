@@ -47,7 +47,10 @@ dev = [
 Repository = "https://github.com/kalin91/mega-snake"
 
 [project.scripts]
-mgsnake = "mega_snake.__main__:cli"  # Asumiendo que 'cli' es tu función Grupo de click
+# Points at main(), never at cli(): main() is the only place an exception is turned into an exit
+# code (and the except hook that delivers it is installed). Pointing this at the click group makes
+# every failure exit 1.
+mgsnake = "mega_snake.__main__:main"
 
 [build-system]
 requires = ["hatchling", "hatch-fancy-pypi-readme"]
