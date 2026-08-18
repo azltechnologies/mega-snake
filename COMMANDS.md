@@ -379,10 +379,21 @@ Rather than passing objects between commands in memory, the two commands communi
 `workspace_temp/remote_branches.txt`. That file is the point: you can inspect it — and edit it —
 before running a destructive command against your remote.
 
+A selected branch is deleted from both sides, but only where it actually exists: the remote copy is
+removed when the remote-tracking reference is there, and the local copy when the local reference is.
+Neither side is assumed, because a branch you never checked out has no local reference and a branch
+whose remote counterpart was deleted on merge has no remote one — attempting the missing half would
+report a deletion failure for something that was already gone.
+
+Local deletion uses `git branch -D` rather than `git branch -d`: the branch has been confirmed merged
+into the *remote* main branch, which is the question that matters, while `-d` refuses whenever the
+local main copy is behind and has not seen the merge yet.
+
 #### Notes
 
-It takes no options: run it and follow the prompts. Deletion is `git push origin --delete <branch>`
-and cannot be undone from here. Requires a remote.
+It takes no options: run it and follow the prompts. Deletion is `git push <remote> --delete <branch>`
+plus `git branch -D <branch>`, and cannot be undone from here. A branch that fails to delete from the
+remote keeps its local copy and does not stop the run. Requires a remote.
 
 ### remote-branches-details
 
@@ -403,10 +414,19 @@ PR are correctly reported as merged instead of lingering as unmerged noise.
 
 Comparison is always against the remote main branch, never the possibly stale local copy.
 
+Local branches with no counterpart on the remote are reported too, judged by the same rules and
+against that same remote main branch. They are the branches a remote-only listing structurally cannot
+see, and the most common form of dead branch: once a pull request is merged the hosting platform
+usually deletes the branch, `git fetch --prune` drops the remote-tracking reference, and the local
+branch is left behind indefinitely.
+
 #### Output
 
 Creates `workspace_temp/remote_branches.txt` with per-branch details: author, last commit date, and
 ahead/behind counts.
+
+The report does not mark which entries are local-only; the deletion step resolves that from the
+references themselves, and says so per branch.
 
 #### Notes
 

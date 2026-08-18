@@ -112,6 +112,27 @@ def get_command_return_code(command: str) -> int:
     return result.returncode
 
 
+def ref_exists(ref: str) -> bool:
+    """Check whether the given fully qualified git reference exists in the repository.
+
+    A missing reference is an ordinary, expected answer here, not a failure, so the check goes
+    through ``get_command_return_code`` rather than ``run_operation``: the latter reports every
+    attempt as successful whenever ``check=False`` and retries three times with a two second pause
+    in between, which would turn a plain "no" into a slow, misleading success message.
+
+    Parameters:
+        ref: The fully qualified reference to look for, e.g. ``refs/heads/feature`` or
+            ``refs/remotes/origin/feature``.
+
+    Raises:
+        None
+
+    Returns:
+        bool: True when the reference exists, False otherwise.
+    """
+    return get_command_return_code(f'git show-ref --verify --quiet "{ref}"') == 0
+
+
 def get_input_or_default(prompt: str, default: Any) -> str:
     """
     Get user input or return default value
