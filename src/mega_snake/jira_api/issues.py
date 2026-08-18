@@ -221,6 +221,10 @@ def jira_issues(project_key: Optional[str], output: Optional[str], refresh_board
     # wrapper: the other two are "no_init" and must never touch the working path. Securing the
     # folder first is what lets complete_app_properties finish the deferred initialization, so the
     # run logs to file and honours --log-level.
-    ensure_working_path()
+    working_path: str = ensure_working_path()
     complete_app_properties()
-    download_board_issues(project_key, output, refresh_board, quiet)
+    # Resolved here, once, and passed down explicitly: download_board_issues() would otherwise call
+    # ensure_working_path() a second time for the default-output case, printing the "working path
+    # found" message twice for the same run.
+    resolved_output: str = output or str(Path(working_path) / DEFAULT_OUTPUT_FILE)
+    download_board_issues(project_key, resolved_output, refresh_board, quiet)

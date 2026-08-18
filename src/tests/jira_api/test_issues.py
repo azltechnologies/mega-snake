@@ -201,10 +201,29 @@ def test_command_defaults_the_output_to_the_working_path(jira_workspace: Path) -
     working_path = jira_workspace / "workspace_temp"
     working_path.mkdir()
 
-    with patch("mega_snake.jira_api.issues.ensure_working_path", return_value=str(working_path)), patch(
-        "mega_snake.jira_api.issues.complete_app_properties"
-    ), patch("mega_snake.jira_api.issues.JiraClient", return_value=client):
+    with patch(
+        "mega_snake.jira_api.issues.ensure_working_path", return_value=str(working_path)
+    ) as ensure_working_path_mock, patch("mega_snake.jira_api.issues.complete_app_properties"), patch(
+        "mega_snake.jira_api.issues.JiraClient", return_value=client
+    ):
         result = CliRunner().invoke(jira_issues, [])
 
     assert result.exit_code == 0
     assert (working_path / DEFAULT_OUTPUT_FILE).is_file()
+    # The command resolves the default path itself and passes it down, so download_board_issues()
+    # never has to fall back to ensure_working_path() a second time for the same run.
+    ensure_working_path_mock.assert_called_once()
+
+
+def test_download_falls_back_to_the_working_path_when_called_without_a_command(jira_workspace: Path) -> None:
+    """A direct (non-CLI) caller that omits `output` still gets the working-path default."""
+    _prime(Store.get_instance())
+    client, _ = make_client(_responses([RAW_ISSUES], [], []))
+    working_path = jira_workspace / "workspace_temp"
+    working_path.mkdir()
+
+    with patch("mega_snake.jira_api.issues.ensure_working_path", return_value=str(working_path)):
+        destination = download_board_issues(client=client)
+
+    assert destination == working_path / DEFAULT_OUTPUT_FILE
+    assert destination.is_file()
