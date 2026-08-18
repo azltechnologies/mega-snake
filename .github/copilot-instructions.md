@@ -663,7 +663,7 @@ luck, because nothing on its path happened to print. Now the split is uniform, s
 a value on stdout without auditing every helper it might reach.
 
 **Writing to stdout is therefore a deliberate act**, and only `click.echo` does it, in the few
-commands whose output is consumed by a script (`shell-path`, `get-local-config-path`). The user sees
+commands whose output is consumed by a script (`shell-path`, `get-local-config-path`, `get-local-env-path`). The user sees
 no difference: a terminal shows both streams. `test_every_ws_helper_writes_to_stderr_only` walks the
 whole family and fails naming any helper that regresses.
 
@@ -1103,8 +1103,8 @@ has to run *in the caller's session*. The command's exit status is the request; 
 
 | Code | Request | Emitted by |
 |---|---|---|
-| `29` | Re-source the local config file | `@cli_metadata(reloads_environment=True)`, and the `reload-config` command |
-| `30` | Load an env file | The `load-env` command |
+| `29` | Re-source the local config file | `@cli_metadata(reloads_environment=True)`, and the `reload-config` command. It depends on the `get-local-config-path` command to locate the config file |
+| `30` | Load an env file | The `load-env` command. It depends on the `get-local-env-path` command to locate the env file |
 
 **Who consumes them:** the `mgsnake` **shell function** defined by `config_setup.sh` / `config_setup.ps1`. It calls
 the real executable through `command mgsnake` (bash/zsh) or the resolved application path (PowerShell), captures the
