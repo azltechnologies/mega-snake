@@ -74,6 +74,10 @@ NO_REPO_SCOPE_MESSAGE: str = (
 CORRUPT_STORE_MESSAGE: str = (
     "The {scope} state file at {path} is not valid JSON ({error}). Delete it to start over: {path}"
 )
+NOT_AN_OBJECT_MESSAGE: str = (
+    "The {scope} state file at {path} does not contain a JSON object (found {type}). Delete it to "
+    "start over: {path}"
+)
 MISSING_SETTING_MESSAGE: str = (
     "Missing required setting '{key}'. Set it with: {app} config set {key} <value> "
     "(or export {env_var})."
@@ -143,8 +147,27 @@ def find_git_dir(start: Optional[Path] = None) -> Optional[Path]:
     return None
 
 
+def _validate_key_format(key: str) -> None:
+    """Reject malformed setting names, regardless of what the key is used for.
+
+    Parameters:
+        key: The setting name to validate.
+
+    Raises:
+        click.ClickException: If the key does not follow ``KEY_PATTERN``.
+
+    Returns:
+        None
+    """
+    if not re.match(KEY_PATTERN, key):
+        raise click.ClickException(INVALID_KEY_MESSAGE.format(key=key, pattern=KEY_PATTERN))
+
+
 def _validate_key(key: str) -> None:
     """Reject credential-shaped and malformed setting names before anything is written.
+
+    Only used by ``set``: ``unset`` must still be able to remove a credential-shaped key that ended
+    up in the file some other way (a manual edit, an older bug), so it validates the format only.
 
     Parameters:
         key: The setting name to validate.
@@ -157,8 +180,7 @@ def _validate_key(key: str) -> None:
     """
     if re.search(SECRET_KEY_PATTERN, key):
         raise click.ClickException(SECRET_KEY_MESSAGE.format(key=key))
-    if not re.match(KEY_PATTERN, key):
-        raise click.ClickException(INVALID_KEY_MESSAGE.format(key=key, pattern=KEY_PATTERN))
+    _validate_key_format(key)
 
 
 @dataclass
@@ -291,11 +313,16 @@ class Store:
         values: dict[str, str] = {}
         if path is not None and path.is_file():
             try:
-                values = json.loads(path.read_text(encoding="utf-8") or "{}")
+                decoded: object = json.loads(path.read_text(encoding="utf-8") or "{}")
             except json.JSONDecodeError as error:
                 raise click.ClickException(
                     CORRUPT_STORE_MESSAGE.format(scope=scope, path=path, error=error)
                 ) from error
+            if not isinstance(decoded, dict):
+                raise click.ClickException(
+                    NOT_AN_OBJECT_MESSAGE.format(scope=scope, path=path, type=type(decoded).__name__)
+                )
+            values = decoded
         self._values[scope] = values
         return values
 
@@ -366,6 +393,10 @@ class Store:
     def unset(self, key: str, scope: str = SCOPE_REPO) -> bool:
         """Remove a setting from the given scope.
 
+        Unlike ``set``, a credential-shaped key is allowed here: ``set`` never wrote one, but a
+        manual edit or an older bug could have, and there must be a way to remove it besides editing
+        the state file by hand.
+
         Parameters:
             key: The dotted setting name.
             scope: One of ``SCOPES``.
@@ -377,7 +408,7 @@ class Store:
         Returns:
             bool: True when the setting was present and removed, False when there was nothing to do.
         """
-        _validate_key(key)
+        _validate_key_format(key)
         path: Path = self._require_scope_path(scope)
         values: dict[str, str] = dict(self._load(scope))
         if key not in values:

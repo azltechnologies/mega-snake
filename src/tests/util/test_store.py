@@ -222,6 +222,38 @@ def test_corrupt_store_raises_click_exception_naming_the_path(workspace: Path) -
     assert str(path) in str(error.value)
 
 
+def test_non_object_json_raises_click_exception_naming_the_path(workspace: Path) -> None:
+    """A state file holding a JSON array (or any non-object) must not crash with a raw TypeError."""
+    path = workspace / ".git" / APP_DIR_NAME / STORE_FILE_NAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("[]", encoding="utf-8")
+    Store.reset_instance()
+
+    with pytest.raises(click.ClickException) as error:
+        Store.get_instance().get(DOMAIN_KEY)
+
+    assert str(path) in str(error.value)
+
+
+def test_unset_removes_a_secret_shaped_key_left_over_from_a_manual_edit(workspace: Path) -> None:
+    """`set` never writes a credential-shaped key, but `unset` must still be able to remove one."""
+    path = workspace / ".git" / APP_DIR_NAME / STORE_FILE_NAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"jira.api_token": "leaked"}), encoding="utf-8")
+    Store.reset_instance()
+
+    assert Store.get_instance().unset("jira.api_token", SCOPE_REPO) is True
+    assert Store.get_instance().get("jira.api_token") is None
+
+
+def test_unset_still_rejects_a_malformed_key(workspace: Path) -> None:
+    """Allowing secret-shaped keys through `unset` must not also let malformed ones through."""
+    assert workspace.exists()
+
+    with pytest.raises(click.ClickException):
+        Store.get_instance().unset("not-dotted", SCOPE_REPO)
+
+
 def test_require_names_the_command_that_would_define_the_setting(workspace: Path) -> None:
     """The error has to be actionable: it spells out the exact command to run."""
     assert workspace.exists()
