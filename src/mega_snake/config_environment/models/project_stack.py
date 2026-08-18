@@ -15,7 +15,8 @@ from typing import Iterable, Optional, Protocol, TypeVar
 ALL_STACKS: str = "all"
 
 # Explicitly typed empty values: an inline `()`/`[]`/`{}` inside an enum member tuple leaves the
-# member's type unresolved for the type checker.
+# member's type unresolved for the type checker. The mutable ones are shared by identity across
+# every member that uses them, which is why `__init__` copies them instead of storing them as-is.
 NO_MARKERS: tuple[str, ...] = ()
 NO_IMPLIED: tuple[str, ...] = ()
 NO_EXTENSIONS: list[str] = []
@@ -121,8 +122,10 @@ class ProjectStack(Enum):
         self.key = key
         self.markers = markers
         self.implied_keys = implied_keys
-        self.extensions = extensions
-        self.file_associations = file_associations
+        # Copied, never aliased: several members share the same `NO_EXTENSIONS`/`NO_ASSOCIATIONS`
+        # object, so storing the argument itself would let one member's mutation rewrite the others.
+        self.extensions = list(extensions)
+        self.file_associations = dict(file_associations)
         self.description = description
 
     def __str__(self) -> str:

@@ -6,6 +6,8 @@ from typing import Any
 import pytest
 from mega_snake.config_environment.models.project_stack import (
     ALL_STACKS,
+    NO_ASSOCIATIONS,
+    NO_EXTENSIONS,
     ProjectStack,
     describe_stacks,
     detect_stacks,
@@ -40,6 +42,33 @@ def test_enum_members() -> None:
     assert ProjectStack.GRADLE.implied == (ProjectStack.JAVA,)
     assert ProjectStack.MAVEN.implied == (ProjectStack.JAVA,)
     assert ProjectStack.PYTHON.implied == ()
+
+
+def test_no_stack_shares_its_mutable_fields() -> None:
+    """Test that the empty sentinels are copied, so one stack can never rewrite another"""
+    # every member holds its own objects: several of them are declared with the same sentinel
+    for member in ProjectStack:
+        assert member.extensions is not NO_EXTENSIONS
+        assert member.file_associations is not NO_ASSOCIATIONS
+        for other in ProjectStack:
+            if other is member:
+                continue
+            assert member.extensions is not other.extensions
+            assert member.file_associations is not other.file_associations
+
+    # mutating one member leaves the sentinels and the other members untouched
+    java_extensions: list[str] = list(ProjectStack.JAVA.extensions)
+    node_associations: dict[str, str] = dict(ProjectStack.NODE.file_associations)
+    ProjectStack.MAVEN.extensions.append("some.extension")
+    ProjectStack.PYTHON.file_associations["*.foo"] = "bar"
+    try:
+        assert NO_EXTENSIONS == []
+        assert NO_ASSOCIATIONS == {}
+        assert ProjectStack.JAVA.extensions == java_extensions
+        assert ProjectStack.NODE.file_associations == node_associations
+    finally:
+        ProjectStack.MAVEN.extensions.remove("some.extension")
+        del ProjectStack.PYTHON.file_associations["*.foo"]
 
 
 def test_selectable_keys() -> None:

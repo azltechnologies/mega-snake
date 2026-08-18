@@ -61,7 +61,7 @@ from mega_snake.util.util import (
     "-s",
     "stacks",
     multiple=True,
-    type=click.Choice(selectable_keys()),
+    type=click.Choice(selectable_keys(), case_sensitive=False),
     help="Configure this stack regardless of what the repository looks like, instead of detecting it from the build"
     " files in the current directory. Repeat the option to select several stacks, or pass 'all' to configure every"
     " one of them. A build tool implies its language, so 'gradle' and 'maven' both bring 'java' along.",
@@ -124,11 +124,11 @@ def _execute(git_repo: bool, stacks: tuple[str, ...] = ()) -> None:  # previousl
     if git_repo:
         _git_exclude(working_path)
     initial_load(False)
-    _configure_tools(workspace_file, active_stacks)
+    _configure_tools(workspace_file, active_stacks, bool(stacks))
     _add_default_settings(workspace_file, working_path, active_stacks)
 
 
-def _configure_tools(workspace_file: str, stacks: set[ProjectStack]) -> None:
+def _configure_tools(workspace_file: str, stacks: set[ProjectStack], explicit: bool) -> None:
     """Run the Java, Gradle and Maven configuration steps of the active stacks.
 
     A stack that is not active is reported instead of configured, pointing at the command that sets
@@ -138,6 +138,8 @@ def _configure_tools(workspace_file: str, stacks: set[ProjectStack]) -> None:
     Parameters:
         workspace_file: Path to the workspace settings file.
         stacks: The active stacks.
+        explicit: Whether the stacks were selected through --stack instead of being detected; the
+            skip reason reported to the user depends on it.
 
     Raises:
         None
@@ -148,23 +150,28 @@ def _configure_tools(workspace_file: str, stacks: set[ProjectStack]) -> None:
     if ProjectStack.JAVA in stacks:
         set_java(False, workspace_file)
     else:
-        _skipped_stack_warning(ProjectStack.JAVA, java_command.name)
+        _skipped_stack_warning(ProjectStack.JAVA, java_command.name, explicit)
     if ProjectStack.GRADLE in stacks:
         set_gradle(False, workspace_file)
     else:
-        _skipped_stack_warning(ProjectStack.GRADLE, gradle_command.name)
+        _skipped_stack_warning(ProjectStack.GRADLE, gradle_command.name, explicit)
     if ProjectStack.MAVEN in stacks:
         set_maven(None, workspace_file)
     else:
-        _skipped_stack_warning(ProjectStack.MAVEN, maven_command.name)
+        _skipped_stack_warning(ProjectStack.MAVEN, maven_command.name, explicit)
 
 
-def _skipped_stack_warning(stack: ProjectStack, command_name: Optional[str]) -> None:
+def _skipped_stack_warning(stack: ProjectStack, command_name: Optional[str], explicit: bool) -> None:
     """Report a stack that was skipped and how to configure it anyway.
+
+    The reason has to follow the selection: an explicit --stack replaces the detection entirely, so
+    blaming a missing marker file there would send the user looking for a build file that may well
+    be sitting in the directory.
 
     Parameters:
         stack: The stack that is not part of the workspace.
         command_name: Name of the command that configures the stack on demand, as click knows it.
+        explicit: Whether the stacks were selected through --stack instead of being detected.
 
     Raises:
         None
@@ -172,8 +179,11 @@ def _skipped_stack_warning(stack: ProjectStack, command_name: Optional[str]) -> 
     Returns:
         None
     """
-    markers: str = ", ".join(stack.markers)
-    reason: str = f"no {markers} file found in the current directory" if markers else "no build file revealed it"
+    if explicit:
+        reason: str = "it is not part of the stacks selected with --stack"
+    else:
+        markers: str = ", ".join(stack.markers)
+        reason = f"no {markers} file found in the current directory" if markers else "no build file revealed it"
     ws_warning(
         f"Skipping the {stack.key} configuration: {reason}. "
         f"Run '{APP_NAME} {command_name}' to set the {stack.key} version anyway, "
@@ -262,19 +272,17 @@ def _git_exclude(working_path: str) -> None:
     )
 
 
-def _add_default_settings(
-    workspace_file: str, working_path: str, stacks: Optional[set[ProjectStack]] = None
-) -> None:
+def _add_default_settings(workspace_file: str, working_path: str, active_stacks: set[ProjectStack]) -> None:
     """
     Adds default settings to the workspace file.
 
     Args:
         workspace_file (str): The workspace file path
         working_path (str): The working path
-        stacks (Optional[set[ProjectStack]]): The active stacks; detected from the repository when
-            not provided, so that every artifact written belongs to a stack the project actually uses
+        active_stacks (set[ProjectStack]): The active stacks, so that every artifact written belongs
+            to a stack the project actually uses. Required: a default would let a caller that forgets
+            it write a workspace ignoring the user's --stack selection, with nothing to reveal it
     """
-    active_stacks: set[ProjectStack] = stacks if stacks else resolve_stacks()
     json_data: dict[str, Any] = load_json_with_comments(workspace_file)
     update_file: bool = False
 
@@ -467,7 +475,7 @@ def _update_input_props(json_data: dict[str, Any], stacks: set[ProjectStack]) ->
             snake_query: str = f'.settings.["{key}"]'
             result = jq.compile(snake_query).input(json_data).first()
             if result is None:
-                prompt: str = f"Enter the value a value for {key}"
+                prompt: str = f"Enter a value for {key}"
                 value = get_input_or_default(prompt, value)
                 jq_query = f"{snake_query} = {json.dumps(value)}"
                 json_data = jq.compile(jq_query).input(json_data).first()
