@@ -68,7 +68,7 @@ def execute(filter_by: str, remote: Optional[str] = None) -> None:
     branches: str = run_operation("git branch -a", "Getting remote branches").stdout.strip()
     if not branches:
         raise ValueError("No remote branches found in the current repository")
-    branches = f"{branches}\n remotes/origin/HEAD master"
+    branches = f"{branches}\n remotes/{remote}/HEAD master"
     matches = re.findall(rf"^\s*(remotes/(?!{remote}/HEAD){remote}/.+)$", branches, re.MULTILINE)
     total_branches = len(matches)
     ws_info(f"Main branch: {main_branch}; Found {total_branches} remote branches to process")
