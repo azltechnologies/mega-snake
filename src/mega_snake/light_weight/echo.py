@@ -50,7 +50,7 @@ from mega_snake.util.formatting import Color
      """,
     default="I",
 )
-def echo(message: str, prologue: Optional[str], epilog: Optional[str], type_msg: str) -> None:  # previously echo
+def echo(message: str, prologue: Optional[str], epilog: Optional[str], type_msg: str) -> None:
     """
     Prints a message to the console and logs it into the workspace configuration log file.
 

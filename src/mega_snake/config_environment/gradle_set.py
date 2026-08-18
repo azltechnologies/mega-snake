@@ -34,7 +34,7 @@ from mega_snake.util.formatting import InternalStateError, ws_info, ws_success, 
 )
 @cli_metadata(reloads_environment=True)
 @click.option("--override", "-o", is_flag=True, help="Override the current Gradle version")
-def set_gradle_version(override: bool) -> None:  # previously gradleSet
+def set_gradle_version(override: bool) -> None:
     """
     Calls the execute function to set the Gradle version on the workspace.
 
