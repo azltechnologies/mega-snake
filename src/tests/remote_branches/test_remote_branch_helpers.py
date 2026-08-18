@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, call, mock_open, patch
 import subprocess
 
 import click
@@ -11,7 +11,7 @@ import pytest
 from mega_snake.remote_branches.remote_branch import Commit, RemoteBranch
 from mega_snake.util.formatting import InternalStateError
 from mega_snake.remote_branches.parse_remote_branches import define_branches, parsing_branches, delete_branches
-from mega_snake.remote_branches.details_remote_branches import execute
+from mega_snake.remote_branches.details_remote_branches import execute, get_local_only_branches
 from mega_snake.remote_branches.cleanup_remote_branches import remote_branches_cleanup
 
 
@@ -164,6 +164,101 @@ def test_from_branch_rejects_a_branch_it_cannot_relate_to_the_remote() -> None:
         RemoteBranch.from_branch('"remotes/other/feature"', "A", "main", "origin")
 
 
+def test_from_branch_describes_a_local_only_branch_against_the_remote_main() -> None:
+    """A branch that only exists locally carries no `remotes/<remote>/` prefix, so it must be
+    accepted as its own local name instead of being rejected — and it must still be judged against
+    the remote main reference, never against the local main copy, which may not have seen the merge."""
+    with patch("mega_snake.remote_branches.remote_branch.run_operation") as run_operation:
+        run_operation.side_effect = [
+            SimpleNamespace(stdout="abc123\n"),  # commit hash
+            SimpleNamespace(stdout="msg"),  # commit message
+            SimpleNamespace(stdout="1735689600"),  # commit date
+            SimpleNamespace(stdout="  feature\n  remotes/origin/main"),  # contains check: merged into main
+            SimpleNamespace(stdout="base789"),  # merge-base
+            SimpleNamespace(stdout="author@test.com"),  # mail
+        ]
+        branch = RemoteBranch.from_branch("feature", "M", "main", "origin", local_only=True)
+
+    assert branch is not None
+    assert branch.branch == "feature"
+    assert branch.merged_on_main
+    commands = [issued.args[0] for issued in run_operation.call_args_list]
+    assert "git merge-base feature remotes/origin/main" in commands
+    assert "git merge-base feature main" not in commands
+
+
+def test_from_branch_still_rejects_an_unrelated_remote_reference() -> None:
+    """The local-only escape hatch must not weaken the guard for remote references: one that cannot
+    be related back to the remote it was selected from is still a bug, not a local branch."""
+    with pytest.raises(InternalStateError, match="Unable to parse local branch name"):
+        RemoteBranch.from_branch("remotes/other/feature", "A", "main", "origin", local_only=False)
+
+
+def test_get_local_only_branches_keeps_only_the_untracked_ones() -> None:
+    """Local branches that still exist on the remote are already reported through the remote listing,
+    and the main branch is never a deletion candidate, so both are excluded. Everything else — the
+    branches a remote-only listing structurally cannot see — is kept."""
+    with patch("mega_snake.remote_branches.details_remote_branches.run_operation") as run_operation:
+        run_operation.return_value = SimpleNamespace(
+            stdout="main\nfeature\nmerged-and-pruned\n  spaced-out  \n\n"
+        )
+        local_only = get_local_only_branches(
+            ["remotes/origin/feature", "  remotes/origin/release/1.0  "], "origin", "main"
+        )
+
+    assert local_only == ["merged-and-pruned", "spaced-out"]
+    assert "feature" not in local_only, "a branch that still exists on the remote must not be listed twice"
+    assert "main" not in local_only, "the main branch must never be offered for deletion"
+    run_operation.assert_called_once_with(
+        "git for-each-ref --format='%(refname:short)' refs/heads", "Getting local branches"
+    )
+
+
+def test_get_local_only_branches_without_local_branches() -> None:
+    """A repository whose only local branch is the main one yields no candidates, rather than an
+    empty-string entry from splitting empty output."""
+    with patch("mega_snake.remote_branches.details_remote_branches.run_operation") as run_operation:
+        run_operation.return_value = SimpleNamespace(stdout="")
+        assert get_local_only_branches(["remotes/origin/main"], "origin", "main") == []
+
+
+def test_execute_reports_local_branches_with_no_remote_counterpart() -> None:
+    """A branch merged through a pull request and pruned from the remote survives only locally, so
+    the remote listing cannot see it. It must still reach the report, described as a local-only
+    branch, alongside the branches that do exist on the remote."""
+    remote_branch = RemoteBranch("feature", True, Commit.from_strings("abc", "2025-01-01T00:00:00Z", "msg"), "a@b", "x")
+    local_branch = RemoteBranch("gone", True, Commit.from_strings("def", "2025-01-02T00:00:00Z", "msg"), "a@b", "x")
+    written = mock_open()
+
+    with patch("mega_snake.remote_branches.details_remote_branches.require_remote", return_value="origin"), patch(
+        "mega_snake.remote_branches.details_remote_branches.get_main_branch", return_value="main"
+    ), patch("mega_snake.remote_branches.details_remote_branches.get_property", return_value="/tmp"), patch(
+        "mega_snake.remote_branches.details_remote_branches.os.path.exists", return_value=False
+    ), patch(
+        "mega_snake.remote_branches.details_remote_branches.RemoteBranch.from_branch",
+        side_effect=[remote_branch, local_branch],
+    ) as from_branch, patch(
+        "mega_snake.remote_branches.details_remote_branches.run_operation"
+    ) as run_operation, patch(
+        "builtins.open", written
+    ):
+        run_operation.side_effect = [
+            SimpleNamespace(stdout=""),  # git fetch --all --prune
+            SimpleNamespace(stdout="  main\n  gone\n  remotes/origin/feature"),  # git branch -a
+            SimpleNamespace(stdout="main\ngone"),  # git for-each-ref: 'gone' has no remote counterpart
+            SimpleNamespace(stdout=""),  # code <output file>
+        ]
+        execute("A")
+
+    assert from_branch.call_args_list == [
+        call("remotes/origin/feature", "A", "main", "origin"),
+        call("gone", "A", "main", "origin", local_only=True),
+    ]
+    report = "".join(chunk.args[0] for chunk in written().write.call_args_list)
+    reported = [line.split("|")[4].strip() for line in report.splitlines() if line.strip()]
+    assert reported == ["gone", "feature"], "both sources must reach the report, newest commit first"
+
+
 def test_is_squash_or_rebase_merged_without_common_ancestor() -> None:
     """Without a common ancestor there is nothing to compare, so no git calls are made."""
     with patch("mega_snake.remote_branches.remote_branch.run_operation") as run_operation:
@@ -196,8 +291,11 @@ def test_parse_and_delete_helpers() -> None:
         garbage = parsing_branches([branch_main, branch_feature], "origin")
         assert garbage == ["feature"]
 
-    with patch("mega_snake.remote_branches.parse_remote_branches.run_operation") as run_operation:
+    with patch("mega_snake.remote_branches.parse_remote_branches.require_remote", return_value="origin"), patch(
+        "mega_snake.remote_branches.parse_remote_branches.ref_exists", return_value=True
+    ), patch("mega_snake.remote_branches.parse_remote_branches.run_operation") as run_operation:
         run_operation.return_value.stdout = "deleted"
+        run_operation.return_value.returncode = 0
         delete_branches(["f1"])
         run_operation.side_effect = subprocess.SubprocessError()
         delete_branches(["f2"])
@@ -221,9 +319,10 @@ def test_details_and_cleanup_commands() -> None:
         "builtins.open", mock_open()
     ):
         run_operation.side_effect = [
-            SimpleNamespace(stdout=""),
-            SimpleNamespace(stdout="  remotes/origin/feature"),
-            SimpleNamespace(stdout=""),
+            SimpleNamespace(stdout=""),  # git fetch --all --prune
+            SimpleNamespace(stdout="  remotes/origin/feature"),  # git branch -a
+            SimpleNamespace(stdout="feature"),  # git for-each-ref: only the tracked branch
+            SimpleNamespace(stdout=""),  # code <output file>
         ]
         execute("A")
         with pytest.raises(ValueError):

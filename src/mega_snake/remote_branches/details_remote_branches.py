@@ -16,6 +16,42 @@ def get_output_file() -> str:
     return f"{get_property('working_path')}/remote_branches.txt"
 
 
+def get_local_only_branches(remote_refs: list[str], remote: str, main_branch: str) -> list[str]:
+    """List the local branches that have no counterpart on the remote.
+
+    These are the branches the remote-only listing structurally cannot see, and they are the most
+    common form of dead branch: once a pull request is merged the hosting platform usually deletes the
+    branch, ``git fetch --prune`` drops the remote-tracking reference, and the local branch is left
+    behind forever with nothing left to compare it to. Reporting them here lets the same merge
+    detection — run against ``remotes/{remote}/{main_branch}`` — decide whether they are safe to
+    delete, instead of leaving the user to eyeball ``git branch`` by hand.
+
+    The remote-tracking references already collected by the caller are reused as the exclusion set, so
+    a branch that still exists on the remote keeps being reported once, through the remote listing.
+    The main branch is excluded because it is never a deletion candidate.
+
+    Parameters:
+        remote_refs: The remote references already collected, e.g. ``remotes/origin/feature``.
+        remote: The name of the remote the references belong to.
+        main_branch: The name of the main branch.
+
+    Raises:
+        None
+
+    Returns:
+        list[str]: The local branch names with no counterpart on the remote, in the order git lists them.
+    """
+    tracked: set[str] = {ref.strip().removeprefix(f"remotes/{remote}/") for ref in remote_refs}
+    local_branches: str = run_operation(
+        "git for-each-ref --format='%(refname:short)' refs/heads", "Getting local branches"
+    ).stdout.strip()
+    return [
+        branch
+        for branch in (line.strip() for line in local_branches.splitlines())
+        if branch and branch != main_branch and branch not in tracked
+    ]
+
+
 @click.command(
     name="remote-branches-details",
     short_help="Gets details of remote branches",
@@ -68,7 +104,7 @@ def execute(filter_by: str, remote: Optional[str] = None) -> None:
     branches: str = run_operation("git branch -a", "Getting remote branches").stdout.strip()
     if not branches:
         raise ValueError("No remote branches found in the current repository")
-    branches = f"{branches}\n remotes/origin/HEAD master"
+    branches = f"{branches}\n remotes/{remote}/HEAD master"
     matches = re.findall(rf"^\s*(remotes/(?!{remote}/HEAD){remote}/.+)$", branches, re.MULTILINE)
     total_branches = len(matches)
     ws_info(f"Main branch: {main_branch}; Found {total_branches} remote branches to process")
@@ -84,6 +120,14 @@ def execute(filter_by: str, remote: Optional[str] = None) -> None:
             opt_remote_branches.append(RemoteBranch.from_branch(branch, filter_by, main_branch, remote))
         total_branches -= 1
         ws_info(f"Remaining branches to process: {total_branches}")
+
+    local_only_branches: list[str] = get_local_only_branches(matches, remote, main_branch)
+    ws_info(f"Found {len(local_only_branches)} local branches with no counterpart on '{remote}' to process")
+    for local_branch in local_only_branches:
+        ws_info(f"Processing local-only branch: {local_branch} filtered by: '{filter_by}'")
+        opt_remote_branches.append(
+            RemoteBranch.from_branch(local_branch, filter_by, main_branch, remote, local_only=True)
+        )
 
     remote_branches: list[RemoteBranch] = [x for x in opt_remote_branches if x is not None]
     # sort the remote branches by
