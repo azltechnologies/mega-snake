@@ -575,6 +575,31 @@ local_config_file=$(mgsnake get-local-config-path)
 so the command prints the path and nothing else. Diagnostics go to stderr precisely so this stays
 parseable at any log level.
 
+### get-local-env-path
+
+Prints to stdout the path of the local environment file (.sh or .ps1 depending on the active shell).
+
+**Synopsis:** `mgsnake get-local-env-path [OPTIONS]`
+
+**Aliases:** `lep`
+
+| Option | Description |
+| --- | --- |
+| `-h, --help` | Show this message and exit. |
+
+Resolves the local configuenvration file created by `init-local-config`.
+
+#### Notes
+
+Its stdout is consumed by command substitution inside `config_setup.sh`:
+
+```bash
+local_config_file=$(mgsnake get-local-env-path)
+```
+
+so the command prints the path and nothing else. Diagnostics go to stderr precisely so this stays
+parseable at any log level.
+
 ### load-env
 
 Exports the variables declared in an environment file into the current shell session. The file is a plain list of KEY=value lines: no `export` keyword, one pair per line, `#` starts a comment, and surrounding single or double quotes around a value are stripped.
