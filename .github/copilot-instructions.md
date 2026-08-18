@@ -1181,6 +1181,36 @@ tests and the check catch _different_ failures: the tests catch missing/duplicat
 generated file. **After changing any command metadata, run `mgsnake generate-docs` and commit the regenerated
 `COMMANDS.md` in the same change.**
 
+### 6.4 Formatting (`ruff format`) — the last step before a commit
+
+**Every commit must carry formatted code, and the formatting runs _after_ the suite is green, never before.**
+The order is the rule:
+
+```bash
+uv run pytest          # 1. all tests pass, coverage thresholds met
+uv run ruff format     # 2. only then, format
+uv run ruff check .    # 3. lint still clean, and commit
+```
+
+**Why formatting comes last.** Code that is still failing its tests is code that is still being rewritten, so
+formatting it early only means formatting it twice, and it mixes reflowed lines into the diff you are trying to
+read while debugging. Running it once, on the final shape of the change, keeps the formatting noise in a single
+pass and keeps the review diff about the behaviour that changed. It is also the only order in which a green run
+means anything: the suite you saw pass is the code you are committing, modulo formatting only.
+
+**Why the author has to remember it.** CI runs `ruff check src/mega_snake` (lint) and never `ruff format --check`,
+so unformatted code merges silently — nothing is going to catch this for you. That is exactly how the repository
+accumulated a backlog of files that predate the rule.
+
+**Scope.** `[tool.ruff]` in `pyproject.toml` sets `include = ["src/**/*.py"]` and excludes `src/tests`, so the
+formatter covers `src/mega_snake` only. Test files are outside its scope and must not be reformatted into a
+change.
+
+**Format the files your change already touches — do not sweep unrelated ones into a feature PR.** A bare
+`uv run ruff format` reformats every file that predates this rule, which buries the actual change under unrelated
+reflows and makes the PR unreviewable. Clearing that backlog is legitimate work, but it belongs in a commit of its
+own that does nothing else.
+
 ---
 
 ## 7. Exit Codes & the Shell Reload Signal

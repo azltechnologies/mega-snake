@@ -17,3 +17,7 @@ assets/
 src/tests/util/test_props.py
 workspace_temp
 *.code-workspace
+.venv/
+.pytest_cache
+.mypy_cache
+.ruff_cache
