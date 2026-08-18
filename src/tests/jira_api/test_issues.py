@@ -189,7 +189,9 @@ def test_progress_is_reported_when_not_quiet(jira_workspace: Path, capsys: pytes
 
     download_board_issues(output=str(jira_workspace / "issues.json"), client=client)
 
-    assert "3 issues written to" in capsys.readouterr().out
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "3 issues written to" in captured.err
 
 
 def test_command_defaults_the_output_to_the_working_path(jira_workspace: Path) -> None:
