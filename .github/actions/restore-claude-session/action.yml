@@ -22,6 +22,18 @@ name: Restore Claude Session
 # Note that transcripts are still repository content: anything Claude read during
 # a run is inside them. Keep that in mind before enabling this on a repository
 # that accepts fork PRs.
+#
+# KNOWN LIMITATIONS
+# -----------------
+# * Linux runners only: the transcript lookup here and the pruning in
+#   `save-claude-session` use `find -printf`, which is a GNU extension and is
+#   absent from the BSD `find` shipped by macOS runners.
+# * Two comments posted on the same thread while a run is in flight both restore
+#   the same state and then save under keys of their own, so the chain keeps
+#   whichever finished last and the other turn drops out of the conversation.
+#   Serialising with a workflow-level `concurrency` group would fix that, at the
+#   price of GitHub silently cancelling an already-queued run -- losing a request
+#   outright is worse than losing its history, so the race is left in place.
 description: >-
   Restores the Claude Code conversation state produced by the previous run of the
   same GitHub thread, and reports whether the next `claude` invocation can safely

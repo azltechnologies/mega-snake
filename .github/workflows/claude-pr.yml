@@ -105,6 +105,11 @@ jobs:
           COMMENT_BODY: ${{ github.event.comment.body }}
           REVIEW_BODY: ${{ github.event.review.body }}
         run: |
+          # Both variables come from the triggering event and only one of them is
+          # ever set (a comment or a review, never both), so concatenating them
+          # still reads exactly the text that asked for this run. Contrast with
+          # claude-issue.yml, which has to choose between the comment and the
+          # issue body to avoid making a directive permanent.
           body=$(printf '%s\n%s\n' "$COMMENT_BODY" "$REVIEW_BODY" | tr '[:upper:]' '[:lower:]')
           if printf '%s' "$body" | grep -Eq '@claude[[:space:]]+opus\b'; then
             echo "model=opus" >> "$GITHUB_OUTPUT"
@@ -119,7 +124,13 @@ jobs:
           # Escape hatch for the session persistence below: a conversation that
           # grew too large, or drifted, can be reset from the comment itself
           # instead of waiting for the cache to be evicted.
-          if printf '%s' "$body" | grep -Eq '(new|fresh) session|nueva sesi'; then
+          #
+          # The word boundaries matter: without them "renew session" and
+          # "renewed session" reset the thread too, and a reset is invisible --
+          # Claude simply answers without the history the author expected it to
+          # have. The Spanish branch stops at the "sesi" prefix on purpose, since
+          # the `tr` above is ASCII-only and leaves the accent in "sesión" alone.
+          if printf '%s' "$body" | grep -Eq '\b(new|fresh)[[:space:]]+session\b|\bnueva[[:space:]]+sesi'; then
             echo "fresh=true" >> "$GITHUB_OUTPUT"
           else
             echo "fresh=false" >> "$GITHUB_OUTPUT"
