@@ -55,7 +55,7 @@ dev = [
 ]
 
 [project.urls]
-Repository = "https://github.com/kalin91/mega-snake"
+Repository = "https://github.com/azltechnologies/mega-snake"
 
 [project.scripts]
 # Points at main(), never at cli(): main() is the only place an exception is turned into an exit

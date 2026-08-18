@@ -507,6 +507,82 @@ def test_exclude_from_git_outside_a_git_repository(
     mk_ws_warning.assert_called_once()
 
 
+# ---------------------------------------------------------------------------
+# add_to_gitignore
+# ---------------------------------------------------------------------------
+
+GITIGNORE_ENTRIES: list[tuple[str, str]] = [
+    (".github/skills/mgsnake/", ".github/skills/mgsnake/ folder"),
+    (".claude/skills/mgsnake/", ".claude/skills/mgsnake/ folder"),
+]
+
+
+def test_add_to_gitignore_creates_missing_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_util_ws_success: MagicMock,
+    mk_ws_advice: MagicMock,
+) -> None:
+    """A missing .gitignore file is created when entries are added for the first time."""
+    from mega_snake.util.util import GITIGNORE_FILE, add_to_gitignore
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".git").mkdir()
+
+    add_to_gitignore(GITIGNORE_ENTRIES)
+
+    content = (tmp_path / GITIGNORE_FILE).read_text(encoding="utf-8")
+    assert ".github/skills/mgsnake/" in content.splitlines()
+    assert ".claude/skills/mgsnake/" in content.splitlines()
+    assert mk_util_ws_success.call_count == 2
+    mk_ws_advice.assert_not_called()
+
+
+def test_add_to_gitignore_is_idempotent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_util_ws_success: MagicMock,
+    mk_ws_advice: MagicMock,
+) -> None:
+    """Entries already present in .gitignore are not duplicated."""
+    from mega_snake.util.util import GITIGNORE_FILE, add_to_gitignore
+
+    monkeypatch.chdir(tmp_path)
+    gitignore = tmp_path / GITIGNORE_FILE
+    (tmp_path / ".git").mkdir()
+    gitignore.write_text(".github/skills/mgsnake/\n", encoding="utf-8")
+
+    add_to_gitignore(GITIGNORE_ENTRIES)
+
+    lines = gitignore.read_text(encoding="utf-8").splitlines()
+    assert lines.count(".github/skills/mgsnake/") == 1
+    assert ".claude/skills/mgsnake/" in lines
+    mk_util_ws_success.assert_called_once()
+    mk_ws_advice.assert_called_once()
+
+    # Second full run changes nothing
+    mk_util_ws_success.reset_mock()
+    add_to_gitignore(GITIGNORE_ENTRIES)
+    assert gitignore.read_text(encoding="utf-8").splitlines() == lines
+    mk_util_ws_success.assert_not_called()
+
+
+def test_add_to_gitignore_outside_a_git_repository(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_ws_warning: MagicMock,
+) -> None:
+    """Outside a git repository the additions are skipped with a warning, not an error."""
+    from mega_snake.util.util import GITIGNORE_FILE, add_to_gitignore
+
+    monkeypatch.chdir(tmp_path)
+
+    add_to_gitignore(GITIGNORE_ENTRIES)
+
+    assert not (tmp_path / GITIGNORE_FILE).exists()
+    mk_ws_warning.assert_called_once()
+
+
 def test_ensure_working_path_when_it_exists(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

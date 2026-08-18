@@ -3,6 +3,7 @@
 import click
 
 from mega_snake.docs_gen.generate_docs import generate_docs
+from mega_snake.docs_gen.generate_skill import generate_skill
 from mega_snake.docs_gen.man_page import man
 from mega_snake.util.cli_group import CliGroup
 from mega_snake.util.util import cli_metadata, wrapper_decorator
@@ -31,4 +32,5 @@ def wrapper(_ctx: click.Context, *_args, **_kwargs) -> None:
 add_wrapper = wrapper_decorator(wrapper)
 
 main.add_command(generate_docs)
+main.add_command(generate_skill)
 main.add_command(man)
