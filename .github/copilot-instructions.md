@@ -1203,27 +1203,34 @@ kept: fix the call in the affected file (it is a single line, and the rest of th
 or regenerate it with `init-local-config -o`.
 
 `mgsnake_reload_all` is gone entirely, it showed an unintended behavior.
-Now `__mgsnake_load_env` with no argument provided through `mgsnake load-env`, will search for the default
-`.mgsnake.env` file (in the workspace_temp folder) and load it.
-However, if there's no argument provided and no .mgsnake.env file exists, it will look for a `.env` file in the
-current directory and load it.
-This may be a temporary problematic behavior due to `__mgsnake_load_env` is triggered automatically when a new
-terminal session starts: the user may have happened to be in a directory with a `.env` file that doesn't have a
-`workspace_temp/.mgsnake.env` file, and the wrapper will load that instead unintentionally. We'll preserve this
-behavior for now, but it will be removed in a future release when we provide a persistent layer of configuration
-that will allow the user to turn on/off the triggering of `__mgsnake_load_env` when no argument is provided.
+`__mgsnake_load_env` with no argument, invoked through `mgsnake load-env`, still resolves to the local environment
+file (`.mgsnake.env` under `workspace_temp`, via `local-env-path`) when it exists, and falls back to `.env` in the
+current directory when it does not. That fallback is a deliberate, temporary behavior — see `load-env.md` — kept
+for now and slated for removal once a persistent configuration layer lets the user turn it on or off.
 
-**Open question for that persistence layer: what to do about the double load when the generated local config
+**The startup call at the bottom of `config_setup.sh` / `config_setup.ps1` no longer takes that fallback path,
+though.** It used to call `__mgsnake_load_env` bare (no argument), which meant every new terminal implicitly took
+the same "fall back to `.env` in the current directory" branch as a manual `mgsnake load-env` — except with no
+user action and no way to opt out: opening a terminal (or `source`-ing the profile) in a directory that happens to
+have its own unrelated `.env` exported it, unfiltered, into the session. The startup line now resolves
+`local-env-path` itself and passes it explicitly (`__mgsnake_load_env "$(command mgsnake local-env-path)"` in
+bash, `__mgsnake_load_env -Path (& $global:MegaSnakeExe local-env-path)` in PowerShell), so an absent or
+non-existent local environment file loads nothing at startup instead of falling back. The fallback itself is
+unchanged and still applies to a manually typed `mgsnake load-env` with no argument, where the user asked for it.
+`test_scripts_resolve_the_env_file_explicitly_at_startup` in `test_shell_wrapper.py` pins the startup line so it
+cannot regress back to the bare call.
+
+**Open question for the persistence layer: what to do about the double load when the generated local config
 file still contains its `LOAD_ENV_HELPER` line.** `init-local-config` writes a line into the generated config file
 that calls `LOAD_ENV_HELPER` (`__mgsnake_load_env`) directly, with the absolute path to `.mgsnake.env` (§3.1,
-`local_config.py`). So on every new terminal, the local environment file is loaded **twice**: once when
-`__mgsnake_reload` sources that config file and hits the embedded call, and again immediately after by the
-unconditional, no-argument `__mgsnake_load_env` call at the bottom of `config_setup.sh` / `config_setup.ps1` (which
-resolves to the same file via `local-env-path` since it exists). This is harmless today — the parser is idempotent —
-but it is undocumented duplication, and it only happens when the user keeps that generated line as-is. Whichever
-toggle the persistence layer introduces for the no-argument auto-load must decide what happens to this specific
-case: keep the redundant second call, skip it when the config file already loaded the same file, or stop emitting
-the embedded `LOAD_ENV_HELPER` line in newly generated config files and let the trailing call be the only loader.
+`local_config.py`). So on every new terminal, the local environment file can still be loaded **twice**: once when
+`__mgsnake_reload` sources that config file and hits the embedded call, and again immediately after by the startup
+line above, which resolves to the same file via `local-env-path` since it exists. This is harmless — the parser is
+idempotent, and the arbitrary-directory read that used to accompany it is gone — but it is undocumented
+duplication, and it only happens when the user keeps that generated line as-is. Whichever toggle the persistence
+layer introduces for the no-argument auto-load fallback must still decide what happens to this specific case: keep
+the redundant second call, skip it when the config file already loaded the same file, or stop emitting the
+embedded `LOAD_ENV_HELPER` line in newly generated config files and let the startup line be the only loader.
 Not decided yet.
 
 **This is the link that was cut before.** The historical wrapper wrapped `python3 -m $PY_MODULE` and branched on

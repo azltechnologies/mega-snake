@@ -14,6 +14,7 @@ import subprocess
 from importlib.resources import files
 from pathlib import Path
 
+import click
 import pytest
 from click.testing import CliRunner
 
@@ -131,6 +132,27 @@ def test_scripts_no_longer_define_the_old_public_helpers(script_name: str) -> No
         assert not re.search(pattern, script, re.MULTILINE), (
             f"{script_name} still defines the retired public helper {retired!r}"
         )
+
+
+@pytest.mark.parametrize("script_name", ["config_setup.sh", "config_setup.ps1"])
+def test_scripts_resolve_the_env_file_explicitly_at_startup(script_name: str) -> None:
+    """The startup call must not fall back to an arbitrary `.env` in the terminal's cwd.
+
+    A bare, argument-less call at the bottom of the script would re-enable exactly the exposure
+    `.github/copilot-instructions.md` §7.4 describes: `.env` in whatever directory a new terminal
+    happens to open in gets exported with no prompt and no opt-out. Naming `local-env-path` explicitly
+    on that line is what removes it, since an empty resolved path then loads nothing instead of
+    falling back.
+    """
+    script = _script(script_name)
+    tail = "\n".join(script.rstrip().splitlines()[-3:])
+
+    assert "local-env-path" in tail, (
+        f"{script_name} no longer resolves the local environment file explicitly at startup: {tail!r}"
+    )
+    assert not re.search(r"^__mgsnake_load_env\s*$", tail, re.MULTILINE), (
+        f"{script_name} calls __mgsnake_load_env with no argument at startup again: {tail!r}"
+    )
 
 
 def test_shell_backed_commands_have_no_aliases() -> None:
@@ -417,14 +439,18 @@ def test_load_env_helper_default_resolution_order(
     helper = re.search(r"^__mgsnake_load_env\(\) \{.*?^\}", script, re.MULTILINE | re.DOTALL)
     assert helper, "the load-env helper is no longer defined under its expected name"
 
+    # Each candidate file gets its own, fixed marker -- never derived from `expected_marker` -- so the
+    # assertion can tell *which* file was actually read. Deriving both from the same row value (as this
+    # test used to) makes the assert pass under an inverted precedence too. `local_env_file` is only
+    # written when this row says it should exist; `local-env-path` always resolves to its conventional
+    # path regardless, matching the real command, which never depends on the file actually existing.
     local_env_file = tmp_path / "local.env"
+    if local_env_file_present:
+        local_env_file.write_text("MARKER=local-env-file\n", encoding="utf-8")
     cwd = tmp_path / "cwd"
     cwd.mkdir()
     cwd_dot_env = cwd / ".env"
-    cwd_dot_env.write_text(f"MARKER={expected_marker}\n", encoding="utf-8")
-
-    if local_env_file_present:
-        local_env_file.write_text(f"MARKER={expected_marker}\n", encoding="utf-8")
+    cwd_dot_env.write_text("MARKER=cwd-dot-env\n", encoding="utf-8")
 
     stub_dir = tmp_path / "bin"
     stub_dir.mkdir()
@@ -445,7 +471,7 @@ def test_load_env_helper_default_resolution_order(
     )
 
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip().endswith(expected_marker), (
+    assert result.stdout.strip() == expected_marker, (
         f"expected the {expected_marker!r} file to be the one loaded, got stdout {result.stdout!r}"
     )
 
@@ -504,14 +530,18 @@ def test_pwsh_load_env_helper_default_resolution_order(
     helper = re.search(r"^function __mgsnake_load_env \{.*?^\}", script, re.MULTILINE | re.DOTALL)
     assert helper, "the load-env helper is no longer defined under its expected name"
 
+    # Each candidate file gets its own, fixed marker -- never derived from `expected_marker` -- so the
+    # assertion can tell *which* file was actually read. Deriving both from the same row value (as this
+    # test used to) makes the assert pass under an inverted precedence too. `local_env_file` is only
+    # written when this row says it should exist; `local-env-path` always resolves to its conventional
+    # path regardless, matching the real command, which never depends on the file actually existing.
     local_env_file = tmp_path / "local.env"
+    if local_env_file_present:
+        local_env_file.write_text("MARKER=local-env-file\n", encoding="utf-8")
     cwd = tmp_path / "cwd"
     cwd.mkdir()
     cwd_dot_env = cwd / ".env"
-    cwd_dot_env.write_text(f"MARKER={expected_marker}\n", encoding="utf-8")
-
-    if local_env_file_present:
-        local_env_file.write_text(f"MARKER={expected_marker}\n", encoding="utf-8")
+    cwd_dot_env.write_text("MARKER=cwd-dot-env\n", encoding="utf-8")
 
     stub = tmp_path / "mgsnake_stub.ps1"
     stub.write_text(
@@ -534,7 +564,7 @@ def test_pwsh_load_env_helper_default_resolution_order(
     )
 
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip().endswith(expected_marker), (
+    assert result.stdout.strip() == expected_marker, (
         f"expected the {expected_marker!r} file to be the one loaded, got stdout {result.stdout!r}"
     )
 
@@ -545,7 +575,7 @@ def test_load_env_declares_its_argument_for_documentation() -> None:
     Without the declaration click would reject `mgsnake load-env foo.env` outright, so this is the
     difference between a documented command and a broken one.
     """
-    argument_names = [param.name for param in shell_init.load_env.params if isinstance(param, __import__("click").Argument)]
+    argument_names = [param.name for param in shell_init.load_env.params if isinstance(param, click.Argument)]
 
     assert argument_names == ["env_file"], f"expected a single `env_file` argument, found {argument_names}"
 

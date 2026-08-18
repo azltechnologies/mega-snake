@@ -25,6 +25,9 @@ nothing else.
 It also defines `mgsnake` itself as a thin shell function around the real executable. That function
 is what makes the environment auto-reload work: a command that rewrites one of the local environment
 files exits with status `29`, and only the parent shell can act on it — a child process cannot
-change its parent's environment. The function forwards every argument, returns the real status, and
-calls the executable through `command mgsnake` (or its resolved path on PowerShell), so there is no
-recursion. The only visible difference is that `type mgsnake` reports a function.
+change its parent's environment. The function forwards every argument and calls the executable
+through `command mgsnake` (or its resolved path on PowerShell), so there is no recursion. A served
+`29`/`30` signal is reported to the caller as `0` once the function has carried it out — the signal
+is a request, and propagating it would make every environment command look like a failure to a
+`set -e` script or an `&&` chain; every other status passes through unchanged. The only visible
+difference is that `type mgsnake` reports a function.

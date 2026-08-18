@@ -114,4 +114,7 @@ mgsnake() {
 }
 
 __mgsnake_reload
-__mgsnake_load_env
+# Explicit on purpose: an empty argument here would fall back to whatever `.env` happens to sit in
+# the directory this terminal opened in. Naming the local environment file removes that exposure --
+# see the "no-argument auto-load" note in .github/copilot-instructions.md §7.4.
+__mgsnake_load_env "$(command mgsnake local-env-path)"

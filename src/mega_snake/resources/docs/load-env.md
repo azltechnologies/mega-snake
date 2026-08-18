@@ -48,12 +48,14 @@ A missing file is not an error: nothing is exported and the command stays silent
 
 Called with no `env_file`, the shell first looks for the local environment file (the path
 `local-env-path` prints, e.g. `.mgsnake.env` under `workspace_temp`) and loads that if it exists;
-only when it does not does it fall back to `.env` in the current directory. `config_setup.sh` /
-`config_setup.ps1` call `load-env` with no argument every time a new session starts, so this
-fallback runs automatically on every new terminal — if the local environment file is absent and the
-session happens to start in a directory that has its own unrelated `.env`, that file gets loaded
-without being asked for. This is expected for now; a future release will let this automatic,
-no-argument load be turned on or off.
+only when it does not does it fall back to `.env` in the current directory. That fallback applies
+when you type `mgsnake load-env` yourself with no argument; a future release will let it be turned
+on or off.
+
+`config_setup.sh` / `config_setup.ps1` also load the local environment file automatically every time
+a new session starts, but they do it by resolving `local-env-path` themselves and passing it in
+explicitly, precisely so that automatic, unattended call never takes the `.env`-in-the-current-
+directory fallback — only a local environment file that actually exists gets loaded at startup.
 
 The environment file created by `init-local-config` is already loaded by the generated configuration
 file, so it needs no explicit call here. Use this command for the other ones.

@@ -50,6 +50,10 @@ lives in the GitHub Release body (`gh release create --generate-notes`); this fi
   with `&&` and does not abort a `set -e` script.
 - **`reload-config` and `load-env`.** Re-source the local configuration file, or export the variables declared in
   an environment file, into the shell session you are already in — no new terminal, no `export` per variable.
+- **`local-config-path` and `local-env-path`.** Print the resolved path of the local configuration file or the
+  local environment file (`.mgsnake.env`), so a shell profile or script can locate them without duplicating the
+  resolution logic. (`local-config-path` was briefly named `get-local-config-path` earlier in this same
+  unreleased cycle; nothing under the old name has shipped in a release.)
 - **This changelog.**
 
 ### Changed
