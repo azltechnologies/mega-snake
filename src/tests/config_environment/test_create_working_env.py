@@ -507,6 +507,22 @@ def test_execute(
     mk_resolve_stacks.assert_called_once_with(("maven",))
     mocks_reset()
 
+    # Test that the option is case-insensitive, like every other choice in the CLI
+    result = runner.invoke(create_working_env, ["-s", "MAVEN"])
+    assert result.exit_code == 0
+    mk_resolve_stacks.assert_called_once_with(("maven",))
+    mocks_reset()
+
+    # Test that the explicit selection also reaches the skipped-stack reason
+    mk_resolve_stacks.return_value = PYTHON_STACKS
+    result = runner.invoke(create_working_env, ["-s", "python"])
+    assert result.exit_code == 0
+    assert ws_warning.call_count == 3
+    skip_message: str = ws_warning.call_args_list[0].args[0]
+    assert "not part of the stacks selected with --stack" in skip_message, skip_message
+    assert "no build file revealed it" not in skip_message, skip_message
+    mocks_reset()
+
 
 def test_configure_tools(
     ws_warning: MagicMock,
@@ -519,7 +535,7 @@ def test_configure_tools(
 ) -> None:
     """Test that _configure_tools only runs the setup of the active stacks"""
     # Java without a build tool: only the Java version is configured
-    configure_tools(WK_FILE, {ProjectStack.COMMON, ProjectStack.JAVA})
+    configure_tools(WK_FILE, {ProjectStack.COMMON, ProjectStack.JAVA}, False)
     set_java.assert_called_once_with(False, WK_FILE)
     set_gradle.assert_not_called()
     set_maven.assert_not_called()
@@ -527,7 +543,7 @@ def test_configure_tools(
     reset_mocks(ws_warning, set_java, set_gradle, set_maven)
 
     # Gradle project: Java and Gradle are configured, Maven is reported as skipped
-    configure_tools(WK_FILE, {ProjectStack.COMMON, ProjectStack.JAVA, ProjectStack.GRADLE})
+    configure_tools(WK_FILE, {ProjectStack.COMMON, ProjectStack.JAVA, ProjectStack.GRADLE}, False)
     set_java.assert_called_once_with(False, WK_FILE)
     set_gradle.assert_called_once_with(False, WK_FILE)
     set_maven.assert_not_called()
@@ -539,7 +555,7 @@ def test_configure_tools(
     reset_mocks(ws_warning, set_java, set_gradle, set_maven)
 
     # Maven project: Java and Maven are configured, Gradle is reported as skipped
-    configure_tools(WK_FILE, {ProjectStack.COMMON, ProjectStack.JAVA, ProjectStack.MAVEN})
+    configure_tools(WK_FILE, {ProjectStack.COMMON, ProjectStack.JAVA, ProjectStack.MAVEN}, False)
     set_java.assert_called_once_with(False, WK_FILE)
     set_maven.assert_called_once_with(None, WK_FILE)
     set_gradle.assert_not_called()
@@ -547,12 +563,25 @@ def test_configure_tools(
     reset_mocks(ws_warning, set_java, set_gradle, set_maven)
 
     # No JVM stack at all: the Java warning explains that no build file revealed it
-    configure_tools(WK_FILE, PYTHON_STACKS)
+    configure_tools(WK_FILE, PYTHON_STACKS, False)
     set_java.assert_not_called()
     assert ws_warning.call_count == 3
     java_message: str = ws_warning.call_args_list[0].args[0]
     assert "no build file revealed it" in java_message
     assert "set-java" in java_message
+    reset_mocks(ws_warning, set_java, set_gradle, set_maven)
+
+    # An explicit --stack selection replaces the detection, so the marker files must not be blamed:
+    # they may well be sitting in the directory while the stack was simply left out of the selection
+    configure_tools(WK_FILE, PYTHON_STACKS, True)
+    assert ws_warning.call_count == 3
+    for skipped, call in zip((ProjectStack.JAVA, ProjectStack.GRADLE, ProjectStack.MAVEN), ws_warning.call_args_list):
+        explicit_message: str = call.args[0]
+        assert "not part of the stacks selected with --stack" in explicit_message, explicit_message
+        assert "file found in the current directory" not in explicit_message, explicit_message
+        assert "no build file revealed it" not in explicit_message, explicit_message
+        for marker in skipped.markers:
+            assert marker not in explicit_message, explicit_message
 
 
 def test_get_workspace_file(
@@ -850,7 +879,6 @@ def test_add_default_settings_only_writes_active_stacks(
     ws_success: MagicMock,
     ws_advice: MagicMock,
     get_remote_url: MagicMock,
-    mk_resolve_stacks: MagicMock,
 ) -> None:
     """Nothing belonging to an inactive stack reaches the workspace file"""
     get_remote_url.return_value = "https://github.com/dummy_user/dummy_repo"
@@ -867,10 +895,7 @@ def test_add_default_settings_only_writes_active_stacks(
     file_mock.read.side_effect = read_side_effect
 
     with patch("builtins.open", m_open):
-        # the stacks are detected when the caller does not provide them
-        mk_resolve_stacks.return_value = PYTHON_STACKS
-        add_default_settings(EMPTY_WK_FILE, WK_PATH)
-        mk_resolve_stacks.assert_called_once_with()
+        add_default_settings(EMPTY_WK_FILE, WK_PATH, PYTHON_STACKS)
         result_data: dict[str, Any] = written_workspace(write_mock)
 
     # only the extensions of the active stacks are recommended
@@ -912,13 +937,23 @@ def test_add_default_settings_only_writes_active_stacks(
 
 
 def test_get_recommended_extensions() -> None:
-    """Test that the recommended extensions are collected once and in stack order"""
+    """Test that the recommended extensions are collected once and in stack declaration order"""
     result: list[str] = get_recommended_extensions(ALL_STACKS)
     assert len(result) == len(set(result))
-    expected: list[str] = []
-    for stack in sort_stacks(ALL_STACKS):
-        expected.extend(ext for ext in stack.extensions if ext not in expected)
-    assert result == expected
+    # the stacks are spelled out in declaration order instead of being re-aggregated: re-running the
+    # implementation here would keep the assertion green for the very bug it is meant to catch
+    assert result == [
+        *ProjectStack.COMMON.extensions,
+        *ProjectStack.JAVA.extensions,
+        *ProjectStack.GRADLE.extensions,
+        *ProjectStack.PYTHON.extensions,
+        *ProjectStack.NODE.extensions,
+    ]
+    # the build tool comes after the language it implies, and each id appears exactly once
+    assert get_recommended_extensions({ProjectStack.GRADLE, ProjectStack.JAVA}) == [
+        "vscjava.vscode-java-pack",
+        "vscjava.vscode-gradle",
+    ]
     # a stack that contributes nothing does not change the outcome
     assert get_recommended_extensions({ProjectStack.COMMON, ProjectStack.MAVEN}) == ProjectStack.COMMON.extensions
 
