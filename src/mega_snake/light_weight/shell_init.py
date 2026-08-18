@@ -84,13 +84,13 @@ def get_local_config_path() -> None:
 @click.command(
     name="local-env-path",
     short_help="Prints the current location of the local environment file.",
-    help="Prints to stdout the path of the local environment file (.sh or .ps1 depending on the active shell).",
+    help="Prints to stdout the path of the local environment file.",
     epilog="usage: mgsnake local-env-path",
 )
 def get_local_env_path() -> None:
     """
-    Prints the current location of the local environment file (.sh or .ps1 depending on
-    the active shell). Only the path is written to stdout so the output stays parseable.
+    Prints the current location of the local environment file.
+    Only the path is written to stdout so the output stays parseable.
 
     Returns:
         None
@@ -131,8 +131,9 @@ def reload_config() -> None:
     epilog=f"""
     usage: mgsnake {LOAD_ENV_COMMAND} [env_file]\n
     Args:\n
-        env_file: Optional[str] - Path to the environment file to load. Defaults to `.env` in the
-        current directory.
+        env_file: Optional[str] - Path to the environment file to load. When omitted, the local
+        environment file (see `local-env-path`, e.g. `.mgsnake.env` under workspace_temp) is loaded
+        if it exists; otherwise `.env` in the current directory is loaded instead.
     """,
 )
 @cli_metadata(flags={"no_init"})
@@ -150,7 +151,8 @@ def load_env(env_file: Optional[str]) -> None:  # pylint: disable=unused-argumen
     argument. The value itself is only ever consumed by the shell.
 
     Parameters:
-        env_file: Path to the environment file, or None to let the shell default to `.env`.
+        env_file: Path to the environment file, or None to let the shell fall back first to the
+            local environment file (if it exists) and then to `.env` in the current directory.
 
     Raises:
         SystemExit: Always, carrying LOAD_ENV_EXIT_CODE.

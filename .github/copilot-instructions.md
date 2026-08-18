@@ -7,7 +7,7 @@
 > ### ⚠️ THE FIRST RULE: `mgsnake` IS A PRODUCT FOR ITS USERS, NOT A SCRIPT FOR ITS AUTHOR
 >
 > **Every command is built for the developers who install `mega-snake`, never for this repository's own
-> convenience.** A command must never be shaped, restricted, or special-cased to fit how *this* project
+> convenience.** A command must never be shaped, restricted, or special-cased to fit how _this_ project
 > happens to work.
 >
 > The reasoning is decisive: if the goal were to automate the maintainer's own workflow, `mgsnake` would be
@@ -32,7 +32,7 @@
 >
 > **`generate-docs` and `man` (§3.7) break this rule today.** They introspect **`mgsnake`'s own CLI**
 > (`from mega_snake.__main__ import cli`) and render **`mgsnake`'s own** command reference. A user running
-> `mgsnake generate-docs` in their project gets `COMMANDS.md` describing *mgsnake*, not their tool — the
+> `mgsnake generate-docs` in their project gets `COMMANDS.md` describing _mgsnake_, not their tool — the
 > command is development tooling for this repository, shipped as a public command.
 >
 > This is **accepted technical debt, not a precedent.** The agreed direction is to move every
@@ -45,16 +45,18 @@
 >   else.
 > - When touching `docs_gen`, keep it self-contained so the eventual move stays mechanical.
 >
-> Everything outside `docs_gen` currently honours the rule: `dependency_audit` reads the *user's* lockfiles
-> through ecosystem auto-detection, and `create-release` derives tags from the *user's* GitHub releases —
+> Everything outside `docs_gen` currently honours the rule: `dependency_audit` reads the _user's_ lockfiles
+> through ecosystem auto-detection, and `create-release` derives tags from the _user's_ GitHub releases —
 > neither reads this repository's `pyproject.toml` or `CHANGELOG.md`.
 
 **Core Philosophy:**
+
 - **Zero Config Start**: A developer should be able to run `mgsnake working-env` and have a fully functional IDE state immediately.
 - **Idempotency**: Commands should be safe to run multiple times without destructive side effects unless explicitly requested.
 - **System Integration**: The tool deeply integrates with the OS shell (Bash/Zsh/PowerShell) and external tools (Git, Java, Gradle).
 
 **Tech Stack:**
+
 - **Runtime**: Python 3.13+
 - **CLI Framework**: `click` (Command composition), `rich-click` (Beautiful help text/formatting)
 - **UI/Output**: `colorama` (Terminal colors), `rich` (Tables/Trees)
@@ -70,14 +72,14 @@
 The application uses a `click.Group` with a custom `CliGroup` class to support command aliases. The entry point `cli()` function initializes global application properties before any command runs.
 
 **Critical Pattern: Initialization flags (`no_init` and `skip`)**
-Before invoking a subcommand, `cli()` reads the metadata attached by `@cli_metadata(...)` and decides *how much*
+Before invoking a subcommand, `cli()` reads the metadata attached by `@cli_metadata(...)` and decides _how much_
 initialization to run. There are exactly **three** initialization levels, driven by two flags:
 
-| Flag | Level | `init_app_properties` | Use it when |
-|---|---|---|---|
-| *(none)* | **Full** | Called; `working_path` must exist or the command fails | The command needs a valid workspace (`set-java`, `set-gradle`, …) |
-| `skip` | **Light-weight** | Called with `light_weight=True`; a missing `working_path` is tolerated | The command can run anywhere, but still wants properties/logging when available (`create-release`, `diff-tree`, …) |
-| `no_init` | **None** | **Never called** — `cli()` returns early | The command must work *before* the environment exists at all (`shell-path`) |
+| Flag      | Level            | `init_app_properties`                                                  | Use it when                                                                                                        |
+| --------- | ---------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| _(none)_  | **Full**         | Called; `working_path` must exist or the command fails                 | The command needs a valid workspace (`set-java`, `set-gradle`, …)                                                  |
+| `skip`    | **Light-weight** | Called with `light_weight=True`; a missing `working_path` is tolerated | The command can run anywhere, but still wants properties/logging when available (`create-release`, `diff-tree`, …) |
+| `no_init` | **None**         | **Never called** — `cli()` returns early                               | The command must work _before_ the environment exists at all (`shell-path`)                                        |
 
 ```python
 # src/mega_snake/__main__.py
@@ -99,15 +101,15 @@ def cli(ctx: click.Context, log_level: str) -> None:
 (`_cli_metadata`), so `@cli_metadata(flags={"skip"})` produces
 `getattr(callback, ATTR_METADATA) == {"flags": {"skip"}}`. That is why the entry point reads `metadata.get("flags")`
 and not `metadata` directly — `metadata` is the whole kwargs dict, `"flags"` is just one of its keys (`META_FLAGS`).
-`wrapper_decorator.update_flags` propagates these from both the module wrapper *and* the command callback onto the
+`wrapper_decorator.update_flags` propagates these from both the module wrapper _and_ the command callback onto the
 wrapping command, which is what makes a module-level `@cli_metadata(flags={"skip"})` apply to every command in the
 module.
 
 **When `no_init` is the only option**
 `no_init` exists for the **bootstrap problem**, not as a "lighter light-weight". Full and light-weight initialization
 both require `MEGA_SNAKE_SHELL`, and `cli()` raises `EnvironmentError` when it is unset. But that variable is exported
-by `config_setup.sh`, and the user's shell profile has to run `mgsnake shell-path bash` *to find that script in the
-first place* — so at that moment the variable does not exist yet. Returning early is the only way `shell-path` can
+by `config_setup.sh`, and the user's shell profile has to run `mgsnake shell-path bash` _to find that script in the
+first place_ — so at that moment the variable does not exist yet. Returning early is the only way `shell-path` can
 answer. Consequences for any `no_init` command:
 
 - `AppProperties` is never constructed: `get_property()`, `working_path`, `log_file` and the `.code-workspace` are all
@@ -115,13 +117,13 @@ answer. Consequences for any `no_init` command:
 - Nothing is logged to file, and the `ws_*` helpers are pointless — `shell-path` deliberately uses `click.echo` because
   its stdout is consumed by command substitution (`. "$(mgsnake shell-path bash)"`) and must stay clean.
 
-**Keep `no_init` stdout clean.** Anything a shell captures with `$(...)` must print *only* the value. `ws_advice` is
+**Keep `no_init` stdout clean.** Anything a shell captures with `$(...)` must print _only_ the value. `ws_advice` is
 level-gated (it checks `logger.level`), so it is silent when logging was never configured — but that is a property of
 the current initialization order, not a guarantee. Never add unconditional `ws_*` output to a command whose stdout is
 consumed by a script.
 
 **What light-weight mode (`skip`) actually defers**
-When `working_path` (e.g. `workspace_temp`) is missing, `AppProperties.__init__` raises `FileNotFoundError` *after* setting
+When `working_path` (e.g. `workspace_temp`) is missing, `AppProperties.__init__` raises `FileNotFoundError` _after_ setting
 `resources_path`, `working_path`, `local_config_file`, `local_env_file`, `shell` and a best-effort `workspace_file`.
 `init_app_properties` swallows that error when `light_weight=True`, which leaves **unset**: the `_log_level` attribute,
 `log_file`, `graphql_schema_file` and the `__post_init__` validation — and skips `formatting.config_log`, so nothing is
@@ -131,13 +133,13 @@ Console output is unaffected: every `ws_*` helper in `formatting.py` calls `prin
 always talks to the user regardless of whether logging is configured. That is the decoupling light-weight mode relies on.
 
 **Completing a deferred initialization (`complete_app_properties`)**
-Commands that are light-weight but *do* need the working path (see the pre-flight wrappers below) call
+Commands that are light-weight but _do_ need the working path (see the pre-flight wrappers below) call
 `complete_app_properties()` right after securing the folder. It finishes exactly where `__init__` stopped
 (`_log_level`, `log_file`, `graphql_schema_file`, `config_log`) and is idempotent, so it is a no-op after a full
 initialization. `_check_forbidden_execution` treats `complete_initialization` as part of the initialization
 (`INITIALIZATION_METHODS`), which is what allows the init-only validators to run from there.
 
-**Rule of thumb:** a command may be light-weight *and* depend on `working_path` only if its wrapper offers to create the
+**Rule of thumb:** a command may be light-weight _and_ depend on `working_path` only if its wrapper offers to create the
 folder and fails with a clean `click.ClickException` when the user declines. Never let it reach the command body without it.
 
 ### 2.2 Command Registration & Aliases (`src/mega_snake/util/cli_group.py`)
@@ -145,6 +147,7 @@ folder and fails with a clean `click.ClickException` when the user declines. Nev
 We do not standard `click` alias implementation. We use `CliGroup` to register commands with multiple names.
 
 **Usage:**
+
 ```python
 # Registration in __main__.py
 from .diff_tree.module import main as diff_tree
@@ -168,7 +171,7 @@ command under the `aliases` attribute, and it registers one extra `click.Command
   `cmd.hidden` and folds the aliases back in.
 
 **Names and aliases are unique, and the CLI refuses to start otherwise.** Click's registry is a plain dict, so a
-second registration under an existing name *replaces* the first one: the shadowed command becomes unreachable while
+second registration under an existing name _replaces_ the first one: the shadowed command becomes unreachable while
 its own unit tests keep passing, because they exercise the command object directly and never go through the registry.
 That is not hypothetical — it is how a duplicate `scan-dependencies` implementation once shipped with 100% coverage on
 code that could never run. `CliGroup.add_command` and the alias registration therefore both call `__reject_duplicate`,
@@ -186,19 +189,19 @@ owning command instead of at `cli_group`'s own module.
 **Attribute constants.** `cli_group.py` owns the names of every custom attribute the CLI hangs on commands and
 callbacks. Import them instead of writing the string literal:
 
-| Constant | Value | Meaning |
-|---|---|---|
-| `ATTR_METADATA` | `"_cli_metadata"` | Attribute where `@cli_metadata` stores **all** its kwargs. |
-| `META_FLAGS` | `"flags"` | Metadata **key** holding the initialization flags (`skip` / `no_init`), inside the dict stored under `ATTR_METADATA`. Deliberately a different string from `ATTR_METADATA` — see §2.1. |
-| `ATTR_ALIAS` | `"aliases"` | The alias list, read by rich-click and by the docs iterator. |
-| `ATTR_DOCS` | `"docs_fragment"` | Overrides the fragment filename (defaults to the command name). |
-| `ATTR_GROUP` | `"docs_group"` | Overrides the documentation group title (see §3.7). |
+| Constant        | Value             | Meaning                                                                                                                                                                                |
+| --------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ATTR_METADATA` | `"_cli_metadata"` | Attribute where `@cli_metadata` stores **all** its kwargs.                                                                                                                             |
+| `META_FLAGS`    | `"flags"`         | Metadata **key** holding the initialization flags (`skip` / `no_init`), inside the dict stored under `ATTR_METADATA`. Deliberately a different string from `ATTR_METADATA` — see §2.1. |
+| `ATTR_ALIAS`    | `"aliases"`       | The alias list, read by rich-click and by the docs iterator.                                                                                                                           |
+| `ATTR_DOCS`     | `"docs_fragment"` | Overrides the fragment filename (defaults to the command name).                                                                                                                        |
+| `ATTR_GROUP`    | `"docs_group"`    | Overrides the documentation group title (see §3.7).                                                                                                                                    |
 
 `CliGroup.add_command` resolves `ATTR_DOCS`/`ATTR_GROUP` onto the command at registration time, so every command has
 them by the time anything iterates the registry.
 
 **Group title resolution is decided by provenance, never by the shape of the string.** An explicit title (set via
-`@cli_metadata(docs_group=...)` or already present on the command) is used **verbatim**; only a title *derived* from
+`@cli_metadata(docs_group=...)` or already present on the command) is used **verbatim**; only a title _derived_ from
 the module path is reformatted with `.title()`, because there the raw value is an identifier like `remote_branches`.
 Do not reintroduce heuristics such as "if it contains a space it must already be a title" — `docs_group="GraphQL"`
 would silently become `"Graphql"`.
@@ -208,13 +211,14 @@ would silently become `"Graphql"`.
 Each functional module (e.g., `config_environment`) exposes an `add_wrapper` decorator. This allows module-specific checks to run before the command execution, keeping the core logic clean.
 
 **Example from `src/mega_snake/config_environment/module.py`:**
+
 ```python
 def wrapper(_ctx: click.Context, *_args, **_kwargs) -> None:
     # Pre-flight check: verify we're in a valid workspace
     if not get_workspace_folder():
         raise RuntimeError("Not in a valid workspace.")
 
-add_wrapper = wrapper_decorator(wrapper) 
+add_wrapper = wrapper_decorator(wrapper)
 
 # Usage in __main__.py
 for command in config_environment.commands.values():
@@ -247,16 +251,19 @@ and the failure will only show up much later (e.g. a command landing in the wron
 This is the most complex module, responsible for generating `.code-workspace` files. It configures the "settings" section of the workspace file directly, avoiding reliance on `.vscode/settings.json`.
 
 #### `working-env`
-- **Logic**: 
-    1. Validates Git repository status.
-    2. Loads local developer overrides (`initial_load`).
-    3. Configures Java (`set-java`) and Gradle (`set-gradle`).
-    4. Generates VS Code tasks, launch configurations, and recommendations.
+
+- **Logic**:
+  1. Validates Git repository status.
+  2. Loads local developer overrides (`initial_load`).
+  3. Configures Java (`set-java`) and Gradle (`set-gradle`).
+  4. Generates VS Code tasks, launch configurations, and recommendations.
 
 #### `set-java` (`java_set.py`)
+
 Manages the `java.configuration.runtimes` and `terminal.integrated.env` settings in VS Code.
 
 **Key Logic:**
+
 - It parses the `.code-workspace` file (as JSON with comments).
 - It queries the OS for installed JDKs.
 - It updates the `settings` structure inside the workspace file to point `JAVA_HOME` to the selected version.
@@ -271,9 +278,11 @@ JAVA_JQ_QUERY = f'.settings["{ENV_VARIABLE}"].JAVA_HOME'
 ```
 
 #### `set-gradle` (`gradle_set.py`)
+
 Like `set-java`, this configures the Gradle version for the workspace.
 
 **Key Logic:**
+
 - It identifies installed Gradle versions via `ToolVersion` abstraction.
 - It updates `java.import.gradle.home` and `terminal.integrated.env` settings.
 - It ensures consistency between the terminal environment and the IDE's internal Gradle wrapper.
@@ -282,6 +291,7 @@ Like `set-java`, this configures the Gradle version for the workspace.
 Both `set-java` and `set-gradle` modify the `.code-workspace` file which contains comments. The standard python `json` library fails on comments. We use a custom `load_json_with_comments` utility to handle VS Code's configuration format safely without stripping comments, which are vital for developers understanding the config.
 
 #### `init-local-config` (`local_config.py`)
+
 Creates a local developer-specific configuration file that is **ignored by Git**.
 
 **Why?**
@@ -290,6 +300,7 @@ Developers often have machine-specific tokens, paths, or aliases that shouldn't 
 ### 3.2 Git Utilities (`src/mega_snake/diff_tree/`)
 
 #### `diff-tree` (`dt`)
+
 Generates a visual tree representation of changed files.
 
 **Module layout** (same shape as every other module): `diff_tree/diff_tree.py` holds the command and its helpers,
@@ -298,6 +309,7 @@ Generates a visual tree representation of changed files.
 the same pre-flight check as the command.
 
 **Implementation Details:**
+
 - **Both ends of the comparison are movable.** `-o | --origin-hash` replaces the base (master by default) and
   `-t | --target-hash` replaces the far end (HEAD by default); `_validate_commit` is shared by both, so a reference
   that resolves to a tree or a blob is rejected before any diff runs. `--target-hash` is refused for the `s`/`u` scopes:
@@ -337,15 +349,18 @@ for diff in diff_str.split("\n"):
 ### 3.3 Remote Branch Management (`src/mega_snake/remote_branches/`)
 
 #### `remote-branches-details`
+
 Analyzes remote branches to suggest cleanup candidates.
 
 **Filtering Logic (`-f` flag):**
+
 - **'M' (Merged)**: Branches that have been merged into `master`.
 - **'U' (Unmerged)**: Branches with unique commits not in `master`.
 - **'A' (All)**: Both.
 
-**Merge detection (`RemoteBranch.from_branch`)** — a branch counts as merged when *any* of these holds, checked in
+**Merge detection (`RemoteBranch.from_branch`)** — a branch counts as merged when _any_ of these holds, checked in
 order and against `remotes/{remote}/{main_branch}` (never the possibly stale local branch):
+
 1. **Ancestry**: `git branch -a --contains <tip>` lists the main branch. Only catches real merges and fast-forwards.
 2. **Rebase merge** (`_is_rebase_merged`): `git cherry <main_ref> <branch>` marks **every** branch commit with `-`,
    meaning each one is already applied on main by patch id under a different hash.
@@ -360,9 +375,11 @@ silently misses the other style. Both are skipped when there is no merge-base, a
 It creates `workspace_temp/remote_branches.txt` containing detailed metadata (author, last commit date, ahead/behind count) for every branch.
 
 #### `remote-branches-cleanup`
+
 An interactive tool that consumes the output of `remote-branches-details`.
 
 **Logic:**
+
 1. Allows re-running `remote-branches-details` to refresh data.
 2. Reads `workspace_temp/remote_branches.txt`.
 3. Presents an interactive list to the user to select branches for deletion.
@@ -381,14 +398,15 @@ Both commands are light-weight (`skip`) but need a remote and the working path, 
 Automates GitHub releases, creating tags and proper GitHub Release entries.
 
 **Arguments:**
+
 - `tag_suffix`: e.g., `v1.0.0-{suffix}`
 - `release_type`:
-    - `p`: Prerelease (`--prerelease`)
-    - `l`: Latest (`--latest`) — asks for confirmation before creating a new latest release
-    - `r`: Regular release (`--latest=false`) — publishes **without** taking the `latest` mark; if GitHub moves the
-      `latest` pointer anyway, the command restores it to the previous latest release
+  - `p`: Prerelease (`--prerelease`)
+  - `l`: Latest (`--latest`) — asks for confirmation before creating a new latest release
+  - `r`: Regular release (`--latest=false`) — publishes **without** taking the `latest` mark; if GitHub moves the
+    `latest` pointer anyway, the command restores it to the previous latest release
 
-The three types are explained in prose in `resources/docs/create-release.md` (by their *effect* — which version
+The three types are explained in prose in `resources/docs/create-release.md` (by their _effect_ — which version
 users land on — not as a flag list, since the synopsis already shows `{p|r|l}`). The `epilog=` documents only the
 positional arguments, per §3.7.
 
@@ -407,15 +425,17 @@ We use the `gh` (GitHub CLI) tool because it leverages the user's existing authe
 ```
 
 **Educational Logic:**
-Instead of re-implementing the GitHub API client (which requires managing OAuth tokens, permissions, etc.), we delegate the heavy lifting to the `gh` binary. This is a common "shell wrapper" pattern where Python manages the *control flow* and *validation*, but the shell executes the *remote action*.
+Instead of re-implementing the GitHub API client (which requires managing OAuth tokens, permissions, etc.), we delegate the heavy lifting to the `gh` binary. This is a common "shell wrapper" pattern where Python manages the _control flow_ and _validation_, but the shell executes the _remote action_.
 
 ### 3.5 Dependency Vulnerability Audit (`src/mega_snake/dependency_audit/`)
 
 #### `scan-dependencies` (`sdep`, `audit`)
+
 Scans the project's locked dependencies for known vulnerabilities, across multiple ecosystems, and files a GitHub
 issue per new finding.
 
 **Logic:**
+
 1. `scanner.py` defines a `DependencyAuditor` protocol (`scan() -> list[Vulnerability]`) with two implementations:
    - `PipAuditAuditor`: exports `uv.lock` to a requirements file (`uv export`) and runs `pip-audit` against it
      (Python/uv projects).
@@ -446,23 +466,27 @@ itself is consumed from `mega-snake`.
 ### 3.6 Other Utilities
 
 #### `graphql-schema` (`graphql_schema.py`)
+
 Compiles multiple `.graphql` files into a single schema and generates introspection JSON.
 
 **Why introspection?**
 Frontend tools (like Apollo) and IDE plugins often require a full introspection result (`schema.json`) to provide autocompletion and type checking, not just the raw SDL string.
 
 #### `expired-certs-jks` (`jks_expired_certs.py`)
+
 Audits Java KeyStore (JKS) files for expired certificates using `keytool`.
 
 **Technical Challenge:**
 Parsing the output of `keytool -v -list` is non-trivial because the date format depends on the system locale and standard Java output formats. The tool attempts to parse these formats to warn developers before their local dev environments break due to expired SSL certs.
 
 #### `msg` (`echo.py`)
+
 Exposes the internal logging mechanism to the shell. Used by `config_setup.sh` to print consistent success/error messages from shell scripts.
 
 ### 3.7 Command Reference Generation (`src/mega_snake/docs_gen/`)
 
 #### `generate-docs`
+
 Generates `COMMANDS.md` — the full command reference — by introspecting the live Click objects and appending the
 hand-written fragments from `resources/docs/` (§6.3).
 
@@ -473,13 +497,13 @@ other, and two tests enforce it (§6.3).
 
 **Module layout** (same shape as every other module):
 
-| File | Responsibility |
-|---|---|
-| `docs_gen/introspect.py` | Walks the CLI and normalizes it into `IntrospectedCommand` dataclasses. Owns `normalize_help()` and `normalize_epilog()`. |
-| `docs_gen/markdown_writer.py` | Pure rendering: dataclasses → Markdown. Owns the table-escaping helpers and `write_or_check_document()`. |
-| `docs_gen/generate_docs.py` | The `generate-docs` Click command only. |
-| `docs_gen/man_page.py` | The `man` Click command: alias resolution, terminal rendering, paging. |
-| `docs_gen/module.py` | The `CliGroup`, the `wrapper` (carrying `docs_group="Documentation"`) and `add_wrapper`. |
+| File                          | Responsibility                                                                                                            |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `docs_gen/introspect.py`      | Walks the CLI and normalizes it into `IntrospectedCommand` dataclasses. Owns `normalize_help()` and `normalize_epilog()`. |
+| `docs_gen/markdown_writer.py` | Pure rendering: dataclasses → Markdown. Owns the table-escaping helpers and `write_or_check_document()`.                  |
+| `docs_gen/generate_docs.py`   | The `generate-docs` Click command only.                                                                                   |
+| `docs_gen/man_page.py`        | The `man` Click command: alias resolution, terminal rendering, paging.                                                    |
+| `docs_gen/module.py`          | The `CliGroup`, the `wrapper` (carrying `docs_group="Documentation"`) and `add_wrapper`.                                  |
 
 `generate-docs` is `@cli_metadata(flags={"no_init"})`: it needs no workspace, no git and no `MEGA_SNAKE_SHELL`, so it
 resolves the packaged fragments through `importlib.resources` and must never call `get_property()`. It imports the
@@ -494,10 +518,10 @@ failure on Windows.
 Pages the same reference in the terminal — the whole document, or one command when `mgsnake man [COMMAND]` names one.
 Also `no_init`, and it imports the root `cli` lazily for the same reason.
 
-**It renders in memory; it never reads `COMMANDS.md`.** That file is committed to the repository but is *not* shipped
+**It renders in memory; it never reads `COMMANDS.md`.** That file is committed to the repository but is _not_ shipped
 in the wheel (`packages = ["src/mega_snake"]` only sweeps in the package tree, and `COMMANDS.md` sits at the repo
 root). Reading it would produce a command that works in a source checkout and fails for every installed user — the
-exact class of bug that never shows up in development. The fragments *are* packaged, so introspection plus
+exact class of bug that never shows up in development. The fragments _are_ packaged, so introspection plus
 `importlib.resources` is the only source that exists in both environments.
 
 **Nothing is installed to `/usr/share/man`.** `uv tool install` and `pipx` create an isolated environment and copy
@@ -544,12 +568,12 @@ re-emits it as `####`** — so a fragment section always ends up nested under it
 ## Git & Release Management   <- the next group, back at level 2
 ```
 
-| Level | What lives there | Written by |
-|---|---|---|
-| `#` | Document title (`# Available Commands`) | The writer (`GROUP_HEADING`) |
-| `##` | Documentation group | The writer, from `docs_group` |
-| `###` | Command name | The writer, from the registered command name |
-| `####` | Fragment sections (`Output`, `Examples`, `Notes`) | **You**, as `##` in the fragment file |
+| Level  | What lives there                                  | Written by                                   |
+| ------ | ------------------------------------------------- | -------------------------------------------- |
+| `#`    | Document title (`# Available Commands`)           | The writer (`GROUP_HEADING`)                 |
+| `##`   | Documentation group                               | The writer, from `docs_group`                |
+| `###`  | Command name                                      | The writer, from the registered command name |
+| `####` | Fragment sections (`Output`, `Examples`, `Notes`) | **You**, as `##` in the fragment file        |
 
 So: **never write `###` or `####` in a fragment to start a section.** Write `##` and let
 `_render_fragment()` shift it down. Getting this wrong makes a fragment section outrank the command it documents,
@@ -561,17 +585,17 @@ pin it: `test_generate_docs_renders_fragment_sections_below_the_command_heading`
 
 This is the contract every command must satisfy. **When adding or changing a command, walk this table top to bottom.**
 
-| # | Source | Rendered as | What to put there |
-|---|---|---|---|
-| 1 | `short_help=` | *(not in `COMMANDS.md`)* — the description column of `mgsnake --help` | One line, under ~60 chars, verb-first ("Creates a new release on GitHub…"). It is what a user scanning the command list reads. |
-| 2 | `help=` | The paragraph under the command heading | **Mandatory and explicit.** One or two sentences saying what the command does and, when it is not obvious, *how*. Never omit it: Click would fall back to the callback docstring and publish a "Parameters: …" block into the reference. A test enforces this. |
-| 3 | *(derived)* | `**Synopsis:** mgsnake <cmd> [OPTIONS] ARGS` | Nothing to write — generated from `Command.get_usage()`. Never restate it by hand. |
-| 4 | `aliases` | `**Aliases:** ...` | Set through `add_command_with_alias`. Prefer short, memorable aliases; they are the daily-use form. |
-| 5 | option `help=` | The options table | **The single source of truth for every flag.** Put the *full* explanation here, including allowed values and what each one means. This is the field to enrich when a flag is hard to understand — not the epilog. |
-| 6 | `show_default=True` | `[default: x]` in the table | Use it whenever a default is meaningful to the reader (e.g. `--password` defaulting to `changeit`). Cheaper and drift-proof compared to writing the default into the help text. |
-| 7 | `epilog=` | A bullet list / paragraph after the table | **Positional arguments only** (Click never tabulates them) plus anything genuinely extra. See the rules below. |
-| 8 | `resources/docs/<cmd>.md` | The prose after everything else | The "why", outputs on disk, examples and caveats (§6.3). |
-| 9 | `docs_group` | The `##` section grouping commands | Optional; defaults to the module name titled. Set it when the module name is not a good public title. |
+| #   | Source                    | Rendered as                                                           | What to put there                                                                                                                                                                                                                                              |
+| --- | ------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `short_help=`             | _(not in `COMMANDS.md`)_ — the description column of `mgsnake --help` | One line, under ~60 chars, verb-first ("Creates a new release on GitHub…"). It is what a user scanning the command list reads.                                                                                                                                 |
+| 2   | `help=`                   | The paragraph under the command heading                               | **Mandatory and explicit.** One or two sentences saying what the command does and, when it is not obvious, _how_. Never omit it: Click would fall back to the callback docstring and publish a "Parameters: …" block into the reference. A test enforces this. |
+| 3   | _(derived)_               | `**Synopsis:** mgsnake <cmd> [OPTIONS] ARGS`                          | Nothing to write — generated from `Command.get_usage()`. Never restate it by hand.                                                                                                                                                                             |
+| 4   | `aliases`                 | `**Aliases:** ...`                                                    | Set through `add_command_with_alias`. Prefer short, memorable aliases; they are the daily-use form.                                                                                                                                                            |
+| 5   | option `help=`            | The options table                                                     | **The single source of truth for every flag.** Put the _full_ explanation here, including allowed values and what each one means. This is the field to enrich when a flag is hard to understand — not the epilog.                                              |
+| 6   | `show_default=True`       | `[default: x]` in the table                                           | Use it whenever a default is meaningful to the reader (e.g. `--password` defaulting to `changeit`). Cheaper and drift-proof compared to writing the default into the help text.                                                                                |
+| 7   | `epilog=`                 | A bullet list / paragraph after the table                             | **Positional arguments only** (Click never tabulates them) plus anything genuinely extra. See the rules below.                                                                                                                                                 |
+| 8   | `resources/docs/<cmd>.md` | The prose after everything else                                       | The "why", outputs on disk, examples and caveats (§6.3).                                                                                                                                                                                                       |
+| 9   | `docs_group`              | The `##` section grouping commands                                    | Optional; defaults to the module name titled. Set it when the module name is not a good public title.                                                                                                                                                          |
 
 **Rules for `epilog=` (important, this is the subtle one).** Epilogs in this repo predate the generator, and used to
 re-document by hand what is now generated. `normalize_epilog()` therefore **drops** any paragraph that is:
@@ -593,6 +617,7 @@ Args:\n
     branch: Optional[str] - branch to create the release from. Default is the current branch.
 """
 ```
+
 → renders as `- \`branch\` — branch to create the release from. Default is the current branch.`
 
 **Never move detail out of an option `help=` into an epilog.** If a flag needs a long explanation, the explanation
@@ -606,7 +631,7 @@ Click/rich help strings carry `\b` markers, manual `\n` wrapping and leading ind
 - `normalize_help()` — strips `\b`, dedents, and collapses each paragraph's manual line breaks into one line while
   keeping blank-line paragraph separation.
 - Table cells get extra treatment, because a Markdown table row **ends at the first newline** and is split on `|`
-  *before* any inline parsing:
+  _before_ any inline parsing:
   - `_to_single_cell_line()` folds newlines into `<br>` (this is what keeps the multi-line choice lists of
     `--filter-by` and `--type-msg` from tearing the table apart);
   - `_escape_markdown_cell()` escapes `\` and `|` for prose cells;
@@ -652,7 +677,7 @@ in CI, so any instability turns into spurious failures.
 
 #### ⚠️ Every `ws_*` helper writes to **stderr**. stdout belongs to the command's output.
 
-stdout carries what a command *produces* — the value a caller consumes. Progress, status and
+stdout carries what a command _produces_ — the value a caller consumes. Progress, status and
 diagnostics are not that, and POSIX puts them on stderr precisely so the two can be separated:
 `mgsnake cmd 2>/dev/null` keeps the payload, and `$(mgsnake cmd)` captures the payload alone. Neither
 works while a status line shares the stream with the result.
@@ -683,6 +708,7 @@ separate from property management and is documented under `init-local-config` (�
 #### Configuration layers (internal, for reference)
 
 When initialized, `AppProperties` reads from three layers (lowest to highest priority):
+
 1. **Hardcoded Defaults** — built into the Python code as constants or fallback values.
 2. **`src/config.properties`** — a static file committed to this repository, used only by internal tooling and tests.
 3. **Local Overrides** — an optional, git-ignored shell script sourced by the user's shell profile (documented in
@@ -697,13 +723,13 @@ resolve packaged files through `importlib.resources` and the constants below ins
 
 Shared literals live here; **never hardcode these strings**. Relevant to packaged-resource lookups:
 
-| Constant | Value | Used for |
-|---|---|---|
-| `APP_NAME` | `"mgsnake"` | The user-facing command name (help text, synopsis). |
-| `MODULE_NAME` | `"mega_snake"` | `importlib.resources.files(MODULE_NAME)` — the package root. |
-| `RESOURCES_DIR` / `DOCS_DIR` | `"resources"` / `"docs"` | The packaged docs fragment directory. |
-| `DOCS_FILE_SUFFIX` | `".md"` | Fragment file extension. |
-| `DOCS_OUTPUT_FILE` | `"COMMANDS.md"` | Default target of `generate-docs`. |
+| Constant                     | Value                    | Used for                                                     |
+| ---------------------------- | ------------------------ | ------------------------------------------------------------ |
+| `APP_NAME`                   | `"mgsnake"`              | The user-facing command name (help text, synopsis).          |
+| `MODULE_NAME`                | `"mega_snake"`           | `importlib.resources.files(MODULE_NAME)` — the package root. |
+| `RESOURCES_DIR` / `DOCS_DIR` | `"resources"` / `"docs"` | The packaged docs fragment directory.                        |
+| `DOCS_FILE_SUFFIX`           | `".md"`                  | Fragment file extension.                                     |
+| `DOCS_OUTPUT_FILE`           | `"COMMANDS.md"`          | Default target of `generate-docs`.                           |
 
 Command-local literals (e.g. `CONFIG_SCRIPT` in `shell_init.py`, `GROUP_HEADING` in `markdown_writer.py`) stay in
 their own module — `constants.py` is for values shared across modules.
@@ -714,7 +740,7 @@ Use `run_operation` for ALL shell commands. It handles logging, error capturing,
 
 ```python
 result = run_operation(
-    command="git fetch --all", 
+    command="git fetch --all",
     message="Fetching remotes" # This is logged to console/file
 )
 if result.returncode != 0:
@@ -723,12 +749,12 @@ if result.returncode != 0:
 
 **Shared helpers — always reuse these, never reimplement them:**
 
-| Helper | Use it for |
-|---|---|
-| `get_remote()` | The repository's remote. **Memoized per process**: one `git remote`, and with several remotes the user is prompted only once no matter how many call sites ask. Returns `None` (with a warning) instead of raising when `git remote` fails, e.g. outside a repository. `reset_remote_cache()` exists for tests. |
-| `require_remote()` | Same, for commands that cannot work without a remote: raises `click.ClickException(NO_REMOTE_MESSAGE)`. This is the **single** place that message lives — do not re-raise your own. |
-| `ensure_working_path(decline_message=None)` | Get `working_path`, offering to create it when missing (and excluding it from git right away), or failing with a clean `click.ClickException`. Used by `working-env` and by every light-weight pre-flight wrapper. |
-| `exclude_from_git(entries)` | Append `(entry, description)` pairs to `.git/info/exclude`. Idempotent; skips with a warning outside a git repository and creates the exclude file when missing. |
+| Helper                                      | Use it for                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `get_remote()`                              | The repository's remote. **Memoized per process**: one `git remote`, and with several remotes the user is prompted only once no matter how many call sites ask. Returns `None` (with a warning) instead of raising when `git remote` fails, e.g. outside a repository. `reset_remote_cache()` exists for tests. |
+| `require_remote()`                          | Same, for commands that cannot work without a remote: raises `click.ClickException(NO_REMOTE_MESSAGE)`. This is the **single** place that message lives — do not re-raise your own.                                                                                                                             |
+| `ensure_working_path(decline_message=None)` | Get `working_path`, offering to create it when missing (and excluding it from git right away), or failing with a clean `click.ClickException`. Used by `working-env` and by every light-weight pre-flight wrapper.                                                                                              |
+| `exclude_from_git(entries)`                 | Append `(entry, description)` pairs to `.git/info/exclude`. Idempotent; skips with a warning outside a git repository and creates the exclude file when missing.                                                                                                                                                |
 
 **Anything that creates a folder under the repo must exclude it from git in the same step** — that is what
 `ensure_working_path` does, and why nothing else should call `os.makedirs(working_path)` directly.
@@ -751,7 +777,8 @@ When end-users install `mega_snake` via `uv tool install` or `pipx install`:
    - Defines `mgsnake` as a shell function wrapping the real executable, plus the private
      `__mgsnake_*` helpers it dispatches to (§7.4)
    - Loads the local config file once so it is applied immediately
-**Why this approach?**
+     **Why this approach?**
+
 - Allows the tool to run anywhere without polluting the user's active Python environment
 - Users don't need to manually activate/deactivate virtual environments
 - The `mgsnake` console script runs from its isolated `uv tool`/`pipx` environment
@@ -760,28 +787,33 @@ When end-users install `mega_snake` via `uv tool install` or `pipx install`:
 ### Local Development Setup
 
 **Prerequisites:**
+
 - Python 3.13+
 - `uv` package manager
 
 **Setup Steps:**
 
 1. Clone the repository and navigate to the root:
+
    ```bash
    git clone <repo-url>
    cd unix-scripts
    ```
 
 2. Install dependencies (including dev dependencies):
+
    ```bash
    uv sync --all-extras
    ```
 
 3. Build the wheel:
+
    ```bash
    uv build
    ```
 
 4. Install locally for testing:
+
    ```bash
    uv tool install dist/*.whl --force-reinstall
    ```
@@ -802,11 +834,11 @@ be reused, even after deleting the file — so every check runs before the build
 
 **Three facts must agree, or nothing is published:**
 
-| Fact | Source | Enforced by |
-|---|---|---|
-| Tag shape `vX.Y.Z` | The git tag | Regex; `v0.1.5-beta`, `0.1.5` and `v1.2` are all rejected |
-| The released version | `[project] version` in `pyproject.toml` | Must equal the tag with the `v` stripped |
-| What changed | A `## [X.Y.Z]` section in `CHANGELOG.md` | Must exist **and** carry content that is not the seeded placeholder |
+| Fact                 | Source                                   | Enforced by                                                         |
+| -------------------- | ---------------------------------------- | ------------------------------------------------------------------- |
+| Tag shape `vX.Y.Z`   | The git tag                              | Regex; `v0.1.5-beta`, `0.1.5` and `v1.2` are all rejected           |
+| The released version | `[project] version` in `pyproject.toml`  | Must equal the tag with the `v` stripped                            |
+| What changed         | A `## [X.Y.Z]` section in `CHANGELOG.md` | Must exist **and** carry content that is not the seeded placeholder |
 
 **The trigger is `release: types: [released]`, not `push: tags`.** `released` fires only for
 non-prerelease publications, so `mgsnake create-release p` (prerelease) never reaches PyPI while
@@ -819,7 +851,7 @@ passes); `CHANGELOG.md` is the curated half, written for people who install `mgs
 `## [X.Y.Z]` section is part of the change that bumps the version**, not a release-day chore.
 
 Do not weaken the changelog gate into "the file grew" — a blank line satisfies that, which is precisely the
-weak-assertion failure mode the testing principles warn about. The check verifies the *specific* section
+weak-assertion failure mode the testing principles warn about. The check verifies the _specific_ section
 exists and says something.
 
 **twine's role.** `uv publish` uploads; it does not validate metadata or render the README. `twine check`
@@ -839,75 +871,78 @@ would remove the stored token entirely and is the natural upgrade.)
 **ALL code must follow these standards without exception:**
 
 1.  **Type Hinting - MANDATORY for all functions and parameters:**
-    -   **All function parameters** must have explicit type annotations (e.g., `name: str`, `count: int`)
-    -   **All function return types** must be explicitly declared (e.g., `-> str`, `-> None`, `-> list[str]`)
-    -   **Use `Optional[T]`** for optional types instead of `T | None` (e.g., `Optional[str]` not `str | None`)
-    -   Example:
-        ```python
-        def process_data(items: list[str], timeout: Optional[int] = None) -> dict[str, int]:
-            """Process items with optional timeout."""
-            pass
-        ```
+    - **All function parameters** must have explicit type annotations (e.g., `name: str`, `count: int`)
+    - **All function return types** must be explicitly declared (e.g., `-> str`, `-> None`, `-> list[str]`)
+    - **Use `Optional[T]`** for optional types instead of `T | None` (e.g., `Optional[str]` not `str | None`)
+    - Example:
+      ```python
+      def process_data(items: list[str], timeout: Optional[int] = None) -> dict[str, int]:
+          """Process items with optional timeout."""
+          pass
+      ```
 
 2.  **Docstrings - MANDATORY for all modules, classes, and functions:**
-    -   **Module-level docstring**: Must be at the top of every `.py` file
-    -   **Class docstring**: Required for all class definitions
-    -   **Function/method docstring**: Required for every function and method (including `__init__`, `__str__`, etc.)
-    -   **Format**: Use the following structure for methods:
-        ```python
-        """Brief description of what the method does.
-        
-        Parameters:
-            param_name: Description of parameter.
-            another_param: Description of another parameter.
-            
-        Raises:
-            ValueError: Description of when this exception is raised.
-            RuntimeError: Description of when this exception is raised.
+    - **Module-level docstring**: Must be at the top of every `.py` file
+    - **Class docstring**: Required for all class definitions
+    - **Function/method docstring**: Required for every function and method (including `__init__`, `__str__`, etc.)
+    - **Format**: Use the following structure for methods:
 
-        Returns:
-            str: Description of the return value.
-        """
-        ```
-    -   **Note**: If there are no parameters, raises, or returns, explicitly state `None` in those sections.
-    -   Example:
-        ```python
-        def validate_path(path: str) -> bool:
-            """Check if the given path is valid and accessible.
-            
-            Parameters:
-                path: The file system path to validate.
-                
-            Raises:
-                ValueError: If path is None or empty string.
+      ```python
+      """Brief description of what the method does.
 
-            Returns:
-                bool: True if the path is valid, False otherwise.
-            """
-            pass
-        ```
+      Parameters:
+          param_name: Description of parameter.
+          another_param: Description of another parameter.
+
+      Raises:
+          ValueError: Description of when this exception is raised.
+          RuntimeError: Description of when this exception is raised.
+
+      Returns:
+          str: Description of the return value.
+      """
+      ```
+
+    - **Note**: If there are no parameters, raises, or returns, explicitly state `None` in those sections.
+    - Example:
+
+      ```python
+      def validate_path(path: str) -> bool:
+          """Check if the given path is valid and accessible.
+
+          Parameters:
+              path: The file system path to validate.
+
+          Raises:
+              ValueError: If path is None or empty string.
+
+          Returns:
+              bool: True if the path is valid, False otherwise.
+          """
+          pass
+      ```
 
 3.  **Imports**: Group imports in this order:
-    -   Standard Library
-    -   Third Party
-    -   Local Application
-    -   Each group separated by a blank line
+    - Standard Library
+    - Third Party
+    - Local Application
+    - Each group separated by a blank line
 
 4.  **Error Handling** — see §7 for the full exit-code contract. In short:
-    -   Raise `click.ClickException` **only when the user invoked the command incorrectly**. A missing
-        tool, an unconfigured remote or a declined prompt is not misuse; those get their natural
-        exception type instead.
-    -   Raise `ValueError` for an invalid value, and the matching built-in for everything else
-        (`FileNotFoundError`, `PermissionError`, …) so `ERROR_CODES` can resolve a meaningful status.
-    -   Raise `InternalStateError` **only** where reaching the line means `mgsnake` is defective —
-        typically a state an earlier graceful check already ruled out. Never use it for anything the
-        user or their environment can legitimately cause, and never use a built-in for a real bug.
-        See §7.6, which is the full rule and its rationale.
-    -   Never use `assert` for either. It is stripped by `python -O`, which deletes the check.
-    -   Let unexpected errors bubble up. `main()` in `__main__.py` — **not** `cli()` — is the single
-        place an exception becomes an exit code.
-    -   **Every new custom exception must be registered in `ERROR_CODES` in the same change.** A test
-        walks the package and fails naming any that is not.
+    - Raise `click.ClickException` **only when the user invoked the command incorrectly**. A missing
+      tool, an unconfigured remote or a declined prompt is not misuse; those get their natural
+      exception type instead.
+    - Raise `ValueError` for an invalid value, and the matching built-in for everything else
+      (`FileNotFoundError`, `PermissionError`, …) so `ERROR_CODES` can resolve a meaningful status.
+    - Raise `InternalStateError` **only** where reaching the line means `mgsnake` is defective —
+      typically a state an earlier graceful check already ruled out. Never use it for anything the
+      user or their environment can legitimately cause, and never use a built-in for a real bug.
+      See §7.6, which is the full rule and its rationale.
+    - Never use `assert` for either. It is stripped by `python -O`, which deletes the check.
+    - Let unexpected errors bubble up. `main()` in `__main__.py` — **not** `cli()` — is the single
+      place an exception becomes an exit code.
+    - **Every new custom exception must be registered in `ERROR_CODES` in the same change.** A test
+      walks the package and fails naming any that is not.
 
 5.  **Paths**: Always use `pathlib.Path` or `os.path` joins. Never use string concatenation for paths.
 
@@ -915,10 +950,9 @@ would remove the stored token entirely and is the natural upgrade.)
     written in English, regardless of the language used to discuss the task. This is an English-speaking work
     environment.
 
-7. **Avoid duplicated code**: Each fix, implementation or modification in the codebase must use the existing utilities, helpers, and patterns. Additionally, If you find yourself copying and pasting code, consider refactoring it into a shared utility function or class.
+7.  **Avoid duplicated code**: Each fix, implementation or modification in the codebase must use the existing utilities, helpers, and patterns. Additionally, If you find yourself copying and pasting code, consider refactoring it into a shared utility function or class.
 
 8.  **Consistency**: We must use the same approach and design patterns consistently across the codebase. If a pattern is already established, follow it rather than introducing a new one. If you are writing a new implementation, make sure to check what development patterns are being used in the codebase beforehand, so you can use similar approaches in your new solution unless there is a strong reason to deviate.
-
 
 ### 6.2 Testing & Coverage Requirements (CRITICAL)
 
@@ -959,17 +993,20 @@ pytest
 #### Example: What This Means
 
 **If you modify `config_environment/java_set.py`:**
+
 - Update tests in `src/tests/config_environment/test_java_set.py`
 - Add tests for any new functions or branches
 - Ensure the modified functions have 98% coverage
 - Verify overall project coverage remains ≥ 95%
 
 **If you create `util/new_helper.py`:**
+
 - Create `src/tests/util/test_new_helper.py` with comprehensive tests
 - All functions must have 98% coverage
 - Tests must validate real behavior, not just code paths
 
 **If you delete a module:**
+
 - Remove its corresponding test file or test class
 - Verify overall coverage still meets 95% threshold
 
@@ -990,6 +1027,7 @@ and the caveats.
    fragment or the help text still describes the old behavior.
 
 **Fragment format:**
+
 - Body only: no `#` title, no synopsis, no option table.
 - Allowed section headings, emitted in this order and each optional: `## Output`, `## Examples`, `## Notes`.
   Write them as `##`; the writer promotes them to `####` so they nest under the `###` command heading
@@ -998,12 +1036,12 @@ and the caveats.
 
 **What goes in a fragment (follow the shape the existing 17 fragments already use):**
 
-| Part | Content |
-|---|---|
+| Part                 | Content                                                                                                                                                                |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Opening paragraph(s) | The **why**: the problem the command solves, or the design decision behind it ("the zero-config start command", "pipeline via files"). Never a restatement of `help=`. |
-| `## Output` | Every file or folder the command writes, with its path, and what each one contains. Required whenever the command touches disk. |
-| `## Examples` | Real invocations in a fenced block, when the argument shape is not obvious from the synopsis. |
-| `## Notes` | Preconditions (needs a remote, needs `pom.xml`), destructive behavior, locale/platform caveats, and interactions with other commands. |
+| `## Output`          | Every file or folder the command writes, with its path, and what each one contains. Required whenever the command touches disk.                                        |
+| `## Examples`        | Real invocations in a fenced block, when the argument shape is not obvious from the synopsis.                                                                          |
+| `## Notes`           | Preconditions (needs a remote, needs `pom.xml`), destructive behavior, locale/platform caveats, and interactions with other commands.                                  |
 
 **Enforcement — four tests in `src/tests/docs_gen/test_docs_gen.py`, parametrized over every command:**
 
@@ -1015,7 +1053,7 @@ and the caveats.
    above, checked mechanically instead of by convention.
 
 Plus `mgsnake generate-docs --check`, which catches a committed `COMMANDS.md` that no longer matches the code. The
-tests and the check catch *different* failures: the tests catch missing/duplicated prose, the check catches a stale
+tests and the check catch _different_ failures: the tests catch missing/duplicated prose, the check catches a stale
 generated file. **After changing any command metadata, run `mgsnake generate-docs` and commit the regenerated
 `COMMANDS.md` in the same change.**
 
@@ -1030,17 +1068,17 @@ fully written, never reached. Treat this section as a contract, not as documenta
 
 ### 7.1 The table
 
-| Code | Meaning | Mechanism |
-|---|---|---|
-| `0` | Success | Default |
-| `1` | The user invoked the command incorrectly | `click.ClickException` |
-| `2` | Malformed invocation / programming error in command registration | `click.UsageError` |
-| `29` | Success **+ the shell must reload its local environment files** | The signal, §7.4 |
-| `100` | A bug in `mgsnake`: a declared broken invariant, or an internal error with no mapped type | `InternalStateError` (§7.6) / `WorkspaceError` default (`INTERNAL_ERROR_CODE`) |
-| `101`–`112` | Error, by exception type | `ERROR_CODES` |
-| `113` | A validation reported stale or invalid content | `ValidationError` |
-| `114` | The user declined a required action | `UserDeclinedError` |
-| `115` | `VersionSetException` | `ERROR_CODES` |
+| Code        | Meaning                                                                                   | Mechanism                                                                      |
+| ----------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `0`         | Success                                                                                   | Default                                                                        |
+| `1`         | The user invoked the command incorrectly                                                  | `click.ClickException`                                                         |
+| `2`         | Malformed invocation / programming error in command registration                          | `click.UsageError`                                                             |
+| `29`        | Success **+ the shell must reload its local environment files**                           | The signal, §7.4                                                               |
+| `100`       | A bug in `mgsnake`: a declared broken invariant, or an internal error with no mapped type | `InternalStateError` (§7.6) / `WorkspaceError` default (`INTERNAL_ERROR_CODE`) |
+| `101`–`112` | Error, by exception type                                                                  | `ERROR_CODES`                                                                  |
+| `113`       | A validation reported stale or invalid content                                            | `ValidationError`                                                              |
+| `114`       | The user declined a required action                                                       | `UserDeclinedError`                                                            |
+| `115`       | `VersionSetException`                                                                     | `ERROR_CODES`                                                                  |
 
 `105` is deliberately vacant: it used to be assigned to `IOError`, which **is** `OSError` — the same object
 `EnvironmentError` aliases — so the two entries collided and one of them was always unreachable. Do not fill the
@@ -1067,13 +1105,13 @@ Three links, all of which were broken at once. Understand each before touching a
    Click already knows its `exit_code`, and wrapping it would relabel a user error as an internal one — and wraps
    everything else in `WorkspaceError`, whose `__init__` resolves the status and installs `_on_crash` as the except
    hook. `SystemExit` is a `BaseException`, so the reload signal passes straight through.
-3. **`_on_crash` delivers it.** `sys.exit()` called from inside an except hook *does* set the process status; that is
+3. **`_on_crash` delivers it.** `sys.exit()` called from inside an except hook _does_ set the process status; that is
    the mechanism the whole design rests on. It exits for **every** `WorkspaceError`, including the unmapped `100` —
    returning without exiting there handed the process back to Python's default handling and its status of `1`, which
    made `100` the one code that could never be observed.
 
-**Never convert an exception into `SystemExit(e)`.** `SystemExit` uses its argument as the status *only when it is
-an `int`*; given an exception it prints it and exits `1`. That single line is what flattened every initialization
+**Never convert an exception into `SystemExit(e)`.** `SystemExit` uses its argument as the status _only when it is
+an `int`_; given an exception it prints it and exits `1`. That single line is what flattened every initialization
 failure to the same number. `cli()` re-raises with the type intact instead.
 
 ### 7.3 Registering a new exception — mandatory
@@ -1099,12 +1137,12 @@ ancestor (`FileNotFoundError` → 102, not the 112 of the `OSError` it derives f
 
 **What they do:** they ask the user's shell to perform something Python cannot. A child process cannot mutate its
 parent's environment — an OS guarantee, not a Python limitation — so anything that changes the caller's variables
-has to run *in the caller's session*. The command's exit status is the request; the shell is what performs it.
+has to run _in the caller's session_. The command's exit status is the request; the shell is what performs it.
 
-| Code | Request | Emitted by |
-|---|---|---|
+| Code | Request                         | Emitted by                                                                                                                                          |
+| ---- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `29` | Re-source the local config file | `@cli_metadata(reloads_environment=True)`, and the `reload-config` command. It depends on the `local-config-path` command to locate the config file |
-| `30` | Load an env file | The `load-env` command. It depends on the `local-env-path` command to locate the env file |
+| `30` | Load an env file                | The `load-env` command. It depends on the `local-env-path` command to locate the env file                                                           |
 
 **Who consumes them:** the `mgsnake` **shell function** defined by `config_setup.sh` / `config_setup.ps1`. It calls
 the real executable through `command mgsnake` (bash/zsh) or the resolved application path (PowerShell), captures the
@@ -1128,18 +1166,18 @@ mgsnake() {
 }
 ```
 
-**A served signal is reported to the caller as `0`, and this is part of the contract.** The signal is a *request*;
+**A served signal is reported to the caller as `0`, and this is part of the contract.** The signal is a _request_;
 once the wrapper has carried it out there is nothing left to tell the caller, and propagating it would mean every
 environment command looks like a failure — `mgsnake set-java && echo ok` would never print, and a `set -e` script
 would abort on the happy path of `mgsnake load-env`, contradicting the advice in `load-env.md` to load an optional
-`.env` unconditionally from a startup script. Every *other* status is passed through untouched, and a direct
+`.env` unconditionally from a startup script. Every _other_ status is passed through untouched, and a direct
 invocation that bypasses the function (`command mgsnake load-env`) still sees the raw `29`/`30`, which is what the
 CLI-level tests assert. `test_bash_wrapper_reports_success_once_it_has_served_the_signal` and its pwsh twin pin the
 caller-visible status **and** the dispatch marker, so a wrapper that returned `0` without doing the work fails too.
 
 **How arguments reach the shell — and why not stdout.** `load-env` takes a file path, which the helper needs. The
 obvious channel is stdout (`$(...)`, the way `direnv` and `ssh-agent` do it), and it was rejected: it makes the
-command's stdout a data channel, so *any* helper that ever prints there silently corrupts the value, at a distance,
+command's stdout a data channel, so _any_ helper that ever prints there silently corrupts the value, at a distance,
 only at some log levels. Instead `__mgsnake_args_after` rescans the wrapper's own `"$@"`, drops everything up to
 the command name, and forwards what follows. Forwarding the raw `"$@"` would hand the global options to the helper
 (`mgsnake --log-level DEBUG load-env foo.env`), and parsing them in shell would mean reimplementing click.
@@ -1155,8 +1193,8 @@ Two consequences of locating the command **by name**:
 detail; the public interface is `mgsnake reload-config` and `mgsnake load-env`, documented like any other command.
 They were public (`mgsnake_reload`, `mgsnake_load_env`, `mgsnake_reload_all`) and announced on every new terminal,
 which gave every action two names — one of them undocumented and invisible to `--help`. The one caller that still
-uses a helper directly is the local config file generated by `init-local-config`: it is *being sourced by the
-shell*, so `LOAD_ENV_HELPER` reaches the right session already and routing it back through the CLI would mean
+uses a helper directly is the local config file generated by `init-local-config`: it is _being sourced by the
+shell_, so `LOAD_ENV_HELPER` reaches the right session already and routing it back through the CLI would mean
 exiting 30 from inside a reload the wrapper is performing.
 
 **The rename is a breaking change for any local config file generated before it**, since that file calls
@@ -1164,10 +1202,29 @@ exiting 30 from inside a reload the wrapper is performing.
 kept: fix the call in the affected file (it is a single line, and the rest of the file is the user's own content),
 or regenerate it with `init-local-config -o`.
 
-`mgsnake_reload_all` is gone entirely. It called `mgsnake_load_env` with no argument *after* the reload, which
-loaded whatever `.env` happened to be in the **current directory** — while the config file had already loaded its
-own `.env` by absolute path. That second load was an undeclared read of an arbitrary directory, not the "reload
-both files" the name promised.
+`mgsnake_reload_all` is gone entirely, it showed an unintended behavior.
+Now `__mgsnake_load_env` with no argument provided through `mgsnake load-env`, will search for the default
+`.mgsnake.env` file (in the workspace_temp folder) and load it.
+However, if there's no argument provided and no .mgsnake.env file exists, it will look for a `.env` file in the
+current directory and load it.
+This may be a temporary problematic behavior due to `__mgsnake_load_env` is triggered automatically when a new
+terminal session starts: the user may have happened to be in a directory with a `.env` file that doesn't have a
+`workspace_temp/.mgsnake.env` file, and the wrapper will load that instead unintentionally. We'll preserve this
+behavior for now, but it will be removed in a future release when we provide a persistent layer of configuration
+that will allow the user to turn on/off the triggering of `__mgsnake_load_env` when no argument is provided.
+
+**Open question for that persistence layer: what to do about the double load when the generated local config
+file still contains its `LOAD_ENV_HELPER` line.** `init-local-config` writes a line into the generated config file
+that calls `LOAD_ENV_HELPER` (`__mgsnake_load_env`) directly, with the absolute path to `.mgsnake.env` (§3.1,
+`local_config.py`). So on every new terminal, the local environment file is loaded **twice**: once when
+`__mgsnake_reload` sources that config file and hits the embedded call, and again immediately after by the
+unconditional, no-argument `__mgsnake_load_env` call at the bottom of `config_setup.sh` / `config_setup.ps1` (which
+resolves to the same file via `local-env-path` since it exists). This is harmless today — the parser is idempotent —
+but it is undocumented duplication, and it only happens when the user keeps that generated line as-is. Whichever
+toggle the persistence layer introduces for the no-argument auto-load must decide what happens to this specific
+case: keep the redundant second call, skip it when the config file already loaded the same file, or stop emitting
+the embedded `LOAD_ENV_HELPER` line in newly generated config files and let the trailing call be the only loader.
+Not decided yet.
 
 **This is the link that was cut before.** The historical wrapper wrapped `python3 -m $PY_MODULE` and branched on
 `$?`; when `mgsnake` became an installed executable invoked directly, nothing captured the status any more. The
@@ -1179,11 +1236,11 @@ check**.
 process status. It is per command, **not** per module: living in `config_environment` is not what makes a command
 change the environment, touching those files is.
 
-| Command | Emits `29` |
-|---|---|
-| `init-local-config`, `working-env` | Yes |
-| `set-java`, `set-gradle`, `set-maven` | Yes |
-| `maven-project-setup`, `graphql-schema` | No |
+| Command                                 | Emits `29` |
+| --------------------------------------- | ---------- |
+| `init-local-config`, `working-env`      | Yes        |
+| `set-java`, `set-gradle`, `set-maven`   | Yes        |
+| `maven-project-setup`, `graphql-schema` | No         |
 
 Everything shared across the language boundary is pinned by `src/tests/light_weight/test_shell_wrapper.py`: the two
 numbers, the command name the scripts scan for, the helper name the generated config file calls, the absence of
@@ -1193,11 +1250,11 @@ aliases, and the argument slicing itself — run through a real `bash` rather th
 
 `src/tests/test_exit_codes.py` holds one test per row of the table above. Two rules it exists to enforce:
 
-- **Assert the exact number, and assert what it is *not*.** A bare "it failed" assertion is satisfied by the silent
+- **Assert the exact number, and assert what it is _not_.** A bare "it failed" assertion is satisfied by the silent
   fallback to `1`, which is precisely the bug that survived for so long. Every row asserts `== <code>` **and**
   `!= 1`.
 - **Use the right level.** `CliRunner` for anything decided inside the click group (the reload signal, a
-  `ClickException`'s own `exit_code`). `subprocess` for anything decided *outside* it — the translation in `main()`
+  `ClickException`'s own `exit_code`). `subprocess` for anything decided _outside_ it — the translation in `main()`
   and the except hook. `CliRunner` catches exceptions and reports `1` for all of them, so an in-process test of the
   hook would assert nothing at all.
 
@@ -1205,16 +1262,16 @@ aliases, and the argument slicing itself — run through a real `bash` rather th
 
 **`InternalStateError` may be raised in production code only where reaching the statement means `mgsnake` itself is
 defective.** Anything else must be typed to the built-in that actually describes it, so `ERROR_CODES` resolves a
-meaningful status. This is a rule about *provenance*, not about how bad the situation looks.
+meaningful status. This is a rule about _provenance_, not about how bad the situation looks.
 
-**The test that decides it.** Ask: *could a correct build of `mgsnake`, running in a reasonable environment, reach
-this line?*
+**The test that decides it.** Ask: _could a correct build of `mgsnake`, running in a reasonable environment, reach
+this line?_
 
-| The situation was… | Then it is… | Raise |
-|---|---|---|
-| already ruled out upstream — a resource validated during initialization, a value this package itself produced, a branch a previous graceful check made unreachable | **a bug** | `InternalStateError` |
-| external, but from a vocabulary we committed to mirroring in full — a `git diff --raw` status letter, an OS we claim to support | **a bug** | `InternalStateError` |
-| never ruled out — a missing tool, an unconfigured remote, absent input, a file the user supplies or hand-edits, a declined prompt | **not a bug** | the specific built-in (`FileNotFoundError`, `EnvironmentError`, `ValueError`, `subprocess.SubprocessError`, `UserDeclinedError`, …) |
+| The situation was…                                                                                                                                                 | Then it is…   | Raise                                                                                                                               |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| already ruled out upstream — a resource validated during initialization, a value this package itself produced, a branch a previous graceful check made unreachable | **a bug**     | `InternalStateError`                                                                                                                |
+| external, but from a vocabulary we committed to mirroring in full — a `git diff --raw` status letter, an OS we claim to support                                    | **a bug**     | `InternalStateError`                                                                                                                |
+| never ruled out — a missing tool, an unconfigured remote, absent input, a file the user supplies or hand-edits, a declined prompt                                  | **not a bug** | the specific built-in (`FileNotFoundError`, `EnvironmentError`, `ValueError`, `subprocess.SubprocessError`, `UserDeclinedError`, …) |
 
 The sharpest form of the first row, and the one that recurs: **a caller already did a graceful
 `ws_warning(...) + return` for the empty/missing case, and the callee re-checks it anyway.** That second check is
@@ -1225,7 +1282,7 @@ something to install when the real defect is in the flow above.
 **"External" is not the same as "not our fault."** The second row is the subtle one: `FileType.from_symbol` receives
 a status letter straight from `git diff --raw`, so the value is external — yet the enum exists precisely to mirror
 git's full set of status letters. If git grows one we never added, keeping up with it was our job. The question is
-never *where did the value come from*, it is *whose job was it to handle this value*. Contrast with
+never _where did the value come from_, it is _whose job was it to handle this value_. Contrast with
 `_validate_commit`, which also inspects git output but is checking a reference **the user typed**: a bad one there
 is input, not a gap in our coverage.
 
@@ -1246,7 +1303,7 @@ value, and tells the user to fix something they neither caused nor can reach.
   `src/tests/test_exit_codes.py`. It inherits `100` from `resolve_error_code`'s default, which already means exactly
   this. Registering it would put `100` among the table's values, and a status a registered type shares with the
   unmapped fallback carries no information the fallback did not already carry. **This is the one documented
-  exception to §7.3** — every *other* custom exception still needs its own entry.
+  exception to §7.3** — every _other_ custom exception still needs its own entry.
 - **Catching it is legitimate where the "impossible" state is actually expected.** `resolve_tag_pattern` catches it
   around `get_property`, because `create-release` is light-weight and the properties singleton genuinely may not
   exist there. That is the mirror image of the rule: same condition, different flow, different verdict.

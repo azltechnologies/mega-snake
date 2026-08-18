@@ -559,7 +559,7 @@ Exports the variables declared in an environment file into the current shell ses
 | --- | --- |
 | `-h, --help` | Show this message and exit. |
 
-- `env_file` — Path to the environment file to load. Defaults to `.env` in the current directory.
+- `env_file` — Path to the environment file to load. When omitted, the local environment file (see `local-env-path`, e.g. `.mgsnake.env` under workspace_temp) is loaded if it exists; otherwise `.env` in the current directory is loaded instead.
 
 Exports the variables declared in an environment file into the shell session that runs the command,
 so a project's settings can be picked up without restarting the terminal or writing an `export` for
@@ -581,7 +581,8 @@ expanded.
 #### Examples
 
 ```bash
-# Load the .env in the current directory
+# No argument: loads the local environment file (see `local-env-path`) if it exists,
+# otherwise falls back to .env in the current directory
 mgsnake load-env
 
 # Load a specific file
@@ -607,6 +608,15 @@ direct invocation that bypasses the function (`command mgsnake load-env`) shows 
 
 A missing file is not an error: nothing is exported and the command stays silent, so an optional
 `.env` can be loaded unconditionally from a startup script.
+
+Called with no `env_file`, the shell first looks for the local environment file (the path
+`local-env-path` prints, e.g. `.mgsnake.env` under `workspace_temp`) and loads that if it exists;
+only when it does not does it fall back to `.env` in the current directory. `config_setup.sh` /
+`config_setup.ps1` call `load-env` with no argument every time a new session starts, so this
+fallback runs automatically on every new terminal — if the local environment file is absent and the
+session happens to start in a directory that has its own unrelated `.env`, that file gets loaded
+without being asked for. This is expected for now; a future release will let this automatic,
+no-argument load be turned on or off.
 
 The environment file created by `init-local-config` is already loaded by the generated configuration
 file, so it needs no explicit call here. Use this command for the other ones.
@@ -639,7 +649,7 @@ parseable at any log level.
 
 ### local-env-path
 
-Prints to stdout the path of the local environment file (.sh or .ps1 depending on the active shell).
+Prints to stdout the path of the local environment file.
 
 **Synopsis:** `mgsnake local-env-path [OPTIONS]`
 
@@ -649,14 +659,15 @@ Prints to stdout the path of the local environment file (.sh or .ps1 depending o
 | --- | --- |
 | `-h, --help` | Show this message and exit. |
 
-Resolves the local configuenvration file created by `init-local-config`.
+Resolves the local environment file created by `init-local-config` — the `KEY=value` file whose
+variables the generated configuration file exports on every shell startup.
 
 #### Notes
 
 Its stdout is consumed by command substitution inside `config_setup.sh`:
 
 ```bash
-local_config_file=$(mgsnake local-env-path)
+local_env_file=$(mgsnake local-env-path)
 ```
 
 so the command prints the path and nothing else. Diagnostics go to stderr precisely so this stays

@@ -42,13 +42,13 @@ __mgsnake_reload() {
 }
 
 __mgsnake_load_env() {
-    local local_env_file
-    local tmp_env_file
-    local env_file
-    local_env_file=$(command mgsnake local-env-path)
-    [[ -f "$local_env_file" ]] && tmp_env_file="$local_env_file" || tmp_env_file=.env
+    local env_file="$1"
 
-    env_file="${1:-$tmp_env_file}"
+    if [[ -z "$env_file" ]]; then
+        local local_env_file
+        local_env_file=$(command mgsnake local-env-path)
+        [[ -f "$local_env_file" ]] && env_file="$local_env_file" || env_file=.env
+    fi
     [[ -f "$env_file" ]] || return 0
 
     while IFS='=' read -r key value || [[ -n "$key" ]]; do

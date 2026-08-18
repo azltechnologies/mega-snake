@@ -28,7 +28,7 @@ function __mgsnake_reload {
 
     $local_config_file = & $global:MegaSnakeExe local-config-path
     if ($local_config_file -and (Test-Path -LiteralPath $local_config_file -PathType Leaf)) {
-        & $global:MegaSnakeExe msg -t t -p "Loading config from " " $local_config_file"
+        & $global:MegaSnakeExe msg -t t -p "Loading config from " "$local_config_file"
         . $local_config_file
     }
     else {
@@ -40,16 +40,18 @@ function __mgsnake_load_env {
     param(
         [string]$Path
     )
-    $localEnvFile = & $global:MegaSnakeExe local-env-path
-
-    if ($localEnvFile -and (Test-Path -LiteralPath $localEnvFile -PathType Leaf)) {
-        $tmpEnvFile = $localEnvFile
+    if ($Path) {
+        $envFile = $Path
     }
     else {
-        $tmpEnvFile = ".env"
+        $localEnvFile = & $global:MegaSnakeExe local-env-path
+        if ($localEnvFile -and (Test-Path -LiteralPath $localEnvFile -PathType Leaf)) {
+            $envFile = $localEnvFile
+        }
+        else {
+            $envFile = ".env"
+        }
     }
-
-    $envFile = if ($Path) { $Path } else { $tmpEnvFile }
 
     if (!(Test-Path -LiteralPath $envFile -PathType Leaf)) {
         return

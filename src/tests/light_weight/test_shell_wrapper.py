@@ -345,6 +345,200 @@ def test_pwsh_wrapper_reports_success_once_it_has_served_the_signal(
     )
 
 
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash is not available on this platform")
+def test_load_env_helper_never_resolves_local_env_path_when_given_an_argument(tmp_path: Path) -> None:
+    """A given `$1` is the file to load; asking `local-env-path` for another one would be wasted work.
+
+    The stub `mgsnake` records every invocation it receives, so this both proves the argument is the
+    one that gets loaded and catches a regression where `$1` is ignored in favour of the resolved path.
+    """
+    script = _script("config_setup.sh")
+    helper = re.search(r"^__mgsnake_load_env\(\) \{.*?^\}", script, re.MULTILINE | re.DOTALL)
+    assert helper, "the load-env helper is no longer defined under its expected name"
+
+    calls_log = tmp_path / "calls.log"
+    given_file = tmp_path / "given.env"
+    given_file.write_text("FROM_ARGUMENT=yes\n", encoding="utf-8")
+
+    stub_dir = tmp_path / "bin"
+    stub_dir.mkdir()
+    stub = stub_dir / "mgsnake"
+    stub.write_text(
+        "#!/usr/bin/env bash\n"
+        f'printf "%s\\n" "$1" >> "{calls_log}"\n'
+        'case "$1" in\n'
+        "    local-env-path) printf '%s' \"$MGSNAKE_STUB_LOCAL_ENV_PATH\" ;;\n"
+        "esac\n"
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+
+    program = (
+        f'export PATH="{stub_dir}:$PATH"\n'
+        f'export MGSNAKE_STUB_LOCAL_ENV_PATH="{tmp_path / "unused.env"}"\n'
+        f"{helper.group(0)}\n"
+        f'__mgsnake_load_env "{given_file}"\n'
+        'printf "%s" "$FROM_ARGUMENT"\n'
+    )
+    result = subprocess.run(
+        ["bash", "-c", program], capture_output=True, text=True, check=False, cwd=tmp_path
+    )
+
+    assert result.returncode == 0, result.stderr
+    calls = calls_log.read_text(encoding="utf-8").splitlines() if calls_log.exists() else []
+    assert "local-env-path" not in calls, (
+        f"__mgsnake_load_env resolved local-env-path even though an argument was given: {calls}"
+    )
+    assert result.stdout.strip() == "yes", (
+        f"the file given as an argument should have been the one loaded, got {result.stdout!r}"
+    )
+
+
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash is not available on this platform")
+@pytest.mark.parametrize(
+    ("local_env_file_present", "expected_marker"),
+    [
+        pytest.param(True, "local-env-file", id="local-env-file-present-is-preferred"),
+        pytest.param(False, "cwd-dot-env", id="local-env-file-absent-falls-back-to-cwd-dot-env"),
+    ],
+)
+def test_load_env_helper_default_resolution_order(
+    tmp_path: Path, local_env_file_present: bool, expected_marker: str
+) -> None:
+    """With no argument, the local environment file wins when it exists.
+
+    When it does not, the helper falls back to `.env` in whatever directory happens to be the current
+    one -- an arbitrary-directory read, not a project-scoped one. Writing this test is what makes that
+    design decision explicit (see `.github/copilot-instructions.md` §7.4) instead of leaving it as an
+    unstated side effect of the code.
+    """
+    script = _script("config_setup.sh")
+    helper = re.search(r"^__mgsnake_load_env\(\) \{.*?^\}", script, re.MULTILINE | re.DOTALL)
+    assert helper, "the load-env helper is no longer defined under its expected name"
+
+    local_env_file = tmp_path / "local.env"
+    cwd = tmp_path / "cwd"
+    cwd.mkdir()
+    cwd_dot_env = cwd / ".env"
+    cwd_dot_env.write_text(f"MARKER={expected_marker}\n", encoding="utf-8")
+
+    if local_env_file_present:
+        local_env_file.write_text(f"MARKER={expected_marker}\n", encoding="utf-8")
+
+    stub_dir = tmp_path / "bin"
+    stub_dir.mkdir()
+    stub = stub_dir / "mgsnake"
+    stub.write_text(
+        "#!/usr/bin/env bash\n"
+        'case "$1" in\n'
+        f'    local-env-path) printf "%s" "{local_env_file}" ;;\n'
+        "esac\n"
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+
+    program = f'export PATH="{stub_dir}:$PATH"\n{helper.group(0)}\n__mgsnake_load_env\nprintf "%s" "$MARKER"\n'
+    result = subprocess.run(
+        ["bash", "-c", program], capture_output=True, text=True, check=False, cwd=cwd
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().endswith(expected_marker), (
+        f"expected the {expected_marker!r} file to be the one loaded, got stdout {result.stdout!r}"
+    )
+
+
+@pytest.mark.skipif(shutil.which("pwsh") is None, reason="pwsh is not available on this platform")
+def test_pwsh_load_env_helper_never_resolves_local_env_path_when_given_an_argument(tmp_path: Path) -> None:
+    """PowerShell twin of the bash test above: a given `-Path` must not trigger `local-env-path`."""
+    script = _script("config_setup.ps1")
+    helper = re.search(r"^function __mgsnake_load_env \{.*?^\}", script, re.MULTILINE | re.DOTALL)
+    assert helper, "the load-env helper is no longer defined under its expected name"
+
+    calls_log = tmp_path / "calls.log"
+    given_file = tmp_path / "given.env"
+    given_file.write_text("FROM_ARGUMENT=yes\n", encoding="utf-8")
+
+    stub = tmp_path / "mgsnake_stub.ps1"
+    stub.write_text(
+        f'Add-Content -Path "{calls_log}" -Value $args[0]\n'
+        f'if ($args[0] -eq "local-env-path") {{ Write-Output "{tmp_path / "unused.env"}" }}\n',
+        encoding="utf-8",
+    )
+
+    program = (
+        f"{helper.group(0)}\n"
+        f'$global:MegaSnakeExe = "{stub.as_posix()}"\n'
+        f'__mgsnake_load_env -Path "{given_file}"\n'
+        "[Console]::Write($env:FROM_ARGUMENT)\n"
+    )
+    result = subprocess.run(
+        ["pwsh", "-NoProfile", "-Command", program], capture_output=True, text=True, check=False
+    )
+
+    assert result.returncode == 0, result.stderr
+    calls = calls_log.read_text(encoding="utf-8").splitlines() if calls_log.exists() else []
+    assert "local-env-path" not in calls, (
+        f"__mgsnake_load_env resolved local-env-path even though -Path was given: {calls}"
+    )
+    assert result.stdout.strip() == "yes", (
+        f"the file given as -Path should have been the one loaded, got {result.stdout!r}"
+    )
+
+
+@pytest.mark.skipif(shutil.which("pwsh") is None, reason="pwsh is not available on this platform")
+@pytest.mark.parametrize(
+    ("local_env_file_present", "expected_marker"),
+    [
+        pytest.param(True, "local-env-file", id="local-env-file-present-is-preferred"),
+        pytest.param(False, "cwd-dot-env", id="local-env-file-absent-falls-back-to-cwd-dot-env"),
+    ],
+)
+def test_pwsh_load_env_helper_default_resolution_order(
+    tmp_path: Path, local_env_file_present: bool, expected_marker: str
+) -> None:
+    """PowerShell twin of the bash resolution-order test above."""
+    script = _script("config_setup.ps1")
+    helper = re.search(r"^function __mgsnake_load_env \{.*?^\}", script, re.MULTILINE | re.DOTALL)
+    assert helper, "the load-env helper is no longer defined under its expected name"
+
+    local_env_file = tmp_path / "local.env"
+    cwd = tmp_path / "cwd"
+    cwd.mkdir()
+    cwd_dot_env = cwd / ".env"
+    cwd_dot_env.write_text(f"MARKER={expected_marker}\n", encoding="utf-8")
+
+    if local_env_file_present:
+        local_env_file.write_text(f"MARKER={expected_marker}\n", encoding="utf-8")
+
+    stub = tmp_path / "mgsnake_stub.ps1"
+    stub.write_text(
+        f'if ($args[0] -eq "local-env-path") {{ Write-Output "{local_env_file}" }}\n',
+        encoding="utf-8",
+    )
+
+    program = (
+        f"{helper.group(0)}\n"
+        f'$global:MegaSnakeExe = "{stub.as_posix()}"\n'
+        "__mgsnake_load_env\n"
+        "[Console]::Write($env:MARKER)\n"
+    )
+    result = subprocess.run(
+        ["pwsh", "-NoProfile", "-Command", program],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=cwd,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().endswith(expected_marker), (
+        f"expected the {expected_marker!r} file to be the one loaded, got stdout {result.stdout!r}"
+    )
+
+
 def test_load_env_declares_its_argument_for_documentation() -> None:
     """The argument exists so `--help` and the reference describe it, even though Python ignores it.
 

@@ -18,7 +18,8 @@ expanded.
 ## Examples
 
 ```bash
-# Load the .env in the current directory
+# No argument: loads the local environment file (see `local-env-path`) if it exists,
+# otherwise falls back to .env in the current directory
 mgsnake load-env
 
 # Load a specific file
@@ -44,6 +45,15 @@ direct invocation that bypasses the function (`command mgsnake load-env`) shows 
 
 A missing file is not an error: nothing is exported and the command stays silent, so an optional
 `.env` can be loaded unconditionally from a startup script.
+
+Called with no `env_file`, the shell first looks for the local environment file (the path
+`local-env-path` prints, e.g. `.mgsnake.env` under `workspace_temp`) and loads that if it exists;
+only when it does not does it fall back to `.env` in the current directory. `config_setup.sh` /
+`config_setup.ps1` call `load-env` with no argument every time a new session starts, so this
+fallback runs automatically on every new terminal — if the local environment file is absent and the
+session happens to start in a directory that has its own unrelated `.env`, that file gets loaded
+without being asked for. This is expected for now; a future release will let this automatic,
+no-argument load be turned on or off.
 
 The environment file created by `init-local-config` is already loaded by the generated configuration
 file, so it needs no explicit call here. Use this command for the other ones.
