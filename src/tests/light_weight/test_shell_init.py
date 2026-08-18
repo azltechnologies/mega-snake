@@ -46,7 +46,7 @@ def test_shell_path_rejects_unknown_shell() -> None:
 
 
 def test_get_local_config_path_prints_helper_value() -> None:
-    """get-local-config-path should print the resolved config file path."""
+    """local-config-path should print the resolved config file path."""
     runner = CliRunner()
 
     with patch("mega_snake.light_weight.shell_init.get_local_file", return_value="/tmp/local-config.sh"):
@@ -67,14 +67,14 @@ def test_get_local_config_path_stdout_stays_clean_at_debug_level() -> None:
 
     with patch("mega_snake.light_weight.shell_init.get_local_file", return_value="/tmp/local-config.sh"):
         with patch.object(formatting.logger, "level", logging.DEBUG):
-            formatting.ws_advice("Invoking subcommand: get-local-config-path")
+            formatting.ws_advice("Invoking subcommand: local-config-path")
             result = runner.invoke(shell_init.get_local_config_path)
 
     assert result.exit_code == 0
     assert result.output.strip() == "/tmp/local-config.sh"
 
 def test_get_local_env_path_prints_helper_value() -> None:
-    """get-local-env-path should print the resolved env file path."""
+    """local-env-path should print the resolved env file path."""
     runner = CliRunner()
 
     with patch("mega_snake.light_weight.shell_init.get_local_env", return_value="/tmp/.mgsnake.env"):
@@ -95,7 +95,7 @@ def test_get_local_env_path_stdout_stays_clean_at_debug_level() -> None:
 
     with patch("mega_snake.light_weight.shell_init.get_local_env", return_value="/tmp/.mgsnake.env"):
         with patch.object(formatting.logger, "level", logging.DEBUG):
-            formatting.ws_advice("Invoking subcommand: get-local-env-path")
+            formatting.ws_advice("Invoking subcommand: local-env-path")
             result = runner.invoke(shell_init.get_local_env_path)
 
     assert result.exit_code == 0

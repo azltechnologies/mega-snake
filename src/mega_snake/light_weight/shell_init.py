@@ -65,10 +65,10 @@ def shell_path(shell: str) -> None:
 
 
 @click.command(
-    name="get-local-config-path",
+    name="local-config-path",
     short_help="Prints the current location of the local configuration file.",
     help="Prints to stdout the path of the local configuration file (.sh or .ps1 depending on the active shell).",
-    epilog="usage: mgsnake get-local-config-path",
+    epilog="usage: mgsnake local-config-path",
 )
 def get_local_config_path() -> None:
     """
@@ -82,10 +82,10 @@ def get_local_config_path() -> None:
 
 
 @click.command(
-    name="get-local-env-path",
+    name="local-env-path",
     short_help="Prints the current location of the local environment file.",
     help="Prints to stdout the path of the local environment file (.sh or .ps1 depending on the active shell).",
-    epilog="usage: mgsnake get-local-env-path",
+    epilog="usage: mgsnake local-env-path",
 )
 def get_local_env_path() -> None:
     """

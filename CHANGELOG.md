@@ -69,7 +69,7 @@ lives in the GitHub Release body (`gh release create --generate-notes`); this fi
 - The PyPI long description is now assembled with `hatch-fancy-pypi-readme` instead of shipping `README.md`
   verbatim.
 - **Progress, status, warnings and errors now go to stderr**, not stdout. stdout carries only what a command
-  *produces*, so `. "$(mgsnake shell-path bash)"` and `$(mgsnake get-local-config-path)` capture the value alone
+  *produces*, so `. "$(mgsnake shell-path bash)"` and `$(mgsnake local-config-path)` capture the value alone
   and `mgsnake <command> 2>/dev/null` keeps it. If you redirect stdout only (`mgsnake rbd > run.log`, or a CI
   step archiving stdout), add `2>&1` to keep the diagnostics. Previously only `ws_advice` was on stderr.
 

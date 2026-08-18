@@ -1,4 +1,4 @@
-""" This module contains functions for formatting output messages to the console. """
+"""This module contains functions for formatting output messages to the console."""
 
 from enum import Enum
 import subprocess
@@ -28,6 +28,7 @@ class Color(Enum):
 # Exit code carried by a WorkspaceError whose cause has no entry in ERROR_CODES: an internal error
 # nobody classified. It is a real, deliverable status — not a placeholder for "exit 1".
 INTERNAL_ERROR_CODE: int = 100
+
 
 class InternalStateError(Exception):
     """Raised when an invariant guaranteed upstream was violated: reaching the raise is a bug.
@@ -307,7 +308,7 @@ def ws_advice(message: str, force: bool = False) -> None:
     """Print an advice message to stderr if LOG_LEVEL is set to DEBUG.
 
     Like every other ws_* helper, this writes to stderr (see the note above them). It was the first
-    one to do so, because `get-local-config-path` is read with `$(...)` in `config_setup.sh` and its
+    one to do so, because `local-config-path` is read with `$(...)` in `config_setup.sh` and its
     value was polluted by these lines whenever the CLI ran at DEBUG level.
 
     Parameters:
@@ -349,9 +350,7 @@ def ws_error(message: str, exception: Optional[BaseException] = None) -> None:
 class WorkspaceError(Exception):
     """Custom exception for workspace operations"""
 
-    def __init__(
-        self, message: str, parent_exception: BaseException, error_code: int = INTERNAL_ERROR_CODE
-    ) -> None:
+    def __init__(self, message: str, parent_exception: BaseException, error_code: int = INTERNAL_ERROR_CODE) -> None:
         """Initialize a WorkspaceError with a message, the causing exception, and an optional error code."""
         sys.excepthook = _on_crash
         self.message = message

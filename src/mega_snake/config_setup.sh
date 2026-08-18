@@ -30,7 +30,7 @@ __mgsnake_reload() {
     local local_config_file
     # `command` reaches the real executable, never this file's function, so the helpers can never
     # recurse into the wrapper below.
-    local_config_file=$(command mgsnake get-local-config-path)
+    local_config_file=$(command mgsnake local-config-path)
 
     if [ -f "$local_config_file" ]; then
         command mgsnake msg -t t -p "Loading config from " "$local_config_file"
@@ -45,7 +45,7 @@ __mgsnake_load_env() {
     local local_env_file
     local tmp_env_file
     local env_file
-    local_env_file=$(command mgsnake get-local-env-path)
+    local_env_file=$(command mgsnake local-env-path)
     [[ -f "$local_env_file" ]] && tmp_env_file="$local_env_file" || tmp_env_file=.env
 
     env_file="${1:-$tmp_env_file}"

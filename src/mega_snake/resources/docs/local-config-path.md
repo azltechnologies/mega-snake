@@ -6,7 +6,7 @@ variant according to the active shell.
 Its stdout is consumed by command substitution inside `config_setup.sh`:
 
 ```bash
-local_config_file=$(mgsnake get-local-config-path)
+local_config_file=$(mgsnake local-config-path)
 ```
 
 so the command prints the path and nothing else. Diagnostics go to stderr precisely so this stays
