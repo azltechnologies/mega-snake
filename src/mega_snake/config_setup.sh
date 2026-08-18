@@ -33,7 +33,7 @@ __mgsnake_reload() {
     local_config_file=$(command mgsnake get-local-config-path)
 
     if [ -f "$local_config_file" ]; then
-        command mgsnake msg -t i "Reloading $local_config_file"
+        command mgsnake msg -t t -p "Loading config from " "$local_config_file"
         # shellcheck source=/dev/null
         source "$local_config_file"
     else
@@ -42,23 +42,29 @@ __mgsnake_reload() {
 }
 
 __mgsnake_load_env() {
-  local env_file="${1:-.env}"
-  [[ -f "$env_file" ]] || return 0
+    local local_env_file
+    local tmp_env_file
+    local env_file
+    local_env_file=$(command mgsnake get-local-env-path)
+    [[ -f "$local_env_file" ]] && tmp_env_file="$local_env_file" || tmp_env_file=.env
 
-  while IFS='=' read -r key value || [[ -n "$key" ]]; do
-    # 1. Ignorar comentarios y líneas vacías
-    [[ "$key" =~ ^[[:space:]]*# ]] || [[ -z "$key" ]] && continue
+    env_file="${1:-$tmp_env_file}"
+    [[ -f "$env_file" ]] || return 0
 
-    # 2. Limpiar espacios en la clave
-    key=$(echo "$key" | tr -d '[:space:]')
+    while IFS='=' read -r key value || [[ -n "$key" ]]; do
+        # 1. Ignorar comentarios y líneas vacías
+        [[ "$key" =~ ^[[:space:]]*# ]] || [[ -z "$key" ]] && continue
 
-    # 3. Limpiar espacios y quitar comillas externas (simples o dobles) del valor
-    value=$(echo "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^["'\'']//' -e 's/["'\'']$//')
+        # 2. Limpiar espacios en la clave
+        key=$(echo "$key" | tr -d '[:space:]')
 
-    # 4. Exportar de forma segura al entorno actual
-    export "$key"="$value"
-  done < "$env_file"
-  command mgsnake msg -t t -p "load-env" ": Environment variables loaded from $env_file"
+        # 3. Limpiar espacios y quitar comillas externas (simples o dobles) del valor
+        value=$(echo "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/^["'\'']//' -e 's/["'\'']$//')
+
+        # 4. Exportar de forma segura al entorno actual
+        export "$key"="$value"
+    done <"$env_file"
+    command mgsnake msg -t t -p "Loading env variables from " "$env_file"
 }
 
 # Drops everything up to and including the given command name, leaving that command's own arguments
@@ -93,18 +99,19 @@ mgsnake() {
     command mgsnake "$@"
     local exit_code=$?
     case "$exit_code" in
-        "$MEGA_SNAKE_RELOAD_EXIT_CODE")
-            __mgsnake_reload
-            return 0
-            ;;
-        "$MEGA_SNAKE_LOAD_ENV_EXIT_CODE")
-            local env_file
-            env_file=$(__mgsnake_args_after "$MEGA_SNAKE_LOAD_ENV_COMMAND" "$@")
-            __mgsnake_load_env "$env_file"
-            return 0
-            ;;
+    "$MEGA_SNAKE_RELOAD_EXIT_CODE")
+        __mgsnake_reload
+        return 0
+        ;;
+    "$MEGA_SNAKE_LOAD_ENV_EXIT_CODE")
+        local env_file
+        env_file=$(__mgsnake_args_after "$MEGA_SNAKE_LOAD_ENV_COMMAND" "$@")
+        __mgsnake_load_env "$env_file"
+        return 0
+        ;;
     esac
     return "$exit_code"
 }
 
 __mgsnake_reload
+__mgsnake_load_env

@@ -27,8 +27,8 @@ $global:MegaSnakeExe = (Get-Command mgsnake -CommandType Application -ErrorActio
 function __mgsnake_reload {
 
     $local_config_file = & $global:MegaSnakeExe get-local-config-path
-    if (Test-Path $local_config_file) {
-        & $global:MegaSnakeExe msg -t i "Reloading $local_config_file"
+    if ($local_config_file -and (Test-Path -LiteralPath $local_config_file -PathType Leaf)) {
+        & $global:MegaSnakeExe msg -t t -p "Loading config from " " $local_config_file"
         . $local_config_file
     }
     else {
@@ -38,11 +38,24 @@ function __mgsnake_reload {
 
 function __mgsnake_load_env {
     param(
-        [string]$Path = ".env"
+        [string]$Path
     )
-    if (!(Test-Path $Path)) { return }
+    $localEnvFile = & $global:MegaSnakeExe get-local-env-path
 
-    Get-Content $Path | ForEach-Object {
+    if ($localEnvFile -and (Test-Path -LiteralPath $localEnvFile -PathType Leaf)) {
+        $tmpEnvFile = $localEnvFile
+    }
+    else {
+        $tmpEnvFile = ".env"
+    }
+
+    $envFile = if ($Path) { $Path } else { $tmpEnvFile }
+
+    if (!(Test-Path -LiteralPath $envFile -PathType Leaf)) {
+        return
+    }
+
+    Get-Content -LiteralPath $envFile | ForEach-Object {
         $line = $_.Trim()
 
         # Ignorar líneas vacías y comentarios
@@ -56,7 +69,7 @@ function __mgsnake_load_env {
             [Environment]::SetEnvironmentVariable($key, $value, 'Process')
         }
     }
-    & $global:MegaSnakeExe msg -t t -p "load-env" ": Environment variables loaded from $Path"
+    & $global:MegaSnakeExe msg -t t -p "Loading env variables from " "$envFile"
 }
 
 # Returns the single argument that follows the given command name, or "" when there is none. This is
@@ -109,3 +122,4 @@ function mgsnake {
 }
 
 __mgsnake_reload
+__mgsnake_load_env

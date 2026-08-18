@@ -72,3 +72,31 @@ def test_get_local_config_path_stdout_stays_clean_at_debug_level() -> None:
 
     assert result.exit_code == 0
     assert result.output.strip() == "/tmp/local-config.sh"
+
+def test_get_local_env_path_prints_helper_value() -> None:
+    """get-local-env-path should print the resolved env file path."""
+    runner = CliRunner()
+
+    with patch("mega_snake.light_weight.shell_init.get_local_env", return_value="/tmp/.mgsnake.env"):
+        result = runner.invoke(shell_init.get_local_env_path)
+
+    assert result.exit_code == 0
+    assert result.output.strip() == "/tmp/.mgsnake.env"
+
+
+def test_get_local_env_path_stdout_stays_clean_at_debug_level() -> None:
+    """`config_setup.sh` reads this command with `$(...)`, so DEBUG advice must not reach stdout.
+
+    Regression guard: `ws_advice` is emitted by the CLI entry point and the result callback around
+    every subcommand. If it ever printed to stdout again, the captured value would become the
+    advice lines plus the path, and `mgsnake_reload` would source a non-existent file.
+    """
+    runner = CliRunner()
+
+    with patch("mega_snake.light_weight.shell_init.get_local_env", return_value="/tmp/.mgsnake.env"):
+        with patch.object(formatting.logger, "level", logging.DEBUG):
+            formatting.ws_advice("Invoking subcommand: get-local-env-path")
+            result = runner.invoke(shell_init.get_local_env_path)
+
+    assert result.exit_code == 0
+    assert result.output.strip() == "/tmp/.mgsnake.env"

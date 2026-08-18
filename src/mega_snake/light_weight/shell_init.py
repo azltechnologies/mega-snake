@@ -18,7 +18,7 @@ from mega_snake.constants import (
     RELOAD_ENVIRONMENT_EXIT_CODE,
     SHELL_OPT,
 )
-from mega_snake.config_environment.util import get_local_file
+from mega_snake.config_environment.util import get_local_file, get_local_env
 from mega_snake.util.util import cli_metadata
 
 CONFIG_SCRIPT = "config_setup"
@@ -67,8 +67,7 @@ def shell_path(shell: str) -> None:
 @click.command(
     name="get-local-config-path",
     short_help="Prints the current location of the local configuration file.",
-    help="Prints to stdout the path of the local configuration file"
-    " (.sh or .ps1 depending on the active shell).",
+    help="Prints to stdout the path of the local configuration file (.sh or .ps1 depending on the active shell).",
     epilog="usage: mgsnake get-local-config-path",
 )
 def get_local_config_path() -> None:
@@ -80,6 +79,23 @@ def get_local_config_path() -> None:
         None
     """
     click.echo(get_local_file())
+
+
+@click.command(
+    name="get-local-env-path",
+    short_help="Prints the current location of the local environment file.",
+    help="Prints to stdout the path of the local environment file (.sh or .ps1 depending on the active shell).",
+    epilog="usage: mgsnake get-local-env-path",
+)
+def get_local_env_path() -> None:
+    """
+    Prints the current location of the local environment file (.sh or .ps1 depending on
+    the active shell). Only the path is written to stdout so the output stays parseable.
+
+    Returns:
+        None
+    """
+    click.echo(get_local_env())
 
 
 @click.command(
