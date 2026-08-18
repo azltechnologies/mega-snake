@@ -25,13 +25,6 @@ jobs:
       - name: Set up environment
         uses: ./.github/actions/setup-env
 
-      # `--locked` fails when uv.lock no longer agrees with pyproject.toml,
-      # instead of silently re-resolving into an environment the lockfile does
-      # not describe -- which would make CI test a dependency set nobody has.
-      - name: Install dependencies
-        run: |
-          uv sync --locked --all-extras
-
       - name: Run pytest
         run: |
           uv run pytest

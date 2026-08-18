@@ -1,9 +1,9 @@
 name: Setup Env
 description: >-
   Prepares the Python toolchain shared by the Copilot and Claude workflows:
-  Python (from `.python-version`) and uv. Callers run `uv sync` to materialize the virtual
-  environment. When `requires-ai-context` is true it also assembles the shared
-  AI context files into the workspace.
+  Python (from `.python-version`), uv, and the synced virtual environment
+  (`uv sync --locked --all-extras`). When `requires-ai-context` is true it also
+  assembles the shared AI context files into the workspace.
 
 inputs:
   requires-ai-context:
@@ -78,6 +78,16 @@ runs:
       run: |
         python --version
         uv --version
+
+    # `--locked` fails when uv.lock no longer agrees with pyproject.toml, instead
+    # of silently re-resolving into an environment the lockfile does not describe
+    # -- which would make every caller validate (or worse, publish) a dependency
+    # set nobody has. Centralized here so no consumer of this action can forget it
+    # or drift to a different flag set.
+    - name: Install dependencies
+      shell: bash
+      run: |
+        uv sync --locked --all-extras
 
     - name: Set up AI context
       if: inputs.requires-ai-context == 'true'

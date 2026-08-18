@@ -26,11 +26,3 @@ jobs:
           requires-ai-context: "true"
           source-repo: ${{ secrets.AI_CONTEXT }}
           context-token: ${{ secrets.AI_CONTEXT_TOKEN }}
-
-      # The venv is materialized up front so the agent can run pytest/ruff/mypy
-      # straight away instead of spending a turn on `uv sync`. `--locked` fails
-      # when uv.lock no longer agrees with pyproject.toml, instead of silently
-      # re-resolving into a non-reproducible environment.
-      - name: Install dependencies
-        run: |
-          uv sync --locked --all-extras

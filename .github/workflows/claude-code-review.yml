@@ -88,10 +88,13 @@ jobs:
             mcp__github_inline_comment__create_inline_comment, and leave one concise
             top-level summary comment with `gh pr comment`. Do NOT spawn subagents;
             do the review yourself, sequentially.
-          # Read-only review tools: the inline-comment MCP tool plus the `gh` reads
-          # the prompt relies on. No plugin/subagents, so no Task tool is involved.
+          # Read-only review tools: the inline-comment MCP tool, the `gh` reads the
+          # prompt relies on, and the project's dev toolchain (setup-env already
+          # ran `uv sync --locked --all-extras`) so the reviewer can actually run
+          # pytest/generate-docs --check instead of reporting it could not. No
+          # plugin/subagents, so no Task tool is involved.
           claude_args: |
-            --allowed-tools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)" ${{ steps.model.outputs.model != '' && format('--model {0}', steps.model.outputs.model) || '' }}
+            --allowed-tools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(uv:*),Bash(pytest:*)" ${{ steps.model.outputs.model != '' && format('--model {0}', steps.model.outputs.model) || '' }}
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 

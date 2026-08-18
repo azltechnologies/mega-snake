@@ -29,9 +29,6 @@ jobs:
       - name: Set up environment
         uses: ./.github/actions/setup-env
 
-      - name: Install dependencies
-        run: uv sync --all-extras
-
       - name: Scan dependencies and file issues for new findings
         env:
           GH_TOKEN: ${{ github.token }}
