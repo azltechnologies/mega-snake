@@ -70,7 +70,7 @@ from mega_snake.util.util import (
     " one of them. A build tool implies its language, so 'gradle' and 'maven' both bring 'java' along.",
 )
 @cli_metadata(flags={"skip"}, reloads_environment=True)
-def create_working_env(stacks: tuple[str, ...]) -> None:  # previously untrackGradleProps
+def create_working_env(stacks: tuple[str, ...]) -> None:
     """
     Sets up the VS Code workspace for the project.
 
@@ -108,7 +108,7 @@ def create_working_env(stacks: tuple[str, ...]) -> None:  # previously untrackGr
     _execute(git_repo, stacks)
 
 
-def _execute(git_repo: bool, stacks: tuple[str, ...] = ()) -> None:  # previously untrackGradleProps
+def _execute(git_repo: bool, stacks: tuple[str, ...] = ()) -> None:
     """
     Configures the workspace: git exclusions, local config load, the tool setup of every active
     stack, and the default workspace settings that belong to those stacks.

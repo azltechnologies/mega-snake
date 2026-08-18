@@ -50,26 +50,26 @@ Then restart your terminal or source the configuration file to activate the `mgs
 
 ### Terminal Support
 
-   The `mgsnake` CLI works on:
+The `mgsnake` CLI works on:
 
 - Windows: PowerShell
 - macOS/Linux: bash or zsh
 
 ### Basic Usage
 
-   After installation and shell profile configuration, use the `mgsnake` command:
+After installation and shell profile configuration, use the `mgsnake` command:
 
-      ```bash
-      # Show help
-      mgsnake --help
+```bash
+# Show help
+mgsnake --help
 
-      # Execute commands with specific log level
-      mgsnake --log-level DEBUG <command>
-      ```
+# Execute commands with specific log level
+mgsnake --log-level DEBUG <command>
+```
 
 ### Log Levels
 
-   Available log levels (from least to most verbose):
+Available log levels (from least to most verbose):
 
 - ERROR: Only errors
 - WARNING: Errors and warnings
@@ -79,19 +79,19 @@ Then restart your terminal or source the configuration file to activate the `mgs
 
 ### Example Commands
 
-      ```bash
-      # Create a working environment
-      mgsnake working-env
+```bash
+# Create a working environment
+mgsnake working-env
 
-      # Check GraphQL schema
-      mgsnake graphql-schema
+# Build a consolidated GraphQL schema from a directory of .graphql files
+mgsnake graphql-schema src/main/resources/graphql
 
-      # Show branch details with debug info
-      mgsnake --log-level DEBUG remote-branches-details
-      ```
+# Show branch details with debug info
+mgsnake --log-level DEBUG remote-branches-details
+```
 
-   > **Note**: Each command has its own help. Use `mgsnake <command> --help` (or the shorter `-h`) for specific
-   > details.
+> **Note**: Each command has its own help. Use `mgsnake <command> --help` (or the shorter `-h`) for specific
+> details.
 
 ### Prefer command aliases for daily use
 

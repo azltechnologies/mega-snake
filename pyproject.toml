@@ -113,11 +113,12 @@ omit = [
 exclude_also = ["\\s*TYPE_CHECKING:\\s*\\n\\s*from.*"]
 
 [tool.ruff]
-# Preserved the more permissive line length you had in pylint
+# Deliberately more permissive than the 88/100 defaults: this codebase favours full sentences in
+# comments and long, explicit type annotations over wrapping them.
 line-length = 120
 
 
-# Exclude large/irrelevant folders (equivalent to your flake8/pylint excludes)
+# Exclude generated, vendored and scratch folders: nothing here is source we own.
 exclude = [
     ".venv",
     "build",
@@ -131,8 +132,9 @@ exclude = [
 ]
 include = ["src/**/*.py"]
 [tool.ruff.lint]
+# D1 and ANN2 enforce §6.1: a docstring on every public symbol, a return annotation on every function.
 select = ["E", "F", "D1", "ANN2"]
-# Ignore pycodestyle checks you had in flake8
+# Two pycodestyle checks that fight the formatting conventions used throughout this codebase.
 extend-ignore = [
     "E303", # too many blank lines
     "E701", # multiple statements on one line
