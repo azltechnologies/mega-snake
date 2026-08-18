@@ -190,7 +190,7 @@ class UserDeclinedError(click.ClickException):
     exit_code = USER_DECLINED_ERROR_CODE
 
 
-def _on_crash(exctype: type[BaseException], value: BaseException, trace: TracebackType | None) -> None:
+def _on_crash(exctype: type[BaseException], value: BaseException, trace: Optional[TracebackType]) -> None:
     """Translate an unhandled WorkspaceError into its registered exit status.
 
     Installed as ``sys.excepthook`` by ``WorkspaceError.__init__``. ``sys.exit`` called from inside
