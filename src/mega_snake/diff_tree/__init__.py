@@ -1,1 +1,1 @@
-""" init file for the diff_tree module """
+"""init file for the diff_tree module"""

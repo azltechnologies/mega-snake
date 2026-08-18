@@ -28,9 +28,7 @@ from mega_snake.util.util import run_operation, get_command_return_code
     default="changeit",
     show_default=True,
 )
-@click.option(
-    "--verbose", "-v", is_flag=True, help="Print the full certificate details of the expired certificates"
-)
+@click.option("--verbose", "-v", is_flag=True, help="Print the full certificate details of the expired certificates")
 def expired_certs(jks_path: str, password: str, verbose: bool) -> None:
     """Check for expired certificates in a Java KeyStore (JKS) file.
 

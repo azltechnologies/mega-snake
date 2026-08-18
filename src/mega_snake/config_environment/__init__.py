@@ -1,1 +1,1 @@
-""" init file for the config_environment module """
+"""init file for the config_environment module"""
