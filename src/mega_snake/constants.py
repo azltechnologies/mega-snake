@@ -79,8 +79,6 @@ RELEASE_TYPE_OPT: dict[str, str] = {"p": "--prerelease", "r": "--latest=false", 
 # every component to its right, which is what keeps the sequence monotonic (1.2.3 -> 1.3.0, not 1.3.3).
 VERSION_PART_OPT: dict[str, int] = {"patch": 2, "minor": 1, "major": 0}
 
-GCLOUD_LOGGIN_OPT: dict[str, str] = {"U": "user", "A": "application", "B": "both"}
-
 WORKSPACE_EXTENSIONS: list[str] = [
     "augustocdias.tasks-shell-input",
     "berublan.vscode-log-viewer",

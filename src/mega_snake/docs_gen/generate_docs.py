@@ -10,6 +10,26 @@ from mega_snake.docs_gen.markdown_writer import render_markdown, write_or_check_
 from mega_snake.util.util import cli_metadata
 
 
+def _render_command_reference() -> str:
+    """Build the Markdown command reference from the live CLI metadata.
+
+    The root group is imported lazily: it is the object being documented, and it imports this
+    module to register the command, so a module-level import would be circular.
+
+    Parameters:
+        None
+
+    Raises:
+        None
+
+    Returns:
+        str: The fully rendered Markdown command reference.
+    """
+    from mega_snake.__main__ import cli  # noqa: PLC0415
+
+    return render_markdown(iter_introspected_commands(cli))
+
+
 @click.command(
     name="generate-docs",
     short_help="Generate the Markdown command reference from CLI metadata and fragments.",
@@ -33,9 +53,6 @@ from mega_snake.util.util import cli_metadata
 def generate_docs(output: Path, check: bool) -> None:
     """Generate or validate the Markdown command reference.
 
-    The root group is imported lazily: it is the object being documented, and it imports this
-    module to register the command, so a module-level import would be circular.
-
     Parameters:
         output: The target Markdown file path.
         check: Whether to validate the file instead of writing it.
@@ -46,9 +63,7 @@ def generate_docs(output: Path, check: bool) -> None:
     Returns:
         None
     """
-    from mega_snake.__main__ import cli
-
-    markdown: str = render_markdown(iter_introspected_commands(cli))
+    markdown: str = _render_command_reference()
     write_or_check_document(output, markdown, check)
     if not check:
         click.echo(f"Generated {output}")

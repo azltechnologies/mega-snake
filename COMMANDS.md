@@ -309,6 +309,65 @@ Writes a Markdown command reference to the target file (default: `COMMANDS.md`).
 This command is intentionally `no_init`: it does not require `MEGA_SNAKE_SHELL`, a workspace, or a
 git repository, and it resolves the packaged fragments through `importlib.resources`.
 
+### generate-skill
+
+Generates SKILL.md for AI agent skill discovery by introspecting the registered CLI commands and rendering the same reference as generate-docs. Creates the file under .github/skills/mgsnake/ for GitHub Copilot, .claude/skills/mgsnake/ for Claude, or both, then asks how those files should be tracked in git.
+
+**Synopsis:** `mgsnake generate-skill [OPTIONS]`
+
+| Option | Description |
+| --- | --- |
+| `--check` | Render in memory, compare with every skill file that already exists on disk, and exit with an error when any is stale. |
+| `-h, --help` | Show this message and exit. |
+
+Skill discovery files let AI agent runtimes (GitHub Copilot, Claude) present the full `mgsnake`
+command reference to an assistant without embedding it in the system prompt. The agent reads
+`SKILL.md` from the configured skill directory and gains the same reference a human would find in
+`COMMANDS.md`, including every command synopsis, option table, and prose fragment.
+
+The file content is identical to what `generate-docs` would write to `COMMANDS.md`; both commands
+call the same underlying renderer. Keeping them in sync is therefore automatic — regenerate with
+`generate-skill` whenever you regenerate `COMMANDS.md`.
+
+#### Output
+
+`SKILL.md` is written into the chosen skill directory (or both):
+
+- `.github/skills/mgsnake/SKILL.md` — GitHub Copilot skill directory
+- `.claude/skills/mgsnake/SKILL.md` — Claude skill directory
+
+After writing the files the command asks how to track them in git:
+
+- **exclude (e)** — appends the directory to `.git/info/exclude`, keeping it machine-local and
+  uncommitted. Best for teams that do not all use the same AI assistant.
+- **gitignore (g)** — adds the directory to `.gitignore`. Use this when the whole team uses the
+  same assistant and has agreed to exclude skill files from the repository.
+- **versioned (v)** — leaves the files as-is so they can be committed. Use this when you want to
+  ship the skill alongside the project so contributors get it automatically after cloning.
+
+#### Examples
+
+```bash
+# First-time setup: pick the target assistant and the git-tracking preference interactively
+mgsnake generate-skill
+
+# Re-generate after updating command metadata (non-interactive if files already exist and match)
+mgsnake generate-skill
+
+# Verify that all existing skill files are up to date (CI-safe, exits non-zero if stale)
+mgsnake generate-skill --check
+```
+
+#### Notes
+
+`--check` only validates skill files that already exist on disk. If no skill files are present it
+exits successfully — the command does not mandate that skill files exist, only that existing ones
+are not stale.
+
+The command requires no workspace or git repository (`no_init` flag). It can run anywhere `mgsnake`
+is installed, including CI environments, which makes `--check` suitable as a CI gate alongside the
+equivalent `generate-docs --check`.
+
 ### man
 
 Renders the command reference in the terminal and pages it, showing the whole document or a single command when one is named. The content is built from the live CLI metadata and the packaged fragments, so it never depends on a generated file being present.

@@ -961,6 +961,12 @@ would remove the stored token entirely and is the natural upgrade.)
 
 7.  **Avoid duplicated code**: Each fix, implementation or modification in the codebase must use the existing utilities, helpers, and patterns. Additionally, If you find yourself copying and pasting code, consider refactoring it into a shared utility function or class.
 
+    **Prefer existing third-party dependencies over adding new ones.** Before introducing a new library, check
+    whether any dependency already listed in `pyproject.toml` can do the job. Adding a new package incurs
+    maintenance, security, and version-compatibility costs for every future contributor; only do it when the
+    existing set genuinely cannot cover the need. The same rule applies to standard-library modules: reach for
+    what is already imported in the module before pulling in something new.
+
 8.  **Consistency**: We must use the same approach and design patterns consistently across the codebase. If a pattern is already established, follow it rather than introducing a new one. If you are writing a new implementation, make sure to check what development patterns are being used in the codebase beforehand, so you can use similar approaches in your new solution unless there is a strong reason to deviate.
 
 ### 6.2 Testing & Coverage Requirements (CRITICAL)
