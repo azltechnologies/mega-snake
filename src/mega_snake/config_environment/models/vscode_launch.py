@@ -7,6 +7,7 @@ from typing import Any, Callable, Optional
 import jq
 from mega_snake.constants import MODULE_NAME, INTERPRETER_PATH
 from mega_snake.config_environment.models.log_viewer_watcher import LogWatcher
+from mega_snake.config_environment.models.project_stack import ProjectStack
 from mega_snake.config_environment.models.vscode_task import VscodeTask
 
 LAUNCH_CONFIG_QUERY = ".launch.configurations"
@@ -33,27 +34,11 @@ class VscodeLaunch(Enum):
             "hostName": "localhost",
             "projectName": SUBSTITUTE_PROJECT_TAG,
         },
+        ProjectStack.JAVA,
     )
-    DEBUG_PYTHON_FILE = (
-        "PYTHON DEBUG (File)",
-        "debugpy",
-        "launch",
-        None,
-        None,
-        LogWatcher.GENERIC,
-        None,
-        {"program": "${file}"},
-    )
-    DEBUG_PYTHON_MODULE = (
-        "PYTHON DEBUG (Module)",
-        "debugpy",
-        "launch",
-        {"PYTHONPATH": "${fileDirnameBasename}"},
-        None,
-        LogWatcher.GENERIC,
-        None,
-        {"module": "${fileDirnameBasename}"},
-    )
+    # Debugs the mega-snake CLI itself, so it belongs to the opt-in development stack: without the
+    # marker file it is written to no workspace at all, which is what keeps it out of a user's
+    # Python project (§1 of the copilot instructions).
     DEBUG_PYTHON_SNAKE = (
         "PYTHON DEBUG (Snake)",
         "debugpy",
@@ -67,6 +52,29 @@ class VscodeLaunch(Enum):
             "python": f"{os.getenv('PYTHONPATH')}/{INTERPRETER_PATH}",
             "console": "integratedTerminal",
         },
+        ProjectStack.SNAKE,
+    )
+    DEBUG_PYTHON_FILE = (
+        "PYTHON DEBUG (File)",
+        "debugpy",
+        "launch",
+        None,
+        None,
+        LogWatcher.GENERIC,
+        None,
+        {"program": "${file}"},
+        ProjectStack.PYTHON,
+    )
+    DEBUG_PYTHON_MODULE = (
+        "PYTHON DEBUG (Module)",
+        "debugpy",
+        "launch",
+        {"PYTHONPATH": "${fileDirnameBasename}"},
+        None,
+        LogWatcher.GENERIC,
+        None,
+        {"module": "${fileDirnameBasename}"},
+        ProjectStack.PYTHON,
     )
 
     def __init__(
@@ -79,9 +87,11 @@ class VscodeLaunch(Enum):
         watcher: Optional[LogWatcher],
         depends_on: Optional[list[VscodeTask]],
         extra_args: Optional[dict[str, Any]],
+        stack: ProjectStack = ProjectStack.COMMON,
     ) -> None:
         """Initialize a VscodeLaunch enum member with all required VS Code launch configuration fields."""
         self.task_name = task_name
+        self.stack = stack
         self.task_type = task_type
         self.request = request
         self.env = env if env else {}
@@ -105,6 +115,9 @@ class VscodeLaunch(Enum):
             result[key] = value
         return result
 
+    # TODO(#55-followup): same in-place enum mutation as `VscodeTask.add_logger_args`; see the full
+    # note there. Fix both together -- this `to_dict` joins `args` with `" "` for the `debugpy` type,
+    # so the two call sites do not compose the value identically and cannot be changed in isolation.
     def add_logger_args(self, working_path: str) -> None:
         """Adds the redirect arg to the task."""
         if self.watcher:
