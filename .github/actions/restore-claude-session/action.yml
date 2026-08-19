@@ -48,6 +48,17 @@ inputs:
       Issues and pull requests share a single numbering sequence in GitHub, so a
       bare number is already unambiguous.
     required: true
+  thread-kind:
+    description: >-
+      Namespace for the conversation, so two different kinds of run on the *same*
+      number keep separate histories. `issue` is the working conversation, which
+      writes code and answers `@claude`; `review` is the code reviewer, which must
+      stay independent of it -- a reviewer resuming the implementer's session would
+      be reviewing code it remembers writing, and would inherit every assumption
+      that went into it. Consecutive reviews of one pull request still chain to
+      each other, which is the point.
+    required: false
+    default: issue
   cache-version:
     description: >-
       Prefix component used to invalidate every stored session at once. Bump it
@@ -91,11 +102,20 @@ runs:
       shell: bash
       env:
         THREAD_ID: ${{ inputs.thread-id }}
+        THREAD_KIND: ${{ inputs.thread-kind }}
         CACHE_VERSION: ${{ inputs.cache-version }}
       run: |
         set -euo pipefail
         if ! printf '%s' "${THREAD_ID}" | grep -Eq '^[0-9]+$'; then
           echo "::error::thread-id must be a number, got '${THREAD_ID}'"
+          exit 1
+        fi
+        # Constrained rather than interpolated as-is: the value becomes part of a
+        # cache key, and a stray '-' or an empty string would let one namespace's
+        # prefix match another's keys -- the exact isolation this input exists to
+        # provide. Anchored, so 'review-x' and 'review ' are both refused.
+        if ! printf '%s' "${THREAD_KIND}" | grep -Eq '^[a-z]+$'; then
+          echo "::error::thread-kind must be lowercase letters only, got '${THREAD_KIND}'"
           exit 1
         fi
 
@@ -105,7 +125,7 @@ runs:
         #
         # The trailing '-' on the prefix keeps issue #5 from matching issue #50,
         # exactly like the branch lookup in claude-issue.yml.
-        prefix="claude-session-${CACHE_VERSION}-issue-${THREAD_ID}-"
+        prefix="claude-session-${CACHE_VERSION}-${THREAD_KIND}-${THREAD_ID}-"
 
         # Cache entries are immutable, so every run needs a key of its own.
         # `run_attempt` is part of it because re-running a failed job reuses the
@@ -132,6 +152,8 @@ runs:
         FRESH: ${{ inputs.fresh }}
         MATCHED_KEY: ${{ steps.restore.outputs.cache-matched-key }}
         SESSION_PATH: ${{ steps.keys.outputs.path }}
+        THREAD_ID: ${{ inputs.thread-id }}
+        THREAD_KIND: ${{ inputs.thread-kind }}
       run: |
         set -euo pipefail
 
@@ -185,5 +207,6 @@ runs:
           echo "### Claude session"
           echo ""
           echo "- Restore: ${state}"
+          echo "- Thread: \`${THREAD_KIND} #${THREAD_ID}\`"
           echo "- Next key: \`${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}\` under this thread's prefix"
         } >> "$GITHUB_STEP_SUMMARY"
