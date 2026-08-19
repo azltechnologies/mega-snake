@@ -144,8 +144,14 @@ jobs:
           # `continue-flag` expands to `--continue` only when a transcript for
           # this workspace was actually restored: passing it without one makes
           # the CLI exit with "no conversation found".
+          #
+          # The session state is handed over as context rather than left to be read: the temporary
+          # note in copilot-instructions.md requires every run to report whether it resumed a
+          # conversation, and `$GITHUB_STEP_SUMMARY` -- where `restore-claude-session` writes it --
+          # is unreadable with the tool set above. Passing the three outputs directly keeps the
+          # requirement satisfiable no matter how narrow the allowed tools get.
           claude_args: |
-            --allowed-tools Bash(uv:*),Bash(pytest:*),Bash(ruff:*),Bash(mypy:*),Bash(gh:*),Bash(git:*) ${{ steps.session.outputs.continue-flag }} ${{ steps.model.outputs.model != '' && format('--model {0}', steps.model.outputs.model) || '' }}
+            --allowed-tools Bash(uv:*),Bash(pytest:*),Bash(ruff:*),Bash(mypy:*),Bash(gh:*),Bash(git:*) --append-system-prompt "Session cache for this run: restored-key='${{ steps.session.outputs.restored-key }}' (empty means a cache miss, otherwise the key restored, exactly or through restore-keys); continue-flag='${{ steps.session.outputs.continue-flag }}' (literal --continue when a transcript for this workspace was restored, empty when this is a fresh conversation); save-key='${{ steps.session.outputs.cache-key }}'. Report all three in the comment you post on this thread, as the temporary note in .github/copilot-instructions.md requires." ${{ steps.session.outputs.continue-flag }} ${{ steps.model.outputs.model != '' && format('--model {0}', steps.model.outputs.model) || '' }}
 
       # No `if:` on purpose. The default `success()` means a failed run does not
       # become the next checkpoint of the conversation: the following run then
