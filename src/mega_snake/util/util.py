@@ -29,6 +29,7 @@ OS = platform.system()
 
 NO_REMOTE_MESSAGE = "No remote repository found. Please add a remote repository to the current repository."
 GIT_EXCLUDE_FILE = os.path.join(".git", "info", "exclude")
+GITIGNORE_FILE = ".gitignore"
 
 # Caches the resolved remote for the lifetime of the process. Resolving it is not free: it spawns a
 # `git remote` subprocess and, when the repository has more than one remote, it prompts the user to
@@ -323,6 +324,46 @@ def exclude_from_git(entries: list[tuple[str, str]]) -> None:
         ws_success(f"Excluded {description} in {GIT_EXCLUDE_FILE}")
     with open(GIT_EXCLUDE_FILE, "w", encoding="utf-8") as file:
         file.write(exclude)
+
+
+def add_to_gitignore(entries: list[tuple[str, str]]) -> None:
+    """Add the given entries to the repository's .gitignore file when missing.
+
+    Entries already present are left untouched, so the operation is idempotent. When the current
+    directory is not a git repository the additions are skipped with a warning instead of failing.
+    The .gitignore file is created when it does not exist yet.
+
+    Parameters:
+        entries: Pairs of (entry, description); the entry is the literal line written to .gitignore
+            (e.g. ``".github/skills/mgsnake/"``), the description is used in the log messages.
+
+    Raises:
+        None
+
+    Returns:
+        None
+    """
+    if not os.path.exists(".git"):
+        ws_warning(
+            f"Not inside a git repository; skipping .gitignore additions for: "
+            f"{', '.join(description for _, description in entries)}"
+        )
+        return
+    content: str = ""
+    if os.path.exists(GITIGNORE_FILE):
+        with open(GITIGNORE_FILE, "r", encoding="utf-8") as file:
+            content = file.read()
+    if content and not content.endswith("\n"):
+        content += "\n"
+    for entry, description in entries:
+        regex = re.compile(rf"^\s*{re.escape(entry.rstrip('/'))}/?\s*$", re.MULTILINE)
+        if regex.search(content):
+            ws_advice(f"{description} already in {GITIGNORE_FILE}")
+            continue
+        content += f"{entry}\n"
+        ws_success(f"Added {description} to {GITIGNORE_FILE}")
+    with open(GITIGNORE_FILE, "w", encoding="utf-8") as file:
+        file.write(content)
 
 
 def ensure_working_path(decline_message: Optional[str] = None) -> str:

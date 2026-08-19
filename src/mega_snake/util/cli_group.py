@@ -12,8 +12,8 @@ from mega_snake.constants import APP_NAME, DOCS_DIR, DOCS_FILE_SUFFIX, MODULE_NA
 
 # Attribute set on a callback by @cli_metadata, holding every metadata keyword it was given.
 # Deliberately distinct from META_FLAGS below: this is the *container* attribute name, not a key
-# inside it. Keeping the two apart avoids the confusing "callback.flags == {'flags': ...}" shape
-# that resulted from both once sharing the string "flags".
+# inside it. Keep the two strings apart — reusing one for both produces the confusing
+# "callback.flags == {'flags': ...}" shape.
 ATTR_METADATA = "_cli_metadata"
 # Metadata keys, which double as the attribute names resolved onto the command object.
 ATTR_ALIAS = "aliases"

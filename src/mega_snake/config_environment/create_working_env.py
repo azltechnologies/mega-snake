@@ -47,7 +47,7 @@ from mega_snake.util.util import (
     epilog="usage: mgsnake working-env",
 )
 @cli_metadata(flags={"skip"}, reloads_environment=True)
-def create_working_env() -> None:  # previously untrackGradleProps
+def create_working_env() -> None:
     """
     Sets up the VS Code workspace for the project.
 
@@ -82,7 +82,7 @@ def create_working_env() -> None:  # previously untrackGradleProps
     _execute(git_repo)
 
 
-def _execute(git_repo: bool) -> None:  # previously untrackGradleProps
+def _execute(git_repo: bool) -> None:
     """
     Configures the workspace: git exclusions, local config load, Java/Gradle/Maven setup
     (the last two only when their build files exist), and the default workspace settings.

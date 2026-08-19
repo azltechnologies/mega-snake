@@ -43,9 +43,8 @@ class InternalStateError(Exception):
     traceback-free output; a bug wants the opposite. Resolving to ``INTERNAL_ERROR_CODE`` makes
     ``_on_crash`` print the traceback, which is the only diagnostic that helps here.
 
-    It replaces the ``assert`` statements this codebase used for the same purpose: ``assert`` is
-    stripped by ``python -O``, which silently removed the check and let the failure surface later as
-    something unrelated.
+    Never express one of these checks as an ``assert``: ``python -O`` strips them, which removes the
+    guard silently and lets the failure surface later as something unrelated.
 
     **Deliberately absent from ``ERROR_CODES``.** It inherits ``INTERNAL_ERROR_CODE`` from
     ``resolve_error_code``'s default, which is exactly right: 100 already means "a bug in mgsnake",
@@ -69,8 +68,9 @@ USER_DECLINED_ERROR_CODE: int = 114
 # (see VersionSetException in config_environment/models/tools_version.py); the invariant test in
 # src/tests/test_exit_codes.py fails naming any custom exception that is left unmapped.
 #
-# 105 is deliberately vacant. It used to be assigned to IOError, which *is* OSError, the very same
-# object EnvironmentError aliases — so the two entries collided silently and 105 was unreachable.
+# 105 is deliberately vacant, and must stay that way: it was assigned to IOError, which *is* OSError,
+# the very same object EnvironmentError aliases, so the two entries collided silently and one of them
+# was always unreachable. Never fill the gap with an alias of a type already listed below.
 ERROR_CODES: dict[type[BaseException], int] = {
     RuntimeError: 101,
     FileNotFoundError: 102,
@@ -247,9 +247,10 @@ def get_traceback(e: BaseException) -> str:
 # the two: `mgsnake cmd 2>/dev/null` keeps the payload, and `$(mgsnake cmd)` captures the payload
 # alone. Both are impossible while a status line shares the stream with the result.
 #
-# This used to hold for ws_advice only, which left errors leaking into every pipe and made stdout
-# unusable as a data channel for any command that logged anything. Keeping it uniform is what lets
-# a command emit a value on stdout without auditing every helper it might reach.
+# The rule has to hold for the *whole* family: one helper that still prints to stdout is enough to
+# corrupt a captured value, and it does so at a distance — only for the commands and log levels that
+# happen to reach it. Uniformity is what lets a command emit a value on stdout without auditing
+# every helper it might call. test_every_ws_helper_writes_to_stderr_only fails naming any regression.
 #
 # The user sees no difference: an interactive terminal shows both streams.
 def ws_success(message: str) -> None:
@@ -307,9 +308,9 @@ def _ws_error(error: BaseException, message: Optional[str] = None) -> None:
 def ws_advice(message: str, force: bool = False) -> None:
     """Print an advice message to stderr if LOG_LEVEL is set to DEBUG.
 
-    Like every other ws_* helper, this writes to stderr (see the note above them). It was the first
-    one to do so, because `local-config-path` is read with `$(...)` in `config_setup.sh` and its
-    value was polluted by these lines whenever the CLI ran at DEBUG level.
+    Like every other ws_* helper, this writes to stderr (see the note above them). It matters most
+    here: `config_setup.sh` reads `local-config-path` with `$(...)`, so a single advice line on
+    stdout would silently corrupt that path whenever the CLI runs at DEBUG level.
 
     Parameters:
         message: The advice message to print and log.

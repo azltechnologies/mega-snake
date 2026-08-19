@@ -135,9 +135,9 @@ def cli(ctx: click.Context, log_level: str) -> None:
         click.echo(get_traceback(e), err=True)
         # Deliberately re-raised with its type intact instead of being converted to a SystemExit.
         # `SystemExit(e)` uses its argument as the status only when that argument is an int; given
-        # an exception it prints it and exits 1, which is what flattened every initialization
-        # failure to the same code. main() turns this into a WorkspaceError, whose registered
-        # status is what actually reaches the shell.
+        # an exception it prints it and exits 1, flattening every initialization failure to the same
+        # code. main() turns this into a WorkspaceError, whose registered status is what actually
+        # reaches the shell.
         raise
 
 
@@ -181,10 +181,10 @@ for group, add_wrapper in MODULES:
 def main() -> None:
     """Run the CLI: the single place where an exception becomes an exit code.
 
-    This is what ``[project.scripts]`` points at. Pointing it at ``cli`` instead meant the installed
-    executable called the group directly, so the translation below — and with it the installation of
-    ``_on_crash`` as the except hook — only ever ran under ``python -m mega_snake``. No user runs
-    that, which is how every failure came to report the same status.
+    This is what ``[project.scripts]`` must point at, never at ``cli``. Pointing it at the group makes
+    the installed executable call click directly, so the translation below — and with it the
+    installation of ``_on_crash`` as the except hook — only runs under ``python -m mega_snake``, which
+    no user types: every failure then reports the same status.
 
     ``click.ClickException`` is re-raised untouched because Click already knows its status
     (``exit_code``); wrapping it would relabel a user error as an internal one. Anything else
