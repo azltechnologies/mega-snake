@@ -84,7 +84,20 @@ these two are independent of it:
 
 ### Open items — keep these under observation
 
-1. **The chain is unobserved for every workflow, the reviewer included.** Three consecutive reviews of
+1. **Observed on an issue thread; still unobserved for the reviewer.** Runs `32272669129`,
+   `32273047017` and `32273325879` on issue #73 are the first chain over artifacts: a genuine miss, then
+   two runs that each restored the previous run's artifact, resumed transcript
+   `18b27378-9751-4c5f-afab-8ad865814918` and were passed `--continue`. So the artifact implementation
+   works, at least for `thread-kind: issue`. **`claude-code-review.yml` has still never stored or restored
+   an artifact**, and it is the workflow whose `actions: read` permission was added for this — the one
+   thing in the change that is exercised nowhere else. Two consecutive `*-cr` labels on one pull request
+   are what close this.
+
+   The turn counter is likewise unproven on a runner: it was exercised locally over a three-run
+   round-trip, both mutations of it were seen to fail, but a fixture is not a runner.
+
+   Everything below in this item is the *previous* mechanism, kept because it is what the design was
+   proven on. Three consecutive reviews of
    PR #55 — `32211995416` (miss, saved), `32213482561` (restored, resumed), `32215871797` (restored,
    resumed) — each resumed the *same* transcript, `7c4eb90b-c492-4557-9b7b-512e2b76a152.jsonl`. That is
    real, and it proves the **design**: restore → `--continue` → save does chain, and a reviewer that
@@ -94,12 +107,9 @@ these two are independent of it:
    two, despite having demonstrably worked, and its next run is a first run in every sense that matters
    here.
 
-   What has to be seen, per thread kind: run 1 finds nothing and uploads; run 2 finds run 1's artifact
-   by name, unpacks it, and passes `--continue`. **The first run after this change is a mandatory miss**
-   for every thread, because nothing was ever stored under the new scheme — including on threads with a
-   long cache history. The shell was exercised locally against fixtures (both plausible archive layouts,
-   a corrupt archive, a refused listing, a failed download, every `--continue` decision branch), but a
-   fixture is not a runner.
+   **The first run after any change to the storage layout is a mandatory miss**, on every thread,
+   including one with a long history behind it — nothing was ever stored under the new scheme. Read a
+   miss there as arithmetic, not as evidence.
 2. **Cross-trigger visibility is new, and unobserved.** A cache written on `refs/pull/<n>/merge` was
    invisible to a later `issue_comment` run on the default branch, so a review turn and a comment turn
    on the same pull request could not see each other's state. Artifacts are looked up by name through
@@ -139,13 +149,30 @@ conversation must not have to open the run logs to know whether this turn had an
 
 Report, in the progress/result comment, all of:
 
-- **whether anything was restored, and from which run** — the `restored-from` output is empty when nothing
-  was stored for this thread, and holds the id of the workflow run whose transcript was unpacked otherwise;
+- **which turn of the conversation this run is** — the `turn` output. Report the number you were given, never
+  one you counted;
+- **whether anything was restored, and from which run** — the `state` output says so in one sentence, and
+  `restored-from` holds the run id (empty when nothing was stored for this thread);
 - **whether `--continue` was actually passed** (the `continue-flag` output) — state that was restored but
   held no transcript for this workspace still starts a brand new conversation, and from the outside that is
   indistinguishable from a resumed one;
 - **the artifact name this run's state is uploaded under**, so the chain can be followed from one run to the
   next.
+
+**The values you are given outrank anything you remember, and anything already written on the thread.** Runs
+`32272669129`, `32273047017` and `32273325879` on issue #73 chained correctly — same session id, `--continue`
+passed, artifacts growing 24 KB → 39 KB → 55 KB — and every one of them reported the chain as broken. The
+second resumed the first's transcript, found a turn in it that truthfully said *"first run, miss"*, and
+published that as its own state while quoting its real `restored-from` one line below; the third inherited
+the story and wrote a diagnosis of a bug that did not exist. Note what that means: **the reports were wrong
+because the resume worked.** A run that genuinely missed would have had no earlier turn to copy from. The
+better this feature works, the more contaminated the self-report — which is why the turn number is computed
+by the workflow and handed over, and why it must be repeated rather than re-derived.
+
+There are two channels feeding the stale story, and only one of them is the transcript: `claude-code-action`
+injects the issue body and every comment into each run whether or not anything was restored. Run
+`32272669129` proves it — a completely fresh session with no history, which nonetheless titled itself "Run 3"
+by counting the comments above it. So this rule holds even on a run that restored nothing.
 
 **The three values are handed to the run as context, so nothing has to be read to report them.** All three
 workflows interpolate `restore-claude-session`'s outputs into `--append-system-prompt`, which means the session state is in

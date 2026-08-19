@@ -141,6 +141,26 @@ outputs:
   session-path:
     description: The directory that holds the persisted state.
     value: ${{ steps.resolve.outputs.path }}
+  turn:
+    description: >-
+      Which turn of this conversation this run is: `1` on a thread that has none
+      stored, the previous turn plus one otherwise. Pass it to
+      `save-claude-session`, and hand it to the model.
+
+      It exists because a run cannot work out its own position from what it
+      remembers. Three consecutive runs on issue #73 chained correctly and all
+      three reported it wrong: the second resumed the first's transcript, found a
+      turn in it that said "first run, cache miss", and published that as its own
+      state while quoting this run's real values one line below. A counter the
+      workflow computes is the one statement about the conversation that no
+      narrative inside the conversation can contradict.
+    value: ${{ steps.detect.outputs.turn }}
+  state:
+    description: >-
+      One plain sentence describing what this run restored, ready to hand to the
+      model verbatim. Deliberately free of backticks and quotes: it is
+      interpolated into a shell command line.
+    value: ${{ steps.detect.outputs.state }}
 
 runs:
   using: composite
@@ -228,20 +248,38 @@ runs:
           exit 0
         fi
 
-        # `actions/upload-artifact` roots the archive at the directory it was
-        # given, so the entries are the per-workspace project directories. The
-        # extra `projects/` level is tolerated rather than assumed away: getting
-        # it wrong restores a tree `--continue` cannot see, which looks exactly
-        # like a thread that never had any history.
-        if [ -d "${staging}/projects" ] \
-           && [ -z "$(find "${staging}" -mindepth 1 -maxdepth 1 ! -name projects -print -quit)" ]; then
-          staging="${staging}/projects"
+        # `save-claude-session` uploads the transcripts under `projects/` with the
+        # turn counter beside them, so both are read from the archive root. A
+        # flat archive -- anything stored before the counter existed -- is still
+        # accepted: the transcripts are then the root itself. The two layouts are
+        # never ambiguous, because a Claude project directory is named after an
+        # absolute path and therefore always starts with a dash.
+        if [ -d "${staging}/projects" ]; then
+          transcripts="${staging}/projects"
+        else
+          transcripts="${staging}"
         fi
 
+        # `tr -dc` rather than a validation, because a malformed counter must not
+        # cost us a restore that otherwise succeeded.
+        previous_turn=""
+        if [ -f "${staging}/turn" ]; then
+          previous_turn=$(tr -dc '0-9' < "${staging}/turn" | head -c 9)
+        fi
+        # An archive from before the counter existed carries no `turn` file, and
+        # a run that restored one is still not the first. Falling back to 1 makes
+        # this run report turn 2; falling back to 0 would make it announce itself
+        # as the first turn while resuming somebody else's transcript, which is
+        # the exact confusion the counter exists to prevent.
+        [ -n "${previous_turn}" ] || previous_turn=1
+
         mkdir -p "${SESSION_PATH}"
-        cp -a "${staging}/." "${SESSION_PATH}/"
-        echo "restored-from=${source_run}" >> "$GITHUB_OUTPUT"
-        echo "Restored session artifact ${artifact_id}, written by run ${source_run}."
+        cp -a "${transcripts}/." "${SESSION_PATH}/"
+        {
+          echo "restored-from=${source_run}"
+          echo "previous-turn=${previous_turn}"
+        } >> "$GITHUB_OUTPUT"
+        echo "Restored session artifact ${artifact_id}, written by run ${source_run}, turn ${previous_turn}."
 
     - name: Detect resumable session
       id: detect
@@ -249,6 +287,7 @@ runs:
       env:
         FRESH: ${{ inputs.fresh }}
         RESTORED_FROM: ${{ steps.restore.outputs.restored-from }}
+        PREVIOUS_TURN: ${{ steps.restore.outputs.previous-turn }}
         SESSION_PATH: ${{ steps.resolve.outputs.path }}
         ARTIFACT_NAME: ${{ steps.resolve.outputs.artifact-name }}
         THREAD_ID: ${{ inputs.thread-id }}
@@ -284,28 +323,53 @@ runs:
           fi
         done
 
+        # The counter belongs to the conversation, not to the run: a fresh
+        # session restarts it, because that is a new conversation whatever came
+        # before. Anything non-numeric is treated as absent rather than fed to
+        # the arithmetic below, which would abort the step.
+        #
+        # An unusable counter falls back to the *restore* rather than to zero,
+        # so the invariant holds in every branch: a run that resumed somebody
+        # else's transcript never announces itself as turn 1. Announcing turn 1
+        # while resuming is precisely the state that made three consecutive runs
+        # on issue #73 each report the chain as broken.
+        case "${PREVIOUS_TURN}" in
+          '' | *[!0-9]*) [ -n "${RESTORED_FROM}" ] && previous=1 || previous=0 ;;
+          *) previous=${PREVIOUS_TURN} ;;
+        esac
+        turn=$((previous + 1))
+
+        # No backticks and no quotes in `state`: it is handed to the model
+        # through a shell command line, where a backtick is a command
+        # substitution. The step summary below reads fine without them.
         if [ "${FRESH}" = "true" ]; then
-          state="fresh session requested -- nothing restored"
+          state="a fresh session was requested, so nothing was restored and this conversation starts over at turn 1"
           flag=""
+          turn=1
         elif [ -n "${newest}" ]; then
-          state="resuming \`$(basename "${newest}")\` (stored by run \`${RESTORED_FROM}\`)"
+          state="resuming session $(basename "${newest}" .jsonl), stored by run ${RESTORED_FROM}"
           flag="--continue"
         elif [ -n "${RESTORED_FROM}" ]; then
           # State was restored but held no transcript for this workspace.
           # Passing `--continue` here would fail the run, so a new conversation
           # starts instead.
-          state="state from run \`${RESTORED_FROM}\` restored, but it holds no transcript for this workspace -- starting a new session"
+          state="state from run ${RESTORED_FROM} was restored but holds no transcript for this workspace, so a new session starts"
           flag=""
         else
-          state="nothing stored for this thread -- starting a new session"
+          state="nothing is stored for this thread yet, so a new session starts"
           flag=""
         fi
 
-        echo "continue-flag=${flag}" >> "$GITHUB_OUTPUT"
-        echo "Claude session: ${state}"
+        {
+          echo "continue-flag=${flag}"
+          echo "turn=${turn}"
+          echo "state=${state}"
+        } >> "$GITHUB_OUTPUT"
+        echo "Claude session: turn ${turn}, ${state}"
         {
           echo "### Claude session"
           echo ""
+          echo "- Turn: ${turn}"
           echo "- Restore: ${state}"
           echo "- Thread: \`${THREAD_KIND} #${THREAD_ID}\`"
           echo "- Artifact: \`${ARTIFACT_NAME}\`"

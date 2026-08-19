@@ -26,6 +26,13 @@ inputs:
   session-path:
     description: The `session-path` output of `restore-claude-session`.
     required: true
+  turn:
+    description: >-
+      The `turn` output of `restore-claude-session`. Stored beside the
+      transcripts so the next run can tell the model where in the conversation
+      it is, instead of leaving it to work that out from what it remembers --
+      which it does badly, see that action's `turn` output for the incident.
+    required: true
   keep-sessions:
     description: >-
       How many of the most recent transcripts to keep per project directory.
@@ -52,7 +59,7 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Prune Claude session state
+    - name: Prune and stage the Claude session state
       id: prune
       shell: bash
       env:
@@ -60,6 +67,7 @@ runs:
         KEEP_SESSIONS: ${{ inputs.keep-sessions }}
         WARN_SIZE_MB: ${{ inputs.warn-size-mb }}
         RETENTION_DAYS: ${{ inputs.retention-days }}
+        TURN: ${{ inputs.turn }}
       run: |
         set -euo pipefail
 
@@ -77,6 +85,7 @@ runs:
         require_positive_int keep-sessions "${KEEP_SESSIONS}"
         require_positive_int warn-size-mb "${WARN_SIZE_MB}"
         require_positive_int retention-days "${RETENTION_DAYS}"
+        require_positive_int turn "${TURN}"
 
         if [ ! -d "${SESSION_PATH}" ]; then
           echo "No Claude state at ${SESSION_PATH}; nothing to save."
@@ -112,15 +121,33 @@ runs:
 
         size_kb=$(du -sk "${SESSION_PATH}" | cut -f1)
         size_mb=$((size_kb / 1024))
-        echo "has-state=true" >> "$GITHUB_OUTPUT"
-        echo "size-mb=${size_mb}" >> "$GITHUB_OUTPUT"
+
+        # The archive is assembled here rather than uploading `SESSION_PATH`
+        # directly, so the turn counter travels *beside* the transcripts instead
+        # of inside the directory Claude Code owns. Nothing of ours is written
+        # into `~/.claude`, and the layout the next run unpacks is one we chose:
+        #
+        #     turn                  <- this conversation's position, as a number
+        #     projects/<slug>/*.jsonl
+        #
+        upload_path="${RUNNER_TEMP}/claude-session-upload"
+        rm -rf "${upload_path}"
+        mkdir -p "${upload_path}"
+        cp -a "${SESSION_PATH}" "${upload_path}/projects"
+        printf '%s\n' "${TURN}" > "${upload_path}/turn"
+
+        {
+          echo "has-state=true"
+          echo "size-mb=${size_mb}"
+          echo "upload-path=${upload_path}"
+        } >> "$GITHUB_OUTPUT"
 
         if [ "${size_mb}" -ge "${WARN_SIZE_MB}" ]; then
           echo "::warning::The persisted Claude session is ${size_mb} MB (threshold ${WARN_SIZE_MB} MB). Consider summarising the conversation and starting a fresh session."
         fi
 
         {
-          echo "- Save: \`${size_mb}\` MB persisted for the next run, kept for ${RETENTION_DAYS} days"
+          echo "- Save: \`${size_mb}\` MB persisted as turn ${TURN}, kept for ${RETENTION_DAYS} days"
         } >> "$GITHUB_STEP_SUMMARY"
 
     # `if-no-files-found: error` on purpose. The prune step above has already
@@ -134,7 +161,7 @@ runs:
       uses: actions/upload-artifact@v4
       with:
         name: ${{ inputs.artifact-name }}
-        path: ${{ inputs.session-path }}
+        path: ${{ steps.prune.outputs.upload-path }}
         retention-days: ${{ inputs.retention-days }}
         include-hidden-files: true
         if-no-files-found: error
