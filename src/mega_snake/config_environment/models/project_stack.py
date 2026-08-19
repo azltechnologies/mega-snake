@@ -293,7 +293,7 @@ def resolve_stacks(selected: Iterable[str] = (), root: Optional[str] = None) -> 
         root: The directory to inspect when detecting. Defaults to the current working directory.
 
     Raises:
-        ValueError: If a requested key does not match any stack.
+        ValueError: If a requested key does not match any stack, or names an opt-in one.
 
     Returns:
         set[ProjectStack]: The active stacks, always including `COMMON`.
@@ -310,7 +310,16 @@ def resolve_stacks(selected: Iterable[str] = (), root: Optional[str] = None) -> 
         return {stack for stack in ProjectStack if not stack.opt_in}
     active: set[ProjectStack] = {ProjectStack.COMMON}
     for key in keys:
-        active.update(expand(from_key(key)))
+        stack: ProjectStack = from_key(key)
+        # The marker file is the only way into an opt-in stack, and that rule is stated by this
+        # module's own docstring, by the copilot instructions and by `working-env.md`. It used to be
+        # enforced one layer above, by `click.Choice(selectable_keys())` -- which does reject
+        # `--stack snake` with exit 2, so nothing was reachable through the CLI, but it left the
+        # model contradicting the three places that document it. `selectable_keys()` computes the
+        # allowed set right here, so the rule belongs here too.
+        if stack.opt_in:
+            raise ValueError(f"Project stack '{stack.key}' is opt-in and can only be activated by its marker file")
+        active.update(expand(stack))
     return active
 
 

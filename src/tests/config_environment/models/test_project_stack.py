@@ -207,8 +207,18 @@ def test_resolve_stacks(tmp_path: Path) -> None:
     assert resolve_stacks(["ALL"], str(tmp_path)) == resolve_stacks([ALL_STACKS], str(tmp_path))
     assert resolve_stacks(["GRADLE"], str(tmp_path)) == resolve_stacks(["gradle"], str(tmp_path))
 
-    # the opt-in stack is still resolvable by name, for the workspace that drops its marker
-    assert ProjectStack.SNAKE in resolve_stacks([ProjectStack.SNAKE.key], str(tmp_path))
+    # an opt-in stack is refused by name: the marker file is the only way in, which is what this
+    # module's docstring, the copilot instructions and working-env.md all promise. The CLI never gets
+    # this far -- `click.Choice(selectable_keys())` rejects it first -- so the rule is asserted
+    # against the model itself, where it is documented.
+    with pytest.raises(ValueError, match="opt-in"):
+        resolve_stacks([ProjectStack.SNAKE.key], str(tmp_path))
+    assert ProjectStack.SNAKE not in resolve_stacks([ProjectStack.PYTHON.key], str(tmp_path))
+    # ...and the marker file still is a way in, through detection -- so the refusal above narrows the
+    # entry point rather than closing the stack off entirely
+    _write_marker(tmp_path, SNAKE_MARKER)
+    assert ProjectStack.SNAKE in resolve_stacks([], str(tmp_path))
+    (tmp_path / SNAKE_MARKER).unlink()
 
     # an unknown key is rejected
     with pytest.raises(ValueError):

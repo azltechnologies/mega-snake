@@ -64,6 +64,16 @@ All three read the two composite actions from a **second, sparse checkout of the
    `claude-code-review.yml` is expected to be unaffected: it is always a `pull_request` event, so every
    review of a given pull request reads and writes the same `refs/pull/<n>/merge` scope. Expected, not
    observed — it belongs under this item until a second review on one pull request shows a prefix hit.
+
+   **Do not read the first review run's cache miss as evidence against this.** Review run
+   `32211995416` (2026-08-19 03:23 UTC) reported a miss and concluded the expectation was
+   contradicted, on the grounds that it was "at least the second review run on this PR". It was the
+   second review, but the **first with any session persistence at all**: the feature reached
+   `claude-code-review.yml` when `#72` merged at 03:17 UTC, six minutes earlier, and the two earlier
+   reviews (`32204739908`, `32198616681`) have no `Restore`/`Save Claude session` steps in their job
+   list. A miss was mandatory — nothing had ever been saved. That run did save
+   (`claude-session-v1-review-55-32211995416-1`, 164 KB), which is the first time this feature has
+   stored anything. **The chain is proven or disproven by the run after that one, not by that one.**
 4. **`--continue` pass-through through `anthropics/claude-code-action@v1` is unverified.** It is interpolated
    into `claude_args`; confirm the action forwards it to the CLI rather than managing sessions itself.
 5. **The workspace slug spelling is a guess with two candidates.** `restore-claude-session` probes both

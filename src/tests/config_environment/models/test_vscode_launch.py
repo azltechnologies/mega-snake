@@ -1,5 +1,6 @@
 """Test for VscodeLaunch model"""
 
+from pathlib import Path
 from typing import Generator
 from types import SimpleNamespace, MethodType
 import inspect
@@ -7,6 +8,8 @@ from unittest.mock import patch, MagicMock
 import pytest
 from mega_snake.config_environment.models.project_stack import (
     ProjectStack,
+    SNAKE_MARKER,
+    detect_stacks,
     filter_by_stack,
     resolve_stacks,
 )
@@ -97,7 +100,7 @@ def test_to_dict() -> None:
         assert "stack" not in result
 
 
-def test_stack() -> None:
+def test_stack(tmp_path: Path) -> None:
     """Test that every launch configuration declares the stack it belongs to"""
     for member in VscodeLaunch:
         assert isinstance(member.stack, ProjectStack)
@@ -109,7 +112,12 @@ def test_stack() -> None:
     assert VscodeLaunch.DEBUG_PYTHON_SNAKE.stack is ProjectStack.SNAKE
     assert VscodeLaunch.DEBUG_PYTHON_SNAKE not in filter_by_stack(VscodeLaunch, resolve_stacks(["python"]))
     assert VscodeLaunch.DEBUG_PYTHON_SNAKE not in filter_by_stack(VscodeLaunch, resolve_stacks(["all"]))
-    assert VscodeLaunch.DEBUG_PYTHON_SNAKE in filter_by_stack(VscodeLaunch, resolve_stacks(["snake"]))
+    # naming the key is refused too, so the marker file is genuinely the only way in -- which is
+    # what actually keeps this launch configuration out of a user's repository
+    with pytest.raises(ValueError, match="opt-in"):
+        resolve_stacks([ProjectStack.SNAKE.key])
+    (tmp_path / SNAKE_MARKER).write_text("", encoding="utf-8")
+    assert VscodeLaunch.DEBUG_PYTHON_SNAKE in filter_by_stack(VscodeLaunch, detect_stacks(str(tmp_path)))
 
 
 def test_add_launch_config(_launch_config_query: MagicMock) -> None:

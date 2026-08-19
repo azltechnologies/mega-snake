@@ -181,6 +181,17 @@ On top of what the synopsis lists, it also sets up log watchers and GitHub query
  runs the version configuration of every stack it finds — `set-java`, `set-gradle` and `set-maven`
  are only needed afterwards when you want to switch versions.
 
+#### Output
+
+| Path | What lands there |
+|---|---|
+| `<name>.code-workspace` | The workspace file itself, in the current directory — created when none exists, updated in place otherwise. Everything below lives inside it: `settings`, `extensions.recommendations`, `tasks`, `launch` and the log-viewer watchers. |
+| `workspace_temp/` | The working folder, created after confirmation when missing. Log files and the output of the other commands go here. |
+| `.git/info/exclude` | Gains `.vscode/`, the working folder and `/*.code-workspace`, so none of the generated state is ever offered as a commit. Appended to, never rewritten. |
+
+A stack that is not active contributes nothing to any of them — and a workspace with no active task
+or launch configuration gets no `tasks` or `launch` block at all, rather than an empty one.
+
 #### Examples
 
 ```bash
