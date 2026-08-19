@@ -131,9 +131,11 @@ def _execute(git_repo: bool, stacks: tuple[str, ...] = ()) -> None:  # previousl
 def _configure_tools(workspace_file: str, stacks: set[ProjectStack], explicit: bool) -> None:
     """Run the Java, Gradle and Maven configuration steps of the active stacks.
 
-    A stack that is not active is reported instead of configured, pointing at the command that sets
-    its version on demand — those commands stay unconditional, so nothing is lost when the detection
-    does not match the repository layout.
+    The stacks that are not active are collected and reported together, once, instead of one message
+    each: `working-env` is the friendly entry point, and a repository with no JVM build file used to
+    be told about Java, Gradle *and* Maven on every single run -- the Java-centric default this
+    module set out to remove, moved from the settings file into the console. Nothing went wrong when
+    a stack is absent, so the report goes through `ws_advice` rather than `ws_warning`.
 
     Parameters:
         workspace_file: Path to the workspace settings file.
@@ -147,30 +149,37 @@ def _configure_tools(workspace_file: str, stacks: set[ProjectStack], explicit: b
     Returns:
         None
     """
+    skipped: list[tuple[ProjectStack, Optional[str]]] = []
     if ProjectStack.JAVA in stacks:
         set_java(False, workspace_file)
     else:
-        _skipped_stack_warning(ProjectStack.JAVA, java_command.name, explicit)
+        skipped.append((ProjectStack.JAVA, java_command.name))
     if ProjectStack.GRADLE in stacks:
         set_gradle(False, workspace_file)
     else:
-        _skipped_stack_warning(ProjectStack.GRADLE, gradle_command.name, explicit)
+        skipped.append((ProjectStack.GRADLE, gradle_command.name))
     if ProjectStack.MAVEN in stacks:
         set_maven(None, workspace_file)
     else:
-        _skipped_stack_warning(ProjectStack.MAVEN, maven_command.name, explicit)
+        skipped.append((ProjectStack.MAVEN, maven_command.name))
+    _skipped_stacks_advice(skipped, explicit)
 
 
-def _skipped_stack_warning(stack: ProjectStack, command_name: Optional[str], explicit: bool) -> None:
-    """Report a stack that was skipped and how to configure it anyway.
+def _skipped_stacks_advice(skipped: list[tuple[ProjectStack, Optional[str]]], explicit: bool) -> None:
+    """Report the stacks that were skipped, in a single message, and how to configure them anyway.
 
     The reason has to follow the selection: an explicit --stack replaces the detection entirely, so
     blaming a missing marker file there would send the user looking for a build file that may well
-    be sitting in the directory.
+    be sitting in the directory. The per-stack marker names are therefore only listed when the
+    stacks were detected.
+
+    `force` is passed to `ws_advice` because the message is addressed to the user, not to a
+    developer debugging the tool: without it the line is only printed at DEBUG level, and the way to
+    configure a skipped stack would be invisible to everyone running `working-env` normally.
 
     Parameters:
-        stack: The stack that is not part of the workspace.
-        command_name: Name of the command that configures the stack on demand, as click knows it.
+        skipped: The stacks left out, paired with the name of the command that configures each one
+            on demand, as click knows it.
         explicit: Whether the stacks were selected through --stack instead of being detected.
 
     Raises:
@@ -179,16 +188,23 @@ def _skipped_stack_warning(stack: ProjectStack, command_name: Optional[str], exp
     Returns:
         None
     """
+    if not skipped:
+        return
+    names: str = ", ".join(stack.key for stack, _ in skipped)
     if explicit:
-        reason: str = "it is not part of the stacks selected with --stack"
+        reason: str = "they are not part of the stacks selected with --stack"
     else:
-        markers: str = ", ".join(stack.markers)
-        reason = f"no {markers} file found in the current directory" if markers else "no build file revealed it"
-    ws_warning(
-        f"Skipping the {stack.key} configuration: {reason}. "
-        f"Run '{APP_NAME} {command_name}' to set the {stack.key} version anyway, "
-        f"or '{APP_NAME} {create_working_env.name} --stack {stack.key}' to configure the whole stack."
-    )
+        reason = "no marker file revealed them in the current directory"
+    details: list[str] = []
+    for stack, command_name in skipped:
+        hint: str = f"'{APP_NAME} {command_name}' configures it anyway"
+        if not explicit:
+            markers: str = ", ".join(stack.markers)
+            found: str = f"no {markers}" if markers else "no build file declares it"
+            hint = f"{found} -- {hint}"
+        details.append(f"\t{stack.key}: {hint}")
+    details.append(f"\tor '{APP_NAME} {create_working_env.name} --stack <stack>' for a whole stack")
+    ws_advice(f"Skipping the {names} configuration: {reason}.\n" + "\n".join(details), force=True)
 
 
 FOLDER = os.path.basename(os.getcwd())
@@ -405,7 +421,22 @@ def _update_github_queries(json_data: dict[str, Any]) -> tuple[dict[str, Any], b
 def _update_log_watchers(
     json_data: dict[str, Any], working_path: str, stacks: set[ProjectStack]
 ) -> tuple[dict[str, Any], bool]:
-    """Update the log watchers configuration of the active stacks"""
+    """Register the log watchers of the active stacks in the workspace file.
+
+    Entries already present are kept: `add_watcher` deduplicates by title, so a watcher a
+    previous run wrote for a stack that is no longer selected is never taken away.
+
+    Parameters:
+        json_data: The parsed workspace file to update in place.
+        working_path: Path of the working folder the entries are anchored to.
+        stacks: The active stacks; every member of an inactive stack is left out.
+
+    Raises:
+        None
+
+    Returns:
+        tuple[dict[str, Any], bool]: The workspace data, and whether anything was added.
+    """
     updated = False
     for watcher in filter_by_stack(LogWatcher, stacks):
         res = watcher.add_watcher(json_data, working_path)
@@ -418,7 +449,23 @@ def _update_log_watchers(
 def _update_vscode_tasks(
     json_data: dict[str, Any], working_path: str, stacks: set[ProjectStack]
 ) -> tuple[dict[str, Any], bool]:
-    """Update the VSCode tasks configuration of the active stacks"""
+    """Write the VS Code tasks of the active stacks, plus the inputs those tasks call.
+
+    The `tasks` block itself is only scaffolded when at least one task survives the stack
+    filter: a workspace with nothing to run must not be given a bare `version` key and an
+    input nothing interpolates.
+
+    Parameters:
+        json_data: The parsed workspace file to update in place.
+        working_path: Path of the working folder the entries are anchored to.
+        stacks: The active stacks; every member of an inactive stack is left out.
+
+    Raises:
+        None
+
+    Returns:
+        tuple[dict[str, Any], bool]: The workspace data, and whether anything was added.
+    """
     updated = False
 
     # The version and the inputs are the container of the tasks, and nothing else consumes them:
@@ -452,7 +499,22 @@ def _update_vscode_tasks(
 def _update_vscode_launch(
     json_data: dict[str, Any], working_path: str, stacks: set[ProjectStack]
 ) -> tuple[dict[str, Any], bool]:
-    """Update the VSCode launch configuration of the active stacks"""
+    """Write the VS Code launch configurations of the active stacks, plus their inputs.
+
+    Mirrors `_update_vscode_tasks`, including the empty-block guard: the `launch` key is
+    only created when a configuration actually belongs to one of the active stacks.
+
+    Parameters:
+        json_data: The parsed workspace file to update in place.
+        working_path: Path of the working folder the entries are anchored to.
+        stacks: The active stacks; every member of an inactive stack is left out.
+
+    Raises:
+        None
+
+    Returns:
+        tuple[dict[str, Any], bool]: The workspace data, and whether anything was added.
+    """
     updated = False
 
     # Same reasoning as the tasks above: the inputs of this block are only referenced by the launch

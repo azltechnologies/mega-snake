@@ -47,7 +47,7 @@ from mega_snake.util.util import load_json_with_comments
 from mega_snake.util.formatting import UserDeclinedError
 
 
-ALL_STACKS: set[ProjectStack] = set(ProjectStack)
+EVERY_STACK: set[ProjectStack] = set(ProjectStack)
 PYTHON_STACKS: set[ProjectStack] = {ProjectStack.COMMON, ProjectStack.PYTHON}
 NODE_STACKS: set[ProjectStack] = {ProjectStack.COMMON, ProjectStack.NODE}
 GRADLE_CMD_NAME = "gradle_command"
@@ -198,7 +198,7 @@ def fixture_ws_info() -> Generator[MagicMock, None, None]:
 def fixture_mk_resolve_stacks() -> Generator[MagicMock, None, None]:
     """Mock resolve_stacks so the active stacks do not depend on the repository running the tests"""
     with patch("mega_snake.config_environment.create_working_env.resolve_stacks") as mock:
-        mock.return_value = ALL_STACKS
+        mock.return_value = EVERY_STACK
         yield mock
 
 
@@ -421,6 +421,7 @@ def test_execute(
     shutil_which: MagicMock,
     get_validated_input: MagicMock,
     ws_warning: MagicMock,
+    ws_advice: MagicMock,
     ws_info: MagicMock,
     mk_get_workspace_file: MagicMock,
     mk_get_working_path: MagicMock,
@@ -450,6 +451,7 @@ def test_execute(
             shutil_which,
             get_validated_input,
             ws_warning,
+            ws_advice,
             ws_info,
             mk_get_workspace_file,
             mk_get_working_path,
@@ -462,12 +464,12 @@ def test_execute(
             mk_resolve_stacks,
             mk_add_default_settings,
         )
-        mk_resolve_stacks.return_value = ALL_STACKS
+        mk_resolve_stacks.return_value = EVERY_STACK
 
     # Test when git_repo is false and every stack is active
     shutil_which.return_value = False
     get_validated_input.return_value = "y"
-    mk_resolve_stacks.return_value = ALL_STACKS
+    mk_resolve_stacks.return_value = EVERY_STACK
     result = runner.invoke(create_working_env)
     assert result.exit_code == 0
     get_validated_input.assert_called_once()
@@ -481,7 +483,7 @@ def test_execute(
     set_java.assert_called_once_with(False, WK_FILE)
     set_gradle.assert_called_once_with(False, WK_FILE)
     set_maven.assert_called_once_with(None, WK_FILE)
-    mk_add_default_settings.assert_called_once_with(WK_FILE, WK_PATH, ALL_STACKS)
+    mk_add_default_settings.assert_called_once_with(WK_FILE, WK_PATH, EVERY_STACK)
     ws_warning.assert_not_called()
     mocks_reset()
 
@@ -500,7 +502,14 @@ def test_execute(
     set_java.assert_not_called()
     set_gradle.assert_not_called()
     set_maven.assert_not_called()
-    assert ws_warning.call_count == 3  # one for java, one for gradle, one for maven
+    # the three skipped stacks are reported by a single advice, never as warnings
+    ws_advice.assert_called_once()
+    ws_warning.assert_not_called()
+    assert skipped_stack_keys(ws_advice.call_args.args[0]) == [
+        ProjectStack.JAVA.key,
+        ProjectStack.GRADLE.key,
+        ProjectStack.MAVEN.key,
+    ], ws_advice.call_args.args[0]
     mk_add_default_settings.assert_called_once_with(WK_FILE, WK_PATH, PYTHON_STACKS)
     mocks_reset()
 
@@ -520,15 +529,36 @@ def test_execute(
     mk_resolve_stacks.return_value = PYTHON_STACKS
     result = runner.invoke(create_working_env, ["-s", "python"])
     assert result.exit_code == 0
-    assert ws_warning.call_count == 3
-    skip_message: str = ws_warning.call_args_list[0].args[0]
+    ws_advice.assert_called_once()
+    ws_warning.assert_not_called()
+    skip_message: str = ws_advice.call_args.args[0]
     assert "not part of the stacks selected with --stack" in skip_message, skip_message
-    assert "no build file revealed it" not in skip_message, skip_message
+    assert "no marker file revealed them" not in skip_message, skip_message
+    assert "no build file declares it" not in skip_message, skip_message
     mocks_reset()
+
+
+def skipped_stack_keys(message: str) -> list[str]:
+    """Extract the stack keys named by the per-stack detail lines of a skipped-stacks message.
+
+    Parameters:
+        message: The message handed to ws_advice.
+
+    Returns:
+        list[str]: The keys, in the order the message lists them.
+    """
+    keys: list[str] = []
+    for line in message.splitlines()[1:]:
+        stripped: str = line.strip()
+        if stripped.startswith("or "):
+            continue
+        keys.append(stripped.split(":", maxsplit=1)[0])
+    return keys
 
 
 def test_configure_tools(
     ws_warning: MagicMock,
+    ws_advice: MagicMock,
     set_java: MagicMock,
     _java_command: MagicMock,
     set_gradle: MagicMock,
@@ -536,55 +566,92 @@ def test_configure_tools(
     set_maven: MagicMock,
     _maven_command: MagicMock,
 ) -> None:
-    """Test that _configure_tools only runs the setup of the active stacks"""
+    """Test that _configure_tools only runs the setup of the active stacks and reports the rest once
+
+    The skipped stacks are reported in a single ws_advice call, never through ws_warning: nothing
+    went wrong when a repository simply has no JVM build file, and one message per skipped stack
+    turned the friendly entry point into three warnings on every run of a Node or Python project.
+    """
     # Java without a build tool: only the Java version is configured
     configure_tools(WK_FILE, {ProjectStack.COMMON, ProjectStack.JAVA}, False)
     set_java.assert_called_once_with(False, WK_FILE)
     set_gradle.assert_not_called()
     set_maven.assert_not_called()
-    assert ws_warning.call_count == 2  # one for gradle, one for maven
-    reset_mocks(ws_warning, set_java, set_gradle, set_maven)
+    # both skipped stacks are named by one single message, and the warning channel stays unused
+    ws_advice.assert_called_once()
+    ws_warning.assert_not_called()
+    message: str = ws_advice.call_args.args[0]
+    # without force the advice is only printed at DEBUG level, i.e. invisible to a normal run
+    assert ws_advice.call_args.kwargs.get("force") is True, ws_advice.call_args
+    assert skipped_stack_keys(message) == [ProjectStack.GRADLE.key, ProjectStack.MAVEN.key], message
+    reset_mocks(ws_warning, ws_advice, set_java, set_gradle, set_maven)
 
     # Gradle project: Java and Gradle are configured, Maven is reported as skipped
     configure_tools(WK_FILE, {ProjectStack.COMMON, ProjectStack.JAVA, ProjectStack.GRADLE}, False)
     set_java.assert_called_once_with(False, WK_FILE)
     set_gradle.assert_called_once_with(False, WK_FILE)
     set_maven.assert_not_called()
-    ws_warning.assert_called_once()
-    # the warning names the missing marker and the command that configures the stack anyway
-    message: str = ws_warning.call_args.args[0]
-    assert ProjectStack.MAVEN.markers[0] in message
-    assert "set-maven" in message
-    reset_mocks(ws_warning, set_java, set_gradle, set_maven)
+    ws_advice.assert_called_once()
+    ws_warning.assert_not_called()
+    message = ws_advice.call_args.args[0]
+    assert skipped_stack_keys(message) == [ProjectStack.MAVEN.key], message
+    # the detected path names the missing marker and the command that configures the stack anyway
+    assert ProjectStack.MAVEN.markers[0] in message, message
+    assert "set-maven" in message, message
+    reset_mocks(ws_warning, ws_advice, set_java, set_gradle, set_maven)
 
     # Maven project: Java and Maven are configured, Gradle is reported as skipped
     configure_tools(WK_FILE, {ProjectStack.COMMON, ProjectStack.JAVA, ProjectStack.MAVEN}, False)
     set_java.assert_called_once_with(False, WK_FILE)
     set_maven.assert_called_once_with(None, WK_FILE)
     set_gradle.assert_not_called()
-    ws_warning.assert_called_once()
-    reset_mocks(ws_warning, set_java, set_gradle, set_maven)
+    ws_advice.assert_called_once()
+    message = ws_advice.call_args.args[0]
+    assert skipped_stack_keys(message) == [ProjectStack.GRADLE.key], message
+    reset_mocks(ws_warning, ws_advice, set_java, set_gradle, set_maven)
 
-    # No JVM stack at all: the Java warning explains that no build file revealed it
+    # No JVM stack at all: one message names all three, and Java explains it has no marker of its own
     configure_tools(WK_FILE, PYTHON_STACKS, False)
     set_java.assert_not_called()
-    assert ws_warning.call_count == 3
-    java_message: str = ws_warning.call_args_list[0].args[0]
-    assert "no build file revealed it" in java_message
-    assert "set-java" in java_message
-    reset_mocks(ws_warning, set_java, set_gradle, set_maven)
+    ws_advice.assert_called_once()
+    ws_warning.assert_not_called()
+    message = ws_advice.call_args.args[0]
+    assert skipped_stack_keys(message) == [
+        ProjectStack.JAVA.key,
+        ProjectStack.GRADLE.key,
+        ProjectStack.MAVEN.key,
+    ], message
+    java_line: str = next(line for line in message.splitlines() if line.strip().startswith(f"{ProjectStack.JAVA.key}:"))
+    assert "no build file declares it" in java_line, java_line
+    assert "set-java" in java_line, java_line
+    reset_mocks(ws_warning, ws_advice, set_java, set_gradle, set_maven)
 
     # An explicit --stack selection replaces the detection, so the marker files must not be blamed:
     # they may well be sitting in the directory while the stack was simply left out of the selection
     configure_tools(WK_FILE, PYTHON_STACKS, True)
-    assert ws_warning.call_count == 3
-    for skipped, call in zip((ProjectStack.JAVA, ProjectStack.GRADLE, ProjectStack.MAVEN), ws_warning.call_args_list):
-        explicit_message: str = call.args[0]
-        assert "not part of the stacks selected with --stack" in explicit_message, explicit_message
-        assert "file found in the current directory" not in explicit_message, explicit_message
-        assert "no build file revealed it" not in explicit_message, explicit_message
+    ws_advice.assert_called_once()
+    ws_warning.assert_not_called()
+    message = ws_advice.call_args.args[0]
+    assert skipped_stack_keys(message) == [
+        ProjectStack.JAVA.key,
+        ProjectStack.GRADLE.key,
+        ProjectStack.MAVEN.key,
+    ], message
+    assert "not part of the stacks selected with --stack" in message, message
+    assert "no marker file revealed them" not in message, message
+    assert "no build file declares it" not in message, message
+    for skipped in (ProjectStack.JAVA, ProjectStack.GRADLE, ProjectStack.MAVEN):
         for marker in skipped.markers:
-            assert marker not in explicit_message, explicit_message
+            assert marker not in message, message
+    reset_mocks(ws_warning, ws_advice, set_java, set_gradle, set_maven)
+
+    # Every JVM stack active: nothing is skipped, so nothing is reported at all
+    configure_tools(WK_FILE, EVERY_STACK, False)
+    set_java.assert_called_once_with(False, WK_FILE)
+    set_gradle.assert_called_once_with(False, WK_FILE)
+    set_maven.assert_called_once_with(None, WK_FILE)
+    ws_advice.assert_not_called()
+    ws_warning.assert_not_called()
 
 
 def test_get_workspace_file(
@@ -771,11 +838,11 @@ def test_add_default_settings(
             mk_input.side_effect = None
             mk_input.return_value = default_prop_value
         with patch("builtins.open", m_open):
-            add_default_settings(file, WK_PATH, ALL_STACKS)
+            add_default_settings(file, WK_PATH, EVERY_STACK)
             result_data = written_workspace(write_mock)
             # verify recommended extensions are added
             data: dict[str, Any] = jq.compile(EXTENSIONS_QUERY).input(result_data).first()
-            for ext in get_recommended_extensions(ALL_STACKS):
+            for ext in get_recommended_extensions(EVERY_STACK):
                 assert ext in data
             # verify git blame is added
             data = jq.compile(GIT_BLAME_QUERY).input(result_data).first()
@@ -815,7 +882,7 @@ def test_add_default_settings(
                 assert input_launch.input_id in list(map(lambda x: x["id"], data))
             # verify default properties are added
             counter: int = 0
-            for key, value in flat_default_props(ALL_STACKS).items():
+            for key, value in flat_default_props(EVERY_STACK).items():
                 data = jq.compile(f'.settings.["{key}"]').input(result_data).first()
                 if isinstance(default_prop_value, list):
                     value = default_prop_value[counter]
@@ -824,7 +891,7 @@ def test_add_default_settings(
                 else:
                     assert data == value
             # verify file associations are added
-            for key, value in flat_file_associations(ALL_STACKS).items():
+            for key, value in flat_file_associations(EVERY_STACK).items():
                 data = jq.compile(f'{FILE_ASSOCIATION_QUERY}.["{key}"]').input(result_data).first()
                 assert data == value
             ws_success.assert_called_once()
@@ -838,7 +905,7 @@ def test_add_default_settings(
     dummy_values: list[Any] = []
     counter: int = 0
     v: Any = None
-    for _prop, value in flat_default_props(ALL_STACKS).items():
+    for _prop, value in flat_default_props(EVERY_STACK).items():
         counter += 1
         # if value is boolean use True
         if isinstance(value, bool):
@@ -853,14 +920,14 @@ def test_add_default_settings(
     evaluate_happy_path(EMPTY_WK_FILE, dummy_values)
 
     # test updated file
-    add_default_settings(DARWIN_WK_FILE, WK_PATH, ALL_STACKS)
+    add_default_settings(DARWIN_WK_FILE, WK_PATH, EVERY_STACK)
     write_mock.assert_not_called()
     ws_advice.assert_called_once()
     ws_success.assert_not_called()
     mocks_reset()
 
     # test file when some recommended extensions exists but not all
-    list_ext: list[str] = get_recommended_extensions(ALL_STACKS)
+    list_ext: list[str] = get_recommended_extensions(EVERY_STACK)
     # remove first and last extension
     list_ext.pop(0)
     list_ext.pop(-1)
@@ -943,6 +1010,52 @@ def test_add_default_settings_only_writes_active_stacks(
     assert jq.compile(f'{FILE_ASSOCIATION_QUERY}.["*.yml"]').input(result_data).first() == "yaml"
 
 
+def test_narrowing_the_stacks_never_removes_existing_entries(
+    get_property: MagicMock,
+    mk_input: MagicMock,
+    os_replace: MagicMock,
+    ws_success: MagicMock,
+    ws_advice: MagicMock,
+    get_remote_url: MagicMock,
+) -> None:
+    """A workspace holding every stack's entries keeps all of them when re-run for Python alone.
+
+    `working-env.md` promises this to users -- "recommended extensions, tasks and launch
+    configurations already present in the `.code-workspace` file are left untouched" -- and
+    `_add_recommended_extensions` repeats it in its docstring, but every other test starts from an
+    empty workspace and so never exercises the narrowing path.
+
+    The fixture already carries the artifacts of every stack, so re-running it for a strictly
+    smaller selection must leave the file alone entirely: any write at all is the file being
+    rewritten without the Java, Gradle and Maven entries that are no longer part of the selection.
+    That is why the assertion is on `write_mock` rather than on the resulting content -- there is no
+    resulting content to inspect when the promise holds.
+    """
+    get_remote_url.return_value = "https://github.com/dummy_user/dummy_repo"
+    mk_input.return_value = ""
+    m_open: MagicMock = mock_open()
+    file_mock: MagicMock = m_open.return_value
+    write_mock: MagicMock = file_mock.write
+
+    def read_side_effect() -> str:
+        """Read the real fixture file behind the mocked open call"""
+        with real_open(m_open.call_args.args[0], "r", encoding="utf-8") as file:
+            return file.read()
+
+    file_mock.read.side_effect = read_side_effect
+
+    # the fixture is configured for every stack, and Python is a strict subset of it
+    assert PYTHON_STACKS < EVERY_STACK
+
+    with patch("builtins.open", m_open):
+        add_default_settings(DARWIN_WK_FILE, WK_PATH, PYTHON_STACKS)
+
+    write_mock.assert_not_called()
+    os_replace.assert_not_called()
+    ws_success.assert_not_called()
+    ws_advice.assert_called_once()
+
+
 def test_task_and_launch_blocks_are_skipped_when_no_member_is_active() -> None:
     """Neither block is scaffolded for a workspace that has nothing to put in it."""
     # a Node repository activates no task and no launch configuration at all
@@ -968,7 +1081,7 @@ def test_task_and_launch_blocks_are_skipped_when_no_member_is_active() -> None:
 
 def test_get_recommended_extensions() -> None:
     """Test that the recommended extensions are collected once and in stack declaration order"""
-    result: list[str] = get_recommended_extensions(ALL_STACKS)
+    result: list[str] = get_recommended_extensions(EVERY_STACK)
     assert len(result) == len(set(result))
     # the stacks are spelled out in declaration order instead of being re-aggregated: re-running the
     # implementation here would keep the assertion green for the very bug it is meant to catch

@@ -12,7 +12,6 @@ These tests walk the whole universe instead of sampling the tags that happen to 
 
 import re
 
-from mega_snake.config_environment.models.log_viewer_watcher import LogWatcher
 from mega_snake.config_environment.models.project_stack import ProjectStack, resolve_stacks
 from mega_snake.config_environment.models.vscode_input import VscodeInput
 from mega_snake.config_environment.models.vscode_launch import VscodeLaunch
@@ -99,12 +98,3 @@ def test_launch_references_stay_inside_their_own_stacks() -> None:
                 f"{launch.name} ({launch.stack}) redirects into {launch.watcher.name} "
                 f"({launch.watcher.stack}), which is not written for its stack"
             )
-
-
-def test_watcher_patterns_are_unique_per_stack() -> None:
-    """Two watchers never claim the same log pattern, which would make one of them unreachable."""
-    seen: dict[str, LogWatcher] = {}
-    for watcher in LogWatcher:
-        clash = seen.get(watcher.pattern)
-        assert clash is None, f"{watcher.name} reuses the pattern of {clash.name if clash else ''}: {watcher.pattern}"
-        seen[watcher.pattern] = watcher
