@@ -66,10 +66,16 @@ Report, in the progress/result comment, all of:
   indistinguishable from a resumed one;
 - **the key this run's state will be saved under**, so the chain can be followed from one run to the next.
 
-`restore-claude-session` writes all of that to `$GITHUB_STEP_SUMMARY` before Claude starts, so that file is where
-to read it from inside a run. The persisted **size** is *not* available there yet: `save-claude-session` runs
-after the Claude step, so its size line only exists once the turn is over — report it from the previous run's
-summary if it matters, never as a guess about the current one.
+**The three values are handed to the run as context, so nothing has to be read to report them.** Both workflows
+interpolate `restore-claude-session`'s outputs into `--append-system-prompt`, which means the session state is in
+the conversation before the first tool call. This replaced an earlier instruction to read `$GITHUB_STEP_SUMMARY`,
+which no run could ever follow: `--allowed-tools` grants `uv`, `pytest`, `ruff`, `mypy`, `gh` and `git`, and none
+of them opens a file — the requirement was unsatisfiable, and the first review run duly reported the state as
+unknown. The summary is still written, for a human reading the run afterwards.
+
+The persisted **size** is *not* handed over: `save-claude-session` runs after the Claude step, so its size line
+only exists once the turn is over — report it from the previous run's summary if it matters, never as a guess
+about the current one.
 
 If any of this cannot be read — the tool permissions of the run do not allow it, the summary is missing — **say
 so explicitly**. Silence about the cache is not acceptable while this note stands: a session that quietly failed
