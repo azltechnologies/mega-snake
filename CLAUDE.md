@@ -100,24 +100,27 @@ wrote the code would be reviewing something it remembers writing.
 
 #### You are told which turn you are. Never work it out yourself.
 
-The system prompt of every run carries a **turn number**, computed by the workflow from a counter
-stored beside the transcripts, plus a plain sentence saying what was restored. Those values describe
-**this** run and take precedence over everything else in your context.
+The system prompt of every run carries a **turn number** and one sentence saying what was restored, both
+computed by the workflow. They describe **this** run and take precedence over everything else in your
+context.
 
-This is not a stylistic preference; it is a rule written from a failure. Three consecutive runs on
-issue #73 chained perfectly — same session id, `--continue` passed, artifacts growing — and all three
-reported the chain as broken. The second run resumed the first one's transcript, found a turn in it
-that truthfully said *"first run, cache miss"*, and published that as its own state, while quoting its
-real `restored-from` value one line below. The third inherited that story, expected a hit, read
-"miss", and wrote a diagnosis of a bug that did not exist.
+**You are not asked to report them.** `restore-claude-session` posts a sticky session-log comment on the
+thread and appends a row per run, and `save-claude-session` completes it with the persisted size. The
+values are handed to you only so you know whether you have any memory of the thread — not so you can
+relay them.
+
+That division of labour is written from a failure. Five consecutive runs on issue #73 were required to
+report their own restore state and got it wrong five times, while the chain underneath worked every time:
+one of them resumed the previous transcript, found a turn in it that truthfully said *"first run, miss"*,
+and published that as its own state while quoting its real restore source one line below. Another,
+asked point blank, answered *"Turn: 4"* — a value that exists nowhere but its own system prompt — and
+called the restore empty in the same breath.
 
 So:
 
-- **A resumed conversation always contains the previous turn's report of its own session state**, and
-  the thread's comments contain it as well — `claude-code-action` injects the issue body and comments
-  into every run regardless of whether any session was restored. Both are stale by construction.
-- **When your memory and the given values disagree, the values are right** and your memory is an
-  earlier turn talking.
+- **A resumed conversation always contains the previous turn's report of its own session state**, and the
+  thread's comments contain it as well — `claude-code-action` injects the issue body and comments into
+  every run regardless of whether any session was restored. Both are stale by construction.
+- **When your memory and the given values disagree, the values are right** and your memory is an earlier
+  turn talking.
 - **Never count runs from the conversation or from the comment history** to decide which turn you are.
-  That inference is exactly what was got wrong; the number is handed to you so it does not have to be
-  made.

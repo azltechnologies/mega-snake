@@ -161,6 +161,12 @@ outputs:
       model verbatim. Deliberately free of backticks and quotes: it is
       interpolated into a shell command line.
     value: ${{ steps.detect.outputs.state }}
+  comment-id:
+    description: >-
+      Id of the sticky session-log comment this run appended its row to, empty if
+      the log could not be posted. Pass it to `save-claude-session`, which fills
+      in the size once the state has actually been stored.
+    value: ${{ steps.log.outputs.comment-id }}
 
 runs:
   using: composite
@@ -374,3 +380,90 @@ runs:
           echo "- Thread: \`${THREAD_KIND} #${THREAD_ID}\`"
           echo "- Artifact: \`${ARTIFACT_NAME}\`"
         } >> "$GITHUB_STEP_SUMMARY"
+
+    # The session state is reported here, by the workflow, and NOT by the model.
+    # It used to be the model's job -- the temporary note in
+    # .github/copilot-instructions.md required every run to publish its own
+    # restore state in the comment it posted -- and across five consecutive runs
+    # on issue #73 it was reported wrong five times, in both directions, while
+    # the machinery underneath worked perfectly every time. The values are known
+    # here exactly; asking a language model to relay them added a step that could
+    # only lose information.
+    #
+    # It also closes the loop that made the misreports self-sustaining: a wrong
+    # state written into a comment became the next run's evidence, since
+    # claude-code-action injects the thread into every run whether or not
+    # anything was restored.
+    #
+    # Nothing here may fail the job. A run that answered its author but could not
+    # write its log entry is a run that did its job.
+    - name: Post the session log
+      id: log
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        THREAD_ID: ${{ inputs.thread-id }}
+        THREAD_KIND: ${{ inputs.thread-kind }}
+        TURN: ${{ steps.detect.outputs.turn }}
+        RESTORED_FROM: ${{ steps.restore.outputs.restored-from }}
+        CONTINUE_FLAG: ${{ steps.detect.outputs.continue-flag }}
+      run: |
+        set -uo pipefail
+
+        # Namespaced by kind, like the artifact: a pull request carries both a
+        # `review` conversation and an `issue` one, and a shared marker would
+        # make the two logs overwrite each other.
+        marker="<!-- mgsnake-session-log:${THREAD_KIND} -->"
+        api="repos/${GITHUB_REPOSITORY}"
+
+        resumed="--"
+        [ -n "${RESTORED_FROM}" ] && resumed="\`${RESTORED_FROM}\`"
+        continued="no"
+        [ -n "${CONTINUE_FLAG}" ] && continued="yes"
+        run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+        # `running` is a placeholder `save-claude-session` replaces with the size
+        # it actually stored. A row still reading `running` therefore marks a run
+        # that never reached the save -- which is worth seeing, not worth hiding.
+        row="| ${TURN} | [\`${GITHUB_RUN_ID}\`](${run_url}) | ${resumed} | ${continued} | running |"
+
+        # Matched on the first line rather than through a jq filter built by
+        # string interpolation, and `\r` is stripped because a body edited through
+        # the web UI comes back with CRLF endings.
+        comment_id=$(gh api "${api}/issues/${THREAD_ID}/comments?per_page=100" --paginate \
+          --jq '.[] | "\(.id)\t\(.body | split("\n")[0] | rtrimstr("\r"))"' 2>/dev/null \
+          | awk -F'\t' -v m="${marker}" '$2 == m { print $1 }' | tail -n 1)
+
+        body_file="${RUNNER_TEMP}/session-log.md"
+        if [ -n "${comment_id}" ]; then
+          if ! gh api "${api}/issues/comments/${comment_id}" --jq '.body' | tr -d '\r' > "${body_file}"; then
+            echo "::warning::Could not read the session log comment ${comment_id}; this run is not logged."
+            exit 0
+          fi
+          printf '%s\n' "${row}" >> "${body_file}"
+          if ! gh api --method PATCH "${api}/issues/comments/${comment_id}" -F body=@"${body_file}" --silent; then
+            echo "::warning::Could not update the session log comment ${comment_id}; this run is not logged."
+            exit 0
+          fi
+        else
+          {
+            echo "${marker}"
+            echo "### Claude session log"
+            echo ""
+            echo "Written by the workflow, not by Claude: one row per run of this conversation, so the"
+            echo "chain can be followed without opening the Actions logs. A row still reading"
+            echo "\`running\` belongs to a run that never reached its save step."
+            echo ""
+            echo "| Turn | Run | Resumed from | \`--continue\` | Persisted |"
+            echo "| ---: | --- | --- | :---: | ---: |"
+            echo "${row}"
+          } > "${body_file}"
+          if ! comment_id=$(gh api --method POST "${api}/issues/${THREAD_ID}/comments" \
+                 -F body=@"${body_file}" --jq '.id'); then
+            echo "::warning::Could not create the session log comment; this run is not logged."
+            exit 0
+          fi
+        fi
+
+        echo "comment-id=${comment_id}" >> "$GITHUB_OUTPUT"
+        echo "Session log: turn ${TURN} appended to comment ${comment_id}."

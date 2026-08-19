@@ -141,66 +141,54 @@ these two are independent of it:
    turn's history is lost. Left in place deliberately — a `concurrency` group would make GitHub cancel a
    queued run, and losing a request outright is worse than losing its history.
 
-### ⚠️ MANDATORY while this note stands: report the session state on every workflow run
+### The session state is reported by the workflow, not by the agent
 
-**Any agent running inside `claude-issue.yml`, `claude-pr.yml` or `claude-code-review.yml` must report the
-state of its session in the comment it posts on the thread.** The run's step summary already records it, but a human following the
-conversation must not have to open the run logs to know whether this turn had any memory of the previous one.
+`restore-claude-session` posts a **sticky session-log comment** on the thread and appends one row per
+run; `save-claude-session` fills in the size once the state has actually been stored. One comment per
+conversation, namespaced by `thread-kind`, so a pull request's `review` log and its `@claude` log never
+collide:
 
-Report, in the progress/result comment, all of:
+| Turn | Run | Resumed from | `--continue` | Persisted |
+| ---: | --- | --- | :---: | ---: |
+| 1 | `32272669129` | -- | no | 24 KB |
+| 2 | `32273047017` | `32272669129` | yes | 39 KB |
 
-- **which turn of the conversation this run is** — the `turn` output. Report the number you were given, never
-  one you counted;
-- **whether anything was restored, and from which run** — the `state` output says so in one sentence, and
-  `restored-from` holds the run id (empty when nothing was stored for this thread);
-- **whether `--continue` was actually passed** (the `continue-flag` output) — state that was restored but
-  held no transcript for this workspace still starts a brand new conversation, and from the outside that is
-  indistinguishable from a resumed one;
-- **the artifact name this run's state is uploaded under**, so the chain can be followed from one run to the
-  next.
+**This used to be the agent's job, and the agent could not do it.** Five consecutive runs on issue #73
+were required to report their own restore state and got it wrong five times, in both directions, while
+the machinery underneath worked perfectly on every one of them:
 
-**The values you are given outrank anything you remember, and anything already written on the thread.** Runs
-`32272669129`, `32273047017` and `32273325879` on issue #73 chained correctly — same session id, `--continue`
-passed, artifacts growing 24 KB → 39 KB → 55 KB — and every one of them reported the chain as broken. The
-second resumed the first's transcript, found a turn in it that truthfully said *"first run, miss"*, and
-published that as its own state while quoting its real `restored-from` one line below; the third inherited
-the story and wrote a diagnosis of a bug that did not exist. Note what that means: **the reports were wrong
-because the resume worked.** A run that genuinely missed would have had no earlier turn to copy from. The
-better this feature works, the more contaminated the self-report — which is why the turn number is computed
-by the workflow and handed over, and why it must be repeated rather than re-derived.
+- runs `32272669129` → `32273047017` → `32273325879` chained (same session id, `--continue` passed,
+  artifacts growing) and every comment said "miss";
+- the second of those quoted its real `restored-from` value one line below reporting the field as
+  empty;
+- after the turn counter landed, run `32286014497` was asked point blank for its turn number and its
+  restore source, answered **"Turn: 4"** — a value that exists nowhere but its own system prompt, so the
+  prompt demonstrably arrives — and then reported the restore as empty in the same breath.
 
-There are two channels feeding the stale story, and only one of them is the transcript: `claude-code-action`
-injects the issue body and every comment into each run whether or not anything was restored. Run
-`32272669129` proves it — a completely fresh session with no history, which nonetheless titled itself "Run 3"
-by counting the comments above it. So this rule holds even on a run that restored nothing.
+Three things follow, and they are the reason this section exists at all:
 
-**The three values are handed to the run as context, so nothing has to be read to report them.** All three
-workflows interpolate `restore-claude-session`'s outputs into `--append-system-prompt`, which means the session state is in
-the conversation before the first tool call. This replaced an earlier instruction to read `$GITHUB_STEP_SUMMARY`,
-which no run could ever follow: no rule in any of the three allowlists opens a file — the requirement was
-unsatisfiable, and the first review run duly reported the state as unknown. The summary is still written, for a
-human reading the run afterwards.
+1. **A value known exactly by the workflow must not be relayed through a language model.** The relay can
+   only lose information; it cannot add any.
+2. **The failure was self-sustaining.** `claude-code-action` injects the thread into every run whether or
+   not anything was restored, so a wrong state written into a comment became the next run's evidence.
+   Writing the log from the workflow cuts that loop.
+3. **The size is now reportable.** It never was before: `save-claude-session` runs after the Claude step,
+   so nothing inside the run could see it. A second write from the save step can.
 
-The persisted **size** is *not* handed over: `save-claude-session` runs after the Claude step, so its size line
-only exists once the turn is over — report it from the previous run's summary if it matters, never as a guess
-about the current one.
+What the run is still told, and all it is told, is which turn it is and whether it has any memory of the
+thread — so it does not re-derive context it already has, and does not contradict itself. It is asked to
+report none of it.
 
-If any of this cannot be read — the tool permissions of the run do not allow it, the summary is missing — **say
-so explicitly**. Silence about the session state is not acceptable while this note stands: a session that quietly
-failed to resume looks exactly like one that resumed correctly, and the answers read as equally confident either
-way.
-
-**Do not infer that the mechanism is broken from a single miss.** A miss is mandatory on the first run after
-any change to the storage mechanism, because nothing was ever stored under the new scheme. Review run
-`32211995416` once read its own miss as contradicting the design, when it was simply the first run that had any
-persistence at all. The chain is proven or disproven by the run *after* the first one, never by the first.
+**A row still reading `running` means a run that never reached its save step.** That is a signal, not a
+glitch: the log is written before Claude starts and completed after it finishes.
 
 ### How to close this note
 
-Once several consecutive runs confirm the restore → `--continue` → save chain **over artifacts** — on an
-issue thread *and* on a review thread, since one implementation serves both and neither has been observed
-on it — and open items 2–6 are decided from observed behaviour: delete this entire section, and fold
-whatever is still true into the permanent documentation of the workflows and the composite actions.
+Once several consecutive runs confirm the restore → `--continue` → save chain **over artifacts** on a
+review thread (the issue side is observed; see open item 1), and open items 2–6 are decided from observed
+behaviour: delete this entire section, and fold whatever is still true into the permanent documentation of
+the workflows and the composite actions. The session log makes that cheap to check — the whole chain of a
+thread is one comment.
 
 ## 1. Project Overview & Philosophy
 

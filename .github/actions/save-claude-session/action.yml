@@ -26,6 +26,12 @@ inputs:
   session-path:
     description: The `session-path` output of `restore-claude-session`.
     required: true
+  github-token:
+    description: >-
+      Token used to complete this run's row in the session log. Needs the write
+      permission for the thread being commented on (`issues: write`, or
+      `pull-requests: write` on a pull request).
+    required: true
   turn:
     description: >-
       The `turn` output of `restore-claude-session`. Stored beside the
@@ -46,6 +52,15 @@ inputs:
       early signal that the conversation should be summarised and restarted.
     required: false
     default: "50"
+  comment-id:
+    description: >-
+      The `comment-id` output of `restore-claude-session`. The row this run added
+      to the session log says `running` until the state is actually stored; this
+      is what lets the size be reported at all, since the save necessarily
+      happens after the Claude step and nothing inside the run can see it.
+      Empty is tolerated: a log that could not be posted must not fail a save.
+    required: false
+    default: ""
   retention-days:
     description: >-
       How long GitHub keeps the uploaded state. This is also how long a thread
@@ -139,6 +154,7 @@ runs:
         {
           echo "has-state=true"
           echo "size-mb=${size_mb}"
+          echo "size-kb=${size_kb}"
           echo "upload-path=${upload_path}"
         } >> "$GITHUB_OUTPUT"
 
@@ -156,6 +172,39 @@ runs:
     # mode that looks exactly like a healthy chain until the next run starts
     # from zero. `include-hidden-files` is what keeps that from happening if a
     # future Claude Code version writes dot-files among the transcripts.
+    # Closes this run's row in the session log. It has to happen here rather than
+    # in `restore-claude-session`, because the size only exists once the state has
+    # been pruned and stored -- which is exactly why no run could ever report it
+    # before, and why the temporary note had to tell agents not to guess at it.
+    - name: Complete the session log row
+      if: steps.prune.outputs.has-state == 'true' && inputs.comment-id != ''
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        COMMENT_ID: ${{ inputs.comment-id }}
+        SIZE_KB: ${{ steps.prune.outputs.size-kb }}
+        TURN: ${{ inputs.turn }}
+      run: |
+        set -uo pipefail
+        api="repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}"
+        body_file="${RUNNER_TEMP}/session-log-complete.md"
+
+        if ! gh api "${api}" --jq '.body' | tr -d '\r' > "${body_file}"; then
+          echo "::warning::Could not read the session log comment ${COMMENT_ID}; the row stays open."
+          exit 0
+        fi
+
+        # The final line only, which is this run's row. An earlier row still
+        # reading `running` belongs to a run that genuinely never finished, and
+        # rewriting it here would erase exactly that signal.
+        sed -i "\$ s/| running |\$/| ${SIZE_KB} KB |/" "${body_file}"
+
+        if ! gh api --method PATCH "${api}" -F body=@"${body_file}" --silent; then
+          echo "::warning::Could not complete the session log row on comment ${COMMENT_ID}."
+          exit 0
+        fi
+        echo "Session log: turn ${TURN} completed with ${SIZE_KB} KB."
+
     - name: Save Claude session
       if: steps.prune.outputs.has-state == 'true'
       uses: actions/upload-artifact@v4
