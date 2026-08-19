@@ -6,11 +6,14 @@
 > persistence across GitHub Actions runs. Delete it once the open items below are closed — do not treat
 > anything in it as a settled convention of this repository.**
 
-**Why it cannot be validated before merging.** None of the triggers involved (`issues`, `issue_comment`,
-`pull_request_review`, `pull_request_review_comment`) is a `pull_request` event, so GitHub always runs
-`claude-issue.yml` and `claude-pr.yml` **from the default branch**. A pull request therefore cannot exercise
-this feature at all: the first real execution happens only after the merge to `master`. Everything below was
-verified by reading the code, not by running it, and must be confirmed against actual runs.
+**Why it cannot be validated before merging.** None of the triggers of `claude-issue.yml` and
+`claude-pr.yml` (`issues`, `issue_comment`, `pull_request_review`, `pull_request_review_comment`) is a
+`pull_request` event, so GitHub always runs those two **from the default branch**. A pull request cannot
+exercise them at all: the first real execution happens only after the merge to `master`.
+`claude-code-review.yml` *is* a `pull_request` event and so runs the branch's own copy — but
+`anthropics/claude-code-action` then refuses the OIDC exchange when the file differs from the default
+branch's (`workflow_not_found_on_default_branch`), which the `Verify the review actually ran` step turns
+into a red check. So it cannot be validated before merging either, just for a different reason.
 
 ### What landed
 
@@ -20,41 +23,71 @@ verified by reading the code, not by running it, and must be confirmed against a
 | `.github/actions/save-claude-session/action.yml` | Prunes the transcripts and stores them under the key the restore action produced. |
 | `.github/workflows/claude-issue.yml` | Wires both actions around the Claude step, keyed by the issue number. |
 | `.github/workflows/claude-pr.yml` | Same, keyed by the originating issue for `claude/issue-<n>-*` branches and by the PR number otherwise. |
+| `.github/workflows/claude-code-review.yml` | Same, keyed by the pull request number under the separate `review` namespace, so consecutive reviews chain to each other without ever resuming the working conversation. |
+
+All three read the two composite actions from a **second, sparse checkout of the default branch**
+(`.ci-actions/`), never from the tree the job checked out. See open item 1 for why.
 
 ### Open items — keep these under observation
 
-1. **Two consecutive runs on the same thread have never been observed.** The whole point of the feature: run 1
-   must miss the cache and save, run 2 must restore through the `restore-keys` prefix and resume. Until a real
-   pair of runs shows that, the feature is unproven.
-2. **Cache scope per branch in `claude-pr.yml`.** `issue_comment` runs with `GITHUB_REF` on the default branch,
+1. **The first real run failed, and the fix is itself unverified.** Between the merge to `master`
+   (`5057b80`, 2026-08-18 21:42 UTC) and the fix, exactly one `claude-pr.yml` run reached the session
+   steps — run `32191217625` — and it died on `Restore Claude session` with:
+
+   ```text
+   Can't find 'action.yml', 'action.yaml' or 'Dockerfile' under
+   '/home/runner/work/mega-snake/mega-snake/.github/actions/restore-claude-session'
+   ```
+
+   **A local `uses: ./…` resolves against the checked-out workspace, not against the ref the workflow
+   file came from.** These workflows run from the default branch but check out the *pull request's*
+   branch, and that pull request (#63) branched before the actions existed. Claude never started, so the
+   request was lost outright rather than answered without history — a worse failure than the one the
+   feature was meant to prevent. `gh cache list` still shows **zero** `claude-session-*` entries, which
+   is the other half of the evidence.
+
+   All three workflows now take a second, sparse checkout of the default branch into `.ci-actions/` and
+   read the composite actions from there. That also means a branch can no longer swap out the action
+   handling its own session cache. **`setup-env` is deliberately left unpinned**: it contains a nested
+   local `uses:`, whose resolution from a relocated composite action is ambiguous and untestable from a
+   pull request.
+
+2. **Two consecutive runs on the same thread have still never been observed.** The whole point of the
+   feature: run 1 must miss the cache and save, run 2 must restore through the `restore-keys` prefix and
+   resume. Until a real pair of runs shows that, the feature is unproven — and item 1 means nothing has
+   even reached the save step yet.
+3. **Cache scope per branch in `claude-pr.yml`.** `issue_comment` runs with `GITHUB_REF` on the default branch,
    while `pull_request_review` and `pull_request_review_comment` run on `refs/pull/<n>/merge`. A review-triggered
    run can *read* default-branch caches but **saves into the pull request's own scope**, which a later
    `issue_comment` run cannot see — that turn silently drops out of the conversation chain. Decide, once
    observed, between accepting the gap and saving only when `github.ref` is the default branch.
-3. **`--continue` pass-through through `anthropics/claude-code-action@v1` is unverified.** It is interpolated
+   `claude-code-review.yml` is expected to be unaffected: it is always a `pull_request` event, so every
+   review of a given pull request reads and writes the same `refs/pull/<n>/merge` scope. Expected, not
+   observed — it belongs under this item until a second review on one pull request shows a prefix hit.
+4. **`--continue` pass-through through `anthropics/claude-code-action@v1` is unverified.** It is interpolated
    into `claude_args`; confirm the action forwards it to the CLI rather than managing sessions itself.
-4. **The workspace slug spelling is a guess with two candidates.** `restore-claude-session` probes both
+5. **The workspace slug spelling is a guess with two candidates.** `restore-claude-session` probes both
    `${GITHUB_WORKSPACE//\//-}` and a full non-alphanumeric substitution, because the sanitisation has differed
    between Claude Code versions. Once a real run shows which one the installed version writes, drop the dead
    candidate instead of carrying both forever.
-5. **Cached transcripts are readable by every run in the repository**, including pull requests from forks, which
+6. **Cached transcripts are readable by every run in the repository**, including pull requests from forks, which
    can read caches scoped to the default branch. They contain whatever Claude read during a run — repository
    content, and anything pulled from the private `AI_CONTEXT` repository. Revisit before this repository ever
    accepts fork pull requests.
-6. **Growth is capped by guesswork.** `save-claude-session` keeps the 3 newest transcripts per project directory
+7. **Growth is capped by guesswork.** `save-claude-session` keeps the 3 newest transcripts per project directory
    and warns above 50 MB. Watch the reported sizes across real runs and adjust `keep-sessions` / `warn-size-mb`
    from evidence rather than from the current defaults.
-7. **GNU `find` only.** Both actions use `find -printf`, absent from the BSD `find` on macOS runners. They are
+8. **GNU `find` only.** Both actions use `find -printf`, absent from the BSD `find` on macOS runners. They are
    Linux-runner-only until that is rewritten.
-8. **Concurrent turns race.** Two comments posted on the same thread while a run is in flight restore the same
+9. **Concurrent turns race.** Two comments posted on the same thread while a run is in flight restore the same
    state and save under keys of their own; the chain keeps whichever finished last and the other turn's history
    is lost. Left in place deliberately — a `concurrency` group would make GitHub cancel a queued run, and losing
    a request outright is worse than losing its history.
 
 ### ⚠️ MANDATORY while this note stands: report the cache state on every workflow run
 
-**Any agent running inside `claude-issue.yml` or `claude-pr.yml` must report the state of its session cache in
-the comment it posts on the thread.** The run's step summary already records it, but a human following the
+**Any agent running inside `claude-issue.yml`, `claude-pr.yml` or `claude-code-review.yml` must report the
+state of its session cache in the comment it posts on the thread.** The run's step summary already records it, but a human following the
 conversation must not have to open the run logs to know whether this turn had any memory of the previous one.
 
 Report, in the progress/result comment, all of:
@@ -66,12 +99,16 @@ Report, in the progress/result comment, all of:
   indistinguishable from a resumed one;
 - **the key this run's state will be saved under**, so the chain can be followed from one run to the next.
 
-**The three values are handed to the run as context, so nothing has to be read to report them.** Both workflows
-interpolate `restore-claude-session`'s outputs into `--append-system-prompt`, which means the session state is in
+**The three values are handed to the run as context, so nothing has to be read to report them.** All three
+workflows interpolate `restore-claude-session`'s outputs into `--append-system-prompt`, which means the session state is in
 the conversation before the first tool call. This replaced an earlier instruction to read `$GITHUB_STEP_SUMMARY`,
-which no run could ever follow: `--allowed-tools` grants `uv`, `pytest`, `ruff`, `mypy`, `gh` and `git`, and none
-of them opens a file — the requirement was unsatisfiable, and the first review run duly reported the state as
-unknown. The summary is still written, for a human reading the run afterwards.
+which no run could ever follow: no rule in any of the three allowlists opens a file — the requirement was
+unsatisfiable, and the first review run duly reported the state as unknown. The summary is still written, for a
+human reading the run afterwards.
+
+**A review run reporting nothing at all was correct until now.** `claude-code-review.yml` had no session
+persistence, so there was no cache state to report and every review was a cold start by construction. Now that it
+has one, that exemption is gone.
 
 The persisted **size** is *not* handed over: `save-claude-session` runs after the Claude step, so its size line
 only exists once the turn is over — report it from the previous run's summary if it matters, never as a guess
@@ -83,7 +120,7 @@ to resume looks exactly like one that resumed correctly, and the answers read as
 
 ### How to close this note
 
-Once several consecutive runs on the same thread confirm the restore → `--continue` → save chain, and items 2–4
+Once several consecutive runs on the same thread confirm the restore → `--continue` → save chain, and items 3–5
 are decided from observed behaviour: delete this entire section, and fold whatever is still true into the
 permanent documentation of the workflows and the composite actions.
 

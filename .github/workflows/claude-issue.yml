@@ -37,6 +37,35 @@ jobs:
         with:
           fetch-depth: 1
 
+      # The session actions are read from the DEFAULT BRANCH, never from the tree
+      # this job checked out.
+      #
+      # A local `uses: ./…` is resolved against the *checked-out workspace*, not
+      # against the ref the workflow file itself came from. These workflows run
+      # from the default branch but check out the pull request's branch, so a
+      # branch created before the session actions existed made the run die with
+      # "Can't find 'action.yml' … under .github/actions/restore-claude-session"
+      # — before Claude had even started, so the request was lost entirely rather
+      # than answered without history. That is not hypothetical: it is how run
+      # 32191217625 failed, and why no session has ever been saved.
+      #
+      # Pinning them here fixes that for every branch, however old, and closes a
+      # second hole on the way: a pull request can no longer edit the action that
+      # handles the session cache and have this job run its version.
+      #
+      # `setup-env` is deliberately NOT pinned. It contains a nested local
+      # `uses: ./.github/actions/setup-ai-context`, whose resolution from a
+      # relocated composite action is exactly the ambiguity this step exists to
+      # avoid — and it cannot be tested from a pull request. It has also existed
+      # far longer than any branch likely to run here.
+      - name: Check out the pinned session actions
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: .ci-actions
+          sparse-checkout: .github/actions
+          fetch-depth: 1
+
       - name: Set up environment
         uses: ./.github/actions/setup-env
         with:
@@ -120,7 +149,7 @@ jobs:
       # resumed just as happily.
       - name: Restore Claude session
         id: session
-        uses: ./.github/actions/restore-claude-session
+        uses: ./.ci-actions/.github/actions/restore-claude-session
         with:
           thread-id: ${{ github.event.issue.number }}
           fresh: ${{ steps.model.outputs.fresh }}
@@ -158,7 +187,7 @@ jobs:
       # resumes the last state that actually completed, rather than one left
       # half-written. Switch to `if: always()` to checkpoint failures too.
       - name: Save Claude session
-        uses: ./.github/actions/save-claude-session
+        uses: ./.ci-actions/.github/actions/save-claude-session
         with:
           cache-key: ${{ steps.session.outputs.cache-key }}
           session-path: ${{ steps.session.outputs.session-path }}
