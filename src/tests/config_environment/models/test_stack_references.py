@@ -10,21 +10,58 @@ watcher that was filtered out. VS Code reports that only when the developer runs
 These tests walk the whole universe instead of sampling the tags that happen to exist today.
 """
 
+import json
 import re
+from typing import Union
 
-from mega_snake.config_environment.models.project_stack import ProjectStack, resolve_stacks
+from mega_snake.config_environment.create_working_env import DEFAULT_PROPS
+from mega_snake.config_environment.models.project_stack import ProjectStack, expand, resolve_stacks
 from mega_snake.config_environment.models.vscode_input import VscodeInput
-from mega_snake.config_environment.models.vscode_launch import VscodeLaunch
+from mega_snake.config_environment.models.vscode_launch import REMOTE_DEBUG_PORT_QUERY, VscodeLaunch
 from mega_snake.config_environment.models.vscode_task import VscodeTask
 
 INPUT_CALL_PATTERN = re.compile(r"\$\{input:([^}]+)\}")
+CONFIG_REF_PATTERN = re.compile(r"\$\{config:([^}]+)\}")
+
+# Which stack writes each `.settings` key of DEFAULT_PROPS. `_update_input_props` filters that map by
+# stack exactly like every artifact enum, so a `${config:…}` reference is a graph edge like any other
+# -- it just points at a setting instead of at a task or a watcher.
+PROP_OWNER: dict[str, ProjectStack] = {key: stack for stack, props in DEFAULT_PROPS.items() for key in props}
 
 
 def _activated_by(stack: ProjectStack) -> set[ProjectStack]:
-    """Resolve everything a workspace gets when the given stack is the only one selected."""
+    """Resolve everything a workspace gets when the given stack is the only one that is active.
+
+    An opt-in stack cannot be named on `--stack` -- `resolve_stacks` refuses the key outright -- so
+    its entry point is the marker file, which activates the stack and everything it implies. The set
+    is the same either way; only the door differs.
+    """
     if stack is ProjectStack.COMMON:
         return {ProjectStack.COMMON}
+    if stack.opt_in:
+        return {ProjectStack.COMMON, *expand(stack)}
     return resolve_stacks([stack.key])
+
+
+def _reference_text(member: Union[VscodeTask, VscodeLaunch]) -> str:
+    """Join every field of a member that VS Code interpolates references out of.
+
+    `extra_args` is included, and that is the point: `to_dict` emits it verbatim, so the Windows
+    overrides on the Gradle build tasks (`{"windows": {"command": …, "args": …}}`) and a launch's
+    `port`/`program` entries are as much a reference site as `command` is. Scanning only `command`
+    and `args` left them outside the walk this module claims to be exhaustive.
+
+    Parameters:
+        member: The task or launch configuration to flatten.
+
+    Returns:
+        str: Every interpolatable field, joined; JSON for the nested ones so no value is lost.
+    """
+    parts: list[str] = [getattr(member, "command", None) or "", *getattr(member, "args", [])]
+    for nested in (getattr(member, "extra_args", None), getattr(member, "env", None)):
+        if nested:
+            parts.append(json.dumps(nested))
+    return " ".join(parts)
 
 
 def _owner_of_label(label: str) -> VscodeTask:
@@ -74,8 +111,7 @@ def test_task_input_calls_stay_inside_their_own_stacks() -> None:
     inputs_by_id: dict[str, VscodeInput] = {member.input_id: member for member in VscodeInput}
     for task in VscodeTask:
         active: set[ProjectStack] = _activated_by(task.stack)
-        text: str = " ".join([task.command or "", *task.args])
-        for input_id in INPUT_CALL_PATTERN.findall(text):
+        for input_id in INPUT_CALL_PATTERN.findall(_reference_text(task)):
             assert input_id in inputs_by_id, f"{task.name} calls '${{input:{input_id}}}', which no VscodeInput declares"
             referenced: VscodeInput = inputs_by_id[input_id]
             assert referenced.stack in active, (
@@ -98,3 +134,60 @@ def test_launch_references_stay_inside_their_own_stacks() -> None:
                 f"{launch.name} ({launch.stack}) redirects into {launch.watcher.name} "
                 f"({launch.watcher.stack}), which is not written for its stack"
             )
+
+
+def test_launch_input_calls_stay_inside_their_own_stacks() -> None:
+    """A launch configuration never calls an input its own stack does not activate."""
+    inputs_by_id: dict[str, VscodeInput] = {member.input_id: member for member in VscodeInput}
+    for launch in VscodeLaunch:
+        active: set[ProjectStack] = _activated_by(launch.stack)
+        for input_id in INPUT_CALL_PATTERN.findall(_reference_text(launch)):
+            assert input_id in inputs_by_id, (
+                f"{launch.name} calls '${{input:{input_id}}}', which no VscodeInput declares"
+            )
+            referenced: VscodeInput = inputs_by_id[input_id]
+            assert referenced.stack in active, (
+                f"{launch.name} ({launch.stack}) calls '${{input:{input_id}}}' ({referenced.stack}), "
+                f"which is not written for its stack"
+            )
+
+
+def test_config_references_stay_inside_their_own_stacks() -> None:
+    """A member never reads a workspace setting its own stack does not write.
+
+    `${config:mgsnake.java.remoteDebug.port}` resolves to nothing unless `DEFAULT_PROPS[JAVA]` was
+    written, and that map is stack-filtered like everything else. Both sides are `JAVA` today, so
+    this walks a graph that is already consistent -- retag either side and the workspace gets a
+    silent empty interpolation instead of a port number.
+
+    Keys outside `DEFAULT_PROPS` are out of scope by construction: `java.import.gradle.home` and
+    `maven.executable.path` are written by `set-gradle`/`set-maven`, which run unconditionally.
+    """
+    for member in (*VscodeTask, *VscodeLaunch):
+        active: set[ProjectStack] = _activated_by(member.stack)
+        for key in CONFIG_REF_PATTERN.findall(_reference_text(member)):
+            owner: ProjectStack | None = PROP_OWNER.get(key)
+            if owner is None:
+                continue
+            assert owner in active, (
+                f"{member.name} ({member.stack}) reads '${{config:{key}}}', written by "
+                f"DEFAULT_PROPS[{owner}], which is not active for its stack"
+            )
+
+
+def test_the_config_reference_walk_actually_sees_something() -> None:
+    """The walk above is only meaningful while some member really does read a DEFAULT_PROPS key.
+
+    Without this, deleting every `${config:…}` reference -- or breaking `_reference_text` -- would
+    leave `test_config_references_stay_inside_their_own_stacks` passing over an empty loop, which is
+    the shape of a test that verifies nothing.
+    """
+    referenced: set[str] = set()
+    for member in (*VscodeTask, *VscodeLaunch):
+        referenced.update(key for key in CONFIG_REF_PATTERN.findall(_reference_text(member)) if key in PROP_OWNER)
+    assert referenced, "no member reads a DEFAULT_PROPS setting; the config-reference invariant walks nothing"
+    # DEBUG_JAVA reads the port from `extra_args` and from nowhere else, so it is the one member that
+    # proves `_reference_text` reaches in there -- the precise gap this walk was extended to close.
+    assert REMOTE_DEBUG_PORT_QUERY in CONFIG_REF_PATTERN.findall(_reference_text(VscodeLaunch.DEBUG_JAVA)), (
+        "DEBUG_JAVA's `${config:…}` port lives in extra_args; _reference_text no longer reads that field"
+    )
