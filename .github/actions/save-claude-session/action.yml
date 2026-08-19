@@ -1,28 +1,27 @@
 name: Save Claude Session
 
 # Stores the conversation state produced by this run as the next link of the
-# thread's cache chain, so the next comment on the same issue can resume it.
-# The counterpart of `restore-claude-session`; see that action for why only
-# `~/.claude/projects` is persisted and never `~/.claude` itself.
+# thread's chain, so the next comment on the same issue can resume it. The
+# counterpart of `restore-claude-session`; see that action for why the state
+# travels as an artifact rather than a cache, and why only `~/.claude/projects`
+# is persisted and never `~/.claude` itself.
 #
-# WHY THIS IS A REGULAR STEP AND NOT `actions/cache`'s POST PHASE
-# --------------------------------------------------------------
-# `actions/cache` saves automatically after the job, which leaves no room to
-# prune the transcripts first -- and a conversation that keeps growing turns into
-# a cache that keeps growing, slowing every subsequent run down. Splitting the
-# restore and the save gives us that window, and makes the save condition
-# explicit: placed after the Claude step with the default `success()` condition,
-# a failed run does not become the next checkpoint of the conversation.
+# WHY THE PRUNE IS A STEP OF ITS OWN
+# ----------------------------------
+# A conversation that keeps growing turns into an upload that keeps growing,
+# slowing every subsequent run down. Pruning immediately before the upload gives
+# us that window, and keeps the save condition explicit: placed after the Claude
+# step with the default `success()` condition, a failed run does not become the
+# next checkpoint of the conversation.
 description: >-
-  Prunes and stores the Claude Code conversation state under the key produced by
-  `restore-claude-session`.
+  Prunes and uploads the Claude Code conversation state under the artifact name
+  produced by `restore-claude-session`.
 
 inputs:
-  cache-key:
+  artifact-name:
     description: >-
-      The `cache-key` output of `restore-claude-session`. Must be that exact
-      value: it is the key the *next* run finds through its `restore-keys`
-      prefix.
+      The `artifact-name` output of `restore-claude-session`. Must be that exact
+      value: it is the name the *next* run looks up.
     required: true
   session-path:
     description: The `session-path` output of `restore-claude-session`.
@@ -40,6 +39,15 @@ inputs:
       early signal that the conversation should be summarised and restarted.
     required: false
     default: "50"
+  retention-days:
+    description: >-
+      How long GitHub keeps the uploaded state. This is also how long a thread
+      can stay quiet before its history is gone, so it is a conversation-length
+      decision as much as a storage one. Kept short deliberately: the transcripts
+      are downloadable by every reader of the repository, and a session nobody
+      has touched in a week is not worth resuming.
+    required: false
+    default: "7"
 
 runs:
   using: composite
@@ -51,10 +59,11 @@ runs:
         SESSION_PATH: ${{ inputs.session-path }}
         KEEP_SESSIONS: ${{ inputs.keep-sessions }}
         WARN_SIZE_MB: ${{ inputs.warn-size-mb }}
+        RETENTION_DAYS: ${{ inputs.retention-days }}
       run: |
         set -euo pipefail
 
-        # Both numeric inputs are validated together, and *before* the early exit
+        # The numeric inputs are validated together, and *before* the early exit
         # below, for two reasons: an unchecked value reaches an arithmetic test
         # (`-lt`, `-ge`) that aborts the step with a bash syntax error instead of
         # a readable message, and validating only when state happens to exist
@@ -67,6 +76,7 @@ runs:
         }
         require_positive_int keep-sessions "${KEEP_SESSIONS}"
         require_positive_int warn-size-mb "${WARN_SIZE_MB}"
+        require_positive_int retention-days "${RETENTION_DAYS}"
 
         if [ ! -d "${SESSION_PATH}" ]; then
           echo "No Claude state at ${SESSION_PATH}; nothing to save."
@@ -75,9 +85,11 @@ runs:
         fi
 
         # Defensive only: credentials live in ~/.claude, one level above the
-        # cached directory, so they are already out of scope. This guards against
-        # a future Claude Code version dropping a token beside the transcripts,
-        # which would otherwise be published to every reader of the cache.
+        # uploaded directory, so they are already out of scope. This guards
+        # against a future Claude Code version dropping a token beside the
+        # transcripts, which would otherwise be published to every reader of the
+        # artifact. `-name` matches a leading dot, so `.credentials.json` is
+        # covered -- which is what makes `include-hidden-files` safe below.
         find "${SESSION_PATH}" -type f -name '*credential*' -print -delete
 
         # Keep the newest transcripts per project directory and drop the rest.
@@ -93,7 +105,7 @@ runs:
         done < <(find "${SESSION_PATH}" -mindepth 1 -maxdepth 1 -type d)
 
         if [ -z "$(find "${SESSION_PATH}" -type f -print -quit)" ]; then
-          echo "Claude state is empty after pruning; nothing worth caching."
+          echo "Claude state is empty after pruning; nothing worth uploading."
           echo "has-state=false" >> "$GITHUB_OUTPUT"
           exit 0
         fi
@@ -108,12 +120,21 @@ runs:
         fi
 
         {
-          echo "- Save: \`${size_mb}\` MB persisted for the next run"
+          echo "- Save: \`${size_mb}\` MB persisted for the next run, kept for ${RETENTION_DAYS} days"
         } >> "$GITHUB_STEP_SUMMARY"
 
+    # `if-no-files-found: error` on purpose. The prune step above has already
+    # established that files exist, so an empty upload here can only mean the
+    # glob excluded them -- and a silently empty artifact is the one failure
+    # mode that looks exactly like a healthy chain until the next run starts
+    # from zero. `include-hidden-files` is what keeps that from happening if a
+    # future Claude Code version writes dot-files among the transcripts.
     - name: Save Claude session
       if: steps.prune.outputs.has-state == 'true'
-      uses: actions/cache/save@v4
+      uses: actions/upload-artifact@v4
       with:
+        name: ${{ inputs.artifact-name }}
         path: ${{ inputs.session-path }}
-        key: ${{ inputs.cache-key }}
+        retention-days: ${{ inputs.retention-days }}
+        include-hidden-files: true
+        if-no-files-found: error

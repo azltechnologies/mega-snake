@@ -106,7 +106,7 @@ jobs:
       #
       # Pinning them here fixes that for every branch, however old, and closes a
       # second hole on the way: a pull request can no longer edit the action that
-      # handles the session cache and have this job run its version.
+      # handles the session state and have this job run its version.
       #
       # `setup-env` is deliberately NOT pinned. It contains a nested local
       # `uses: ./.github/actions/setup-ai-context`, whose resolution from a
@@ -152,7 +152,7 @@ jobs:
 
           # Escape hatch for the session persistence below: a conversation that
           # grew too large, or drifted, can be reset from the comment itself
-          # instead of waiting for the cache to be evicted.
+          # instead of waiting for the stored state to fall out of retention.
           #
           # The word boundaries matter: without them "renew session" and
           # "renewed session" reset the thread too, and a reset is invisible --
@@ -174,6 +174,7 @@ jobs:
         uses: ./.ci-actions/.github/actions/restore-claude-session
         with:
           thread-id: ${{ steps.pr.outputs.thread }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           fresh: ${{ steps.model.outputs.fresh }}
 
       - name: Run Claude Code
@@ -203,7 +204,7 @@ jobs:
           # is unreadable with the tool set above. Passing the three outputs directly keeps the
           # requirement satisfiable no matter how narrow the allowed tools get.
           claude_args: |
-            --allowed-tools Bash(uv:*),Bash(pytest:*),Bash(ruff:*),Bash(mypy:*),Bash(gh:*),Bash(git:*) --append-system-prompt "Session cache for this run: restored-key='${{ steps.session.outputs.restored-key }}' (empty means a cache miss, otherwise the key restored, exactly or through restore-keys); continue-flag='${{ steps.session.outputs.continue-flag }}' (literal --continue when a transcript for this workspace was restored, empty when this is a fresh conversation); save-key='${{ steps.session.outputs.cache-key }}'. Report all three in the comment you post on this thread, as the temporary note in .github/copilot-instructions.md requires." ${{ steps.session.outputs.continue-flag }} ${{ steps.model.outputs.model != '' && format('--model {0}', steps.model.outputs.model) || '' }}
+            --allowed-tools Bash(uv:*),Bash(pytest:*),Bash(ruff:*),Bash(mypy:*),Bash(gh:*),Bash(git:*) --append-system-prompt "Session state for this run: restored-from='${{ steps.session.outputs.restored-from }}' (empty means nothing was stored for this thread, otherwise the id of the workflow run whose transcript was restored); continue-flag='${{ steps.session.outputs.continue-flag }}' (literal --continue when a transcript for this workspace was restored, empty when this is a fresh conversation); artifact='${{ steps.session.outputs.artifact-name }}' (the artifact name this run's state is uploaded under). Report all three in the comment you post on this thread, as the temporary note in .github/copilot-instructions.md requires." ${{ steps.session.outputs.continue-flag }} ${{ steps.model.outputs.model != '' && format('--model {0}', steps.model.outputs.model) || '' }}
 
       # No `if:` on purpose. The default `success()` means a failed run does not
       # become the next checkpoint of the conversation: the following run then
@@ -212,5 +213,5 @@ jobs:
       - name: Save Claude session
         uses: ./.ci-actions/.github/actions/save-claude-session
         with:
-          cache-key: ${{ steps.session.outputs.cache-key }}
+          artifact-name: ${{ steps.session.outputs.artifact-name }}
           session-path: ${{ steps.session.outputs.session-path }}
