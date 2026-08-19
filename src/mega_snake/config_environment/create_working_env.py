@@ -318,7 +318,7 @@ def _add_default_settings(workspace_file: str, working_path: str, active_stacks:
         ws_advice("Workspace settings already up-to-date")
 
 
-def get_recommended_extensions(stacks: set[ProjectStack]) -> list[str]:
+def _get_recommended_extensions(stacks: set[ProjectStack]) -> list[str]:
     """Collect the recommended extensions contributed by the active stacks.
 
     Parameters:
@@ -350,7 +350,7 @@ def _add_recommended_extensions(json_data: dict[str, Any], stacks: set[ProjectSt
         stacks (set[ProjectStack]): The active stacks
     """
     update_file: bool = False
-    workspace_extensions: list[str] = get_recommended_extensions(stacks)
+    workspace_extensions: list[str] = _get_recommended_extensions(stacks)
     result = jq.compile(EXTENSIONS_QUERY).input(json_data).all()
     if not result or not result[0]:
         jq_query = f"{EXTENSIONS_QUERY} = {json.dumps(workspace_extensions)}"
@@ -421,6 +421,14 @@ def _update_vscode_tasks(
     """Update the VSCode tasks configuration of the active stacks"""
     updated = False
 
+    # The version and the inputs are the container of the tasks, and nothing else consumes them:
+    # `todayTimestamp` is only ever interpolated into a task command. Writing them for a workspace
+    # with no active task would leave a `"version": "2.0.0"` block holding an input nobody calls,
+    # which is what the module promises not to do.
+    active_tasks: list[VscodeTask] = filter_by_stack(VscodeTask, stacks)
+    if not active_tasks:
+        return json_data, False
+
     res = VscodeTask.add_tasks_version(json_data)
     if res:
         updated = True
@@ -432,7 +440,7 @@ def _update_vscode_tasks(
             updated = True
             json_data = res
 
-    for task in filter_by_stack(VscodeTask, stacks):
+    for task in active_tasks:
         res = task.add_tasks_task(json_data, working_path)
         if res:
             updated = True
@@ -447,6 +455,12 @@ def _update_vscode_launch(
     """Update the VSCode launch configuration of the active stacks"""
     updated = False
 
+    # Same reasoning as the tasks above: the inputs of this block are only referenced by the launch
+    # configurations themselves, through the log redirect their watcher builds.
+    active_launches: list[VscodeLaunch] = filter_by_stack(VscodeLaunch, stacks)
+    if not active_launches:
+        return json_data, False
+
     res = VscodeLaunch.add_launch_version(json_data)
     if res:
         updated = True
@@ -458,7 +472,7 @@ def _update_vscode_launch(
             updated = True
             json_data = res
 
-    for launch in filter_by_stack(VscodeLaunch, stacks):
+    for launch in active_launches:
         res = launch.add_launch_config(json_data, _launch_substituter, working_path)
         if res:
             updated = True

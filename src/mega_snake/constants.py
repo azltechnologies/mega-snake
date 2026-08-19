@@ -8,6 +8,8 @@ from mega_snake.util import formatting
 
 APP_NAME: str = "mgsnake"
 MODULE_NAME: str = "mega_snake"
+
+# Interpreter of the development virtualenv, used by the opt-in `snake` launch configuration.
 INTERPRETER_PATH: str = ".venv/bin/python3.13"
 
 # Packaged documentation fragments and the generated command reference

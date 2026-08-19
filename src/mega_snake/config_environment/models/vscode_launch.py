@@ -36,6 +36,24 @@ class VscodeLaunch(Enum):
         },
         ProjectStack.JAVA,
     )
+    # Debugs the mega-snake CLI itself, so it belongs to the opt-in development stack: without the
+    # marker file it is written to no workspace at all, which is what keeps it out of a user's
+    # Python project (§1 of the copilot instructions).
+    DEBUG_PYTHON_SNAKE = (
+        "PYTHON DEBUG (Snake)",
+        "debugpy",
+        "launch",
+        None,
+        ["--shell", SUBSTITUTE_SHELL_TAG, "-l", "debug", "msg", "hello world!"],
+        None,
+        None,
+        {
+            "module": MODULE_NAME,
+            "python": f"{os.getenv('PYTHONPATH')}/{INTERPRETER_PATH}",
+            "console": "integratedTerminal",
+        },
+        ProjectStack.SNAKE,
+    )
     DEBUG_PYTHON_FILE = (
         "PYTHON DEBUG (File)",
         "debugpy",
@@ -56,21 +74,6 @@ class VscodeLaunch(Enum):
         LogWatcher.GENERIC,
         None,
         {"module": "${fileDirnameBasename}"},
-        ProjectStack.PYTHON,
-    )
-    DEBUG_PYTHON_SNAKE = (
-        "PYTHON DEBUG (Snake)",
-        "debugpy",
-        "launch",
-        None,
-        ["--shell", SUBSTITUTE_SHELL_TAG, "-l", "debug", "msg", "hello world!"],
-        None,
-        None,
-        {
-            "module": MODULE_NAME,
-            "python": f"{os.getenv('PYTHONPATH')}/{INTERPRETER_PATH}",
-            "console": "integratedTerminal",
-        },
         ProjectStack.PYTHON,
     )
 

@@ -6,6 +6,8 @@ from typing import Any
 import pytest
 from mega_snake.config_environment.models.project_stack import (
     ALL_STACKS,
+    SNAKE_MARKER,
+    expand,
     NO_ASSOCIATIONS,
     NO_EXTENSIONS,
     ProjectStack,
@@ -76,12 +78,14 @@ def test_selectable_keys() -> None:
     keys: list[str] = selectable_keys()
     # 'common' is always active, so it is not offered
     assert ProjectStack.COMMON.key not in keys
+    # an opt-in stack is reachable only through its marker file, never through the option
+    assert ProjectStack.SNAKE.key not in keys
     assert ALL_STACKS in keys
     for member in ProjectStack:
-        if member is not ProjectStack.COMMON:
+        if member is not ProjectStack.COMMON and not member.opt_in:
             assert member.key in keys
     # the order is stable, since the option help is generated from it
-    assert keys == [member.key for member in ProjectStack if member is not ProjectStack.COMMON] + [ALL_STACKS]
+    assert keys == ["java", "gradle", "maven", "python", "node", ALL_STACKS]
 
 
 def test_from_key() -> None:
@@ -139,6 +143,30 @@ def test_detect_stacks(tmp_path: Path) -> None:
     assert ProjectStack.NODE in detect_stacks(str(nested))
 
 
+def test_detect_stacks_activates_the_opt_in_stack_only_through_its_marker(tmp_path: Path) -> None:
+    """Test that the development stack appears exactly when its marker file does."""
+    _write_marker(tmp_path, "pyproject.toml")
+    assert ProjectStack.SNAKE not in detect_stacks(str(tmp_path))
+
+    _write_marker(tmp_path, SNAKE_MARKER)
+    detected: set[ProjectStack] = detect_stacks(str(tmp_path))
+    assert ProjectStack.SNAKE in detected
+    # it drags Python along, since the launch it contributes is a debugpy one
+    assert ProjectStack.PYTHON in detected
+
+
+def test_expand_resolves_implications_transitively() -> None:
+    """Test that expanding a stack returns everything reachable through its implications."""
+    assert expand(ProjectStack.NODE) == {ProjectStack.NODE}
+    assert expand(ProjectStack.GRADLE) == {ProjectStack.GRADLE, ProjectStack.JAVA}
+    assert expand(ProjectStack.MAVEN) == {ProjectStack.MAVEN, ProjectStack.JAVA}
+    # the opt-in stack reaches Python, and nothing reaches back into it
+    assert expand(ProjectStack.SNAKE) == {ProjectStack.SNAKE, ProjectStack.PYTHON}
+    for stack in ProjectStack:
+        if stack is not ProjectStack.SNAKE:
+            assert ProjectStack.SNAKE not in expand(stack), f"{stack.key} drags the development stack along"
+
+
 def test_detect_stacks_defaults_to_the_current_directory(tmp_path: Path, monkeypatch: Any) -> None:
     """Test that the detection falls back to the working directory"""
     _write_marker(tmp_path, "package.json")
@@ -168,8 +196,19 @@ def test_resolve_stacks(tmp_path: Path) -> None:
         ProjectStack.NODE,
     }
 
-    # 'all' forces every stack
-    assert resolve_stacks([ALL_STACKS], str(tmp_path)) == set(ProjectStack)
+    # 'all' forces every stack a user may ask for -- and no opt-in stack, or the shortcut would be a
+    # way around the marker file that guards it
+    assert resolve_stacks([ALL_STACKS], str(tmp_path)) == {
+        stack for stack in ProjectStack if stack is not ProjectStack.SNAKE
+    }
+    assert ProjectStack.SNAKE not in resolve_stacks([ALL_STACKS], str(tmp_path))
+
+    # 'all' follows the same case-insensitive contract as every other key
+    assert resolve_stacks(["ALL"], str(tmp_path)) == resolve_stacks([ALL_STACKS], str(tmp_path))
+    assert resolve_stacks(["GRADLE"], str(tmp_path)) == resolve_stacks(["gradle"], str(tmp_path))
+
+    # the opt-in stack is still resolvable by name, for the workspace that drops its marker
+    assert ProjectStack.SNAKE in resolve_stacks([ProjectStack.SNAKE.key], str(tmp_path))
 
     # an unknown key is rejected
     with pytest.raises(ValueError):
