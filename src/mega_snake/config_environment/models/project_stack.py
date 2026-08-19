@@ -46,6 +46,10 @@ class ProjectStack(Enum):
         NO_MARKERS,
         NO_IMPLIED,
         [
+            # Recommended for every stack even though the input it powers (`TODAY_TIMESTAMP`) is only
+            # written when a task or a launch configuration survives the stack filter. Moving it
+            # would mean duplicating it on every stack that has one, and an unused recommendation is
+            # a one-line prompt VS Code shows once -- cheaper than the duplication.
             "augustocdias.tasks-shell-input",
             "berublan.vscode-log-viewer",
             "bradzacher.vscode-copy-filename",

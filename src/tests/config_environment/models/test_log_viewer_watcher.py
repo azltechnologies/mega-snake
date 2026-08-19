@@ -76,8 +76,9 @@ def test_stack() -> None:
     assert LogWatcher.MAVEN_TEST.stack is ProjectStack.MAVEN
     # the mgsnake log exists in every repository the CLI runs in, whatever the repository is made of
     assert LogWatcher.PYTHON_SNAKE.stack is ProjectStack.COMMON
-    # a watcher that is useful for any project falls back to the shared stack
-    assert LogWatcher.GENERIC.stack is ProjectStack.COMMON
+    # `logs/output_*.log` is produced by the Python launch configurations and by nothing else, so the
+    # watcher belongs to that stack rather than to every workspace
+    assert LogWatcher.GENERIC.stack is ProjectStack.PYTHON
 
 
 def test_get_pattern_date(get_input_call: MagicMock) -> None:
@@ -137,3 +138,12 @@ def test_add_watcher(_log_watcher_query: MagicMock) -> None:
         to_dict.assert_called_once_with(working_path)
         assert tasks_found[0]["title"] == inst.title
         assert tasks_found[0]["pattern"] == inst.pattern
+
+
+def test_watcher_patterns_are_globally_unique() -> None:
+    """Two watchers never claim the same log pattern, which would make one of them unreachable."""
+    seen: dict[str, LogWatcher] = {}
+    for watcher in LogWatcher:
+        clash = seen.get(watcher.pattern)
+        assert clash is None, f"{watcher.name} reuses the pattern of {clash.name if clash else ''}: {watcher.pattern}"
+        seen[watcher.pattern] = watcher

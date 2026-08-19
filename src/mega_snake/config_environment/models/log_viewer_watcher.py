@@ -22,7 +22,12 @@ class LogWatcher(Enum):
         ProjectStack.GRADLE,
     )
     GRADLE_BUILD = ("GRADLE CLEAN BUILD", f"logs/clean_build{SUBSTITUTE_LOG_DATE_TAG}", ProjectStack.GRADLE)
-    GENERIC = ("GENERIC LOG", f"logs/output{SUBSTITUTE_LOG_DATE_TAG}")
+    # Python, not COMMON: `logs/output_*.log` is written by the two `DEBUG_PYTHON_*` launch
+    # configurations and by nothing else, so on a Java-only or Node-only workspace this watcher
+    # would sit there pointing at a file that repository never produces. Contrast with
+    # PYTHON_SNAKE below, which is deliberately COMMON because the file it watches is written by
+    # `mgsnake` itself, in whatever repository it runs.
+    GENERIC = ("GENERIC LOG", f"logs/output{SUBSTITUTE_LOG_DATE_TAG}", ProjectStack.PYTHON)
     JAVA_DEBUG = ("JAVA DEBUG LOG", f"logs/java_debug{SUBSTITUTE_LOG_DATE_TAG}", ProjectStack.JAVA)
     # No stack, so it lands in every workspace: this is the log `mgsnake` itself writes
     # (`log_file_name` in config.properties), which exists in any repository the CLI is run from,
