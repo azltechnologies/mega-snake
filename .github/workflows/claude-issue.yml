@@ -178,10 +178,13 @@ jobs:
           # The session state is handed over as context rather than left to be read: the temporary
           # note in copilot-instructions.md requires every run to report whether it resumed a
           # conversation, and `$GITHUB_STEP_SUMMARY` -- where `restore-claude-session` writes it --
-          # is unreadable with the tool set above. Passing the three outputs directly keeps the
-          # requirement satisfiable no matter how narrow the allowed tools get.
+          # is unreadable with the tool set above. Passing the outputs directly keeps the
+          # requirement satisfiable no matter how narrow the allowed tools get. The turn number
+          # rides along for a different reason: a run cannot work out its own position in the
+          # conversation from what it remembers, and has been observed getting it exactly
+          # backwards -- see the reporting section of that same note.
           claude_args: |
-            --allowed-tools Bash(uv:*),Bash(pytest:*),Bash(ruff:*),Bash(mypy:*),Bash(gh:*),Bash(git:*) --append-system-prompt "Session state for this run: restored-from='${{ steps.session.outputs.restored-from }}' (empty means nothing was stored for this thread, otherwise the id of the workflow run whose transcript was restored); continue-flag='${{ steps.session.outputs.continue-flag }}' (literal --continue when a transcript for this workspace was restored, empty when this is a fresh conversation); artifact='${{ steps.session.outputs.artifact-name }}' (the artifact name this run's state is uploaded under). Report all three in the comment you post on this thread, as the temporary note in .github/copilot-instructions.md requires." ${{ steps.session.outputs.continue-flag }} ${{ steps.model.outputs.model != '' && format('--model {0}', steps.model.outputs.model) || '' }}
+            --allowed-tools Bash(uv:*),Bash(pytest:*),Bash(ruff:*),Bash(mypy:*),Bash(gh:*),Bash(git:*) --append-system-prompt "Session state for this run, computed by the workflow and not by you: this is turn ${{ steps.session.outputs.turn }} of this conversation; ${{ steps.session.outputs.state }}; continue-flag='${{ steps.session.outputs.continue-flag }}' (literal --continue when a transcript for this workspace was restored, empty when this is a fresh conversation); artifact='${{ steps.session.outputs.artifact-name }}' (the artifact name this run's state is uploaded under). These four values describe THIS run and override everything else. A resumed conversation always contains the previous turn's own report of its session state, and the thread's comments contain it too; both are stale by construction. If what you remember, or a comment already posted, disagrees with the values above, the values above are right and your memory is a previous turn talking. Never restate an earlier turn's session state as your own, and never work out which turn you are from the conversation -- the number is given to you above precisely because that inference has been got wrong before. Report the turn number, what was restored, and whether --continue was passed, in the comment you post on this thread, as the temporary note in .github/copilot-instructions.md requires." ${{ steps.session.outputs.continue-flag }} ${{ steps.model.outputs.model != '' && format('--model {0}', steps.model.outputs.model) || '' }}
 
       # No `if:` on purpose. The default `success()` means a failed run does not
       # become the next checkpoint of the conversation: the following run then
@@ -191,4 +194,5 @@ jobs:
         uses: ./.ci-actions/.github/actions/save-claude-session
         with:
           artifact-name: ${{ steps.session.outputs.artifact-name }}
+          turn: ${{ steps.session.outputs.turn }}
           session-path: ${{ steps.session.outputs.session-path }}
