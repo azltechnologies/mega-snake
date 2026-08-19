@@ -115,6 +115,9 @@ class VscodeLaunch(Enum):
             result[key] = value
         return result
 
+    # TODO(#55-followup): same in-place enum mutation as `VscodeTask.add_logger_args`; see the full
+    # note there. Fix both together -- this `to_dict` joins `args` with `" "` for the `debugpy` type,
+    # so the two call sites do not compose the value identically and cannot be changed in isolation.
     def add_logger_args(self, working_path: str) -> None:
         """Adds the redirect arg to the task."""
         if self.watcher:

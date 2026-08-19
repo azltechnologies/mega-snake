@@ -12,7 +12,7 @@ These tests walk the whole universe instead of sampling the tags that happen to 
 
 import json
 import re
-from typing import Union
+from typing import Optional, Union
 
 from mega_snake.config_environment.create_working_env import DEFAULT_PROPS
 from mega_snake.config_environment.models.project_stack import ProjectStack, expand, resolve_stacks
@@ -22,6 +22,10 @@ from mega_snake.config_environment.models.vscode_task import VscodeTask
 
 INPUT_CALL_PATTERN = re.compile(r"\$\{input:([^}]+)\}")
 CONFIG_REF_PATTERN = re.compile(r"\$\{config:([^}]+)\}")
+
+# Any path works: only the `${input:...}` the redirect interpolates is of interest, never the
+# folder it is anchored to.
+WATCHER_PROBE_PATH = "workspace_temp"
 
 # Which stack writes each `.settings` key of DEFAULT_PROPS. `_update_input_props` filters that map by
 # stack exactly like every artifact enum, so a `${config:…}` reference is a graph edge like any other
@@ -61,6 +65,13 @@ def _reference_text(member: Union[VscodeTask, VscodeLaunch]) -> str:
     for nested in (getattr(member, "extra_args", None), getattr(member, "env", None)):
         if nested:
             parts.append(json.dumps(nested))
+    # The redirect a watcher builds is rendered, not stored. `add_logger_args` appends it to
+    # `member.args` -- but it does so by mutating the enum member in place, from inside `to_dict()`,
+    # so in a fresh process `args` does not contain it and the walk sees nothing. Calling `to_dict`
+    # here would find it at the price of leaving that mutation behind for every later test in the
+    # session; asking the watcher for the same string costs nothing and is order-independent.
+    if getattr(member, "watcher", None):
+        parts.append(member.watcher.get_pattern_date(WATCHER_PROBE_PATH))
     return " ".join(parts)
 
 
@@ -152,6 +163,41 @@ def test_launch_input_calls_stay_inside_their_own_stacks() -> None:
             )
 
 
+def test_the_input_reference_walk_actually_sees_something() -> None:
+    """The two input walks above are only meaningful while they really traverse something.
+
+    `test_launch_input_calls_stay_inside_their_own_stacks` shipped green over an **empty loop**: no
+    launch configuration carries a `${input:...}` in `command`/`args`/`extra_args`/`env` at import
+    time, and the one edge that exists -- the watcher redirect -- reached `args` only because
+    `add_logger_args` mutates the enum member in place from inside `to_dict()`. A test whose
+    docstring promises an invariant while its body distinguishes no behaviour is the failure the
+    sibling config guard was written to prevent, and it was reproduced here one test later.
+
+    So both walks are pinned by the field they must reach, not merely by being non-empty: a count
+    stays satisfied by whichever reference happens to survive a refactor.
+    """
+    def calls(member: Union[VscodeTask, VscodeLaunch]) -> list[str]:
+        return INPUT_CALL_PATTERN.findall(_reference_text(member))
+
+    task_refs: dict[str, list[str]] = {member.name: calls(member) for member in VscodeTask if calls(member)}
+    launch_refs: dict[str, list[str]] = {member.name: calls(member) for member in VscodeLaunch if calls(member)}
+    assert task_refs, "no VscodeTask calls an input; the task invariant walks nothing"
+    assert launch_refs, "no VscodeLaunch calls an input; the launch invariant walks nothing"
+
+    # `command` -- RUN_JAVA_DEBUG names its input there and nowhere else
+    assert VscodeInput.SELECT_BUILD.input_id in task_refs.get(VscodeTask.RUN_JAVA_DEBUG.name, []), (
+        f"RUN_JAVA_DEBUG no longer contributes its ${{input:...}} from `command`: {task_refs}"
+    )
+    # the rendered watcher redirect -- the field whose absence made the launch walk vacuous, and the
+    # only source of an input reference for any launch configuration
+    for owner in (VscodeLaunch.DEBUG_PYTHON_FILE.name, VscodeTask.GRADLE_BUILD.name):
+        refs: dict[str, list[str]] = launch_refs if owner in launch_refs else task_refs
+        assert VscodeInput.TODAY_TIMESTAMP.input_id in refs.get(owner, []), (
+            f"{owner} no longer contributes the redirect's ${{input:...}}; _reference_text stopped "
+            f"reading the watcher redirect: tasks={task_refs} launches={launch_refs}"
+        )
+
+
 def test_config_references_stay_inside_their_own_stacks() -> None:
     """A member never reads a workspace setting its own stack does not write.
 
@@ -166,7 +212,7 @@ def test_config_references_stay_inside_their_own_stacks() -> None:
     for member in (*VscodeTask, *VscodeLaunch):
         active: set[ProjectStack] = _activated_by(member.stack)
         for key in CONFIG_REF_PATTERN.findall(_reference_text(member)):
-            owner: ProjectStack | None = PROP_OWNER.get(key)
+            owner: Optional[ProjectStack] = PROP_OWNER.get(key)
             if owner is None:
                 continue
             assert owner in active, (
