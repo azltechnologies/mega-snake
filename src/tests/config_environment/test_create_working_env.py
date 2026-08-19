@@ -9,11 +9,13 @@ from click.testing import CliRunner
 import pytest
 from mega_snake.config_environment.create_working_env import (
     create_working_env,
-    get_recommended_extensions,
+    _get_recommended_extensions as get_recommended_extensions,
     _get_workspace_file as get_workspace_file,
     _git_exclude as git_exclude,
     _add_default_settings as add_default_settings,
     _configure_tools as configure_tools,
+    _update_vscode_tasks as update_vscode_tasks,
+    _update_vscode_launch as update_vscode_launch,
     _launch_substituter as launch_substituter,
     EXTENSIONS_QUERY,
     GIT_BLAME_QUERY,
@@ -47,6 +49,7 @@ from mega_snake.util.formatting import UserDeclinedError
 
 ALL_STACKS: set[ProjectStack] = set(ProjectStack)
 PYTHON_STACKS: set[ProjectStack] = {ProjectStack.COMMON, ProjectStack.PYTHON}
+NODE_STACKS: set[ProjectStack] = {ProjectStack.COMMON, ProjectStack.NODE}
 GRADLE_CMD_NAME = "gradle_command"
 WK_FILE = "some_file.txt"
 WK_PARENTH_PATH = "/root/parent_folder"
@@ -904,8 +907,11 @@ def test_add_default_settings_only_writes_active_stacks(
     assert "vscjava.vscode-java-pack" not in extensions
     assert "vscjava.vscode-gradle" not in extensions
 
-    # every Java, Gradle and Maven task is left out, and no other task is active for Python
+    # every Java, Gradle and Maven task is left out, and no other task is active for Python -- so the
+    # whole tasks block stays out of the file rather than being scaffolded around nothing
     assert not jq.compile(TASKS_TASKS_QUERY).input(result_data).first()
+    assert jq.compile(".tasks").input(result_data).first() is None
+    assert jq.compile(TASKS_INPUT_QUERY).input(result_data).first() is None
 
     # only the Python launch configurations are written
     launches: list[dict[str, Any]] = jq.compile(LAUNCH_CONFIG_QUERY).input(result_data).first()
@@ -920,10 +926,11 @@ def test_add_default_settings_only_writes_active_stacks(
         member.title for member in filter_by_stack(LogWatcher, PYTHON_STACKS)
     ]
 
-    # the Gradle-only input is not registered either
-    task_inputs: list[dict[str, Any]] = jq.compile(TASKS_INPUT_QUERY).input(result_data).first()
-    assert VscodeInput.SELECT_BUILD.input_id not in [entry["id"] for entry in task_inputs]
-    assert VscodeInput.TODAY_TIMESTAMP.input_id in [entry["id"] for entry in task_inputs]
+    # the launch block does exist, since Python has launch configurations, and carries the shared
+    # input its watchers interpolate -- but never the Gradle-only one
+    launch_inputs: list[dict[str, Any]] = jq.compile(LAUNCH_INPUT_QUERY).input(result_data).first()
+    assert VscodeInput.SELECT_BUILD.input_id not in [entry["id"] for entry in launch_inputs]
+    assert VscodeInput.TODAY_TIMESTAMP.input_id in [entry["id"] for entry in launch_inputs]
 
     # the Java settings are not prompted for, the shared ones still are
     for key in DEFAULT_PROPS[ProjectStack.JAVA]:
@@ -934,6 +941,29 @@ def test_add_default_settings_only_writes_active_stacks(
     # the Gradle file association is not written, the shared ones are
     assert jq.compile(f'{FILE_ASSOCIATION_QUERY}.["*.gradle"]').input(result_data).first() is None
     assert jq.compile(f'{FILE_ASSOCIATION_QUERY}.["*.yml"]').input(result_data).first() == "yaml"
+
+
+def test_task_and_launch_blocks_are_skipped_when_no_member_is_active() -> None:
+    """Neither block is scaffolded for a workspace that has nothing to put in it."""
+    # a Node repository activates no task and no launch configuration at all
+    assert not filter_by_stack(VscodeTask, NODE_STACKS)
+    assert not filter_by_stack(VscodeLaunch, NODE_STACKS)
+
+    empty: dict[str, Any] = {"folders": [], "settings": {}}
+
+    tasks_data, tasks_updated = update_vscode_tasks(empty, WK_PATH, NODE_STACKS)
+    assert tasks_updated is False
+    # not even the version and the inputs: `todayTimestamp` is only ever called from a task command
+    assert jq.compile(".tasks").input(tasks_data).first() is None
+
+    launch_data, launch_updated = update_vscode_launch(empty, WK_PATH, NODE_STACKS)
+    assert launch_updated is False
+    assert jq.compile(".launch").input(launch_data).first() is None
+
+    # the same call for a stack that does have members writes the block, so the guard above is not
+    # simply reporting that nothing is ever written
+    _, python_updated = update_vscode_launch(empty, WK_PATH, PYTHON_STACKS)
+    assert python_updated is True
 
 
 def test_get_recommended_extensions() -> None:

@@ -36,6 +36,11 @@ for a JDK, and gets none of the Java tasks, launch configurations, log watchers 
 | `java` | *(none — it comes from a build tool, or from `--stack java`)* | — |
 | `common` | *(always active)* | — |
 
+A stack may also be opt-in: it has no `--stack` key, `all` does not reach it, and it activates only
+when its marker file is found. `snake` is the one that exists today — it carries the launch
+configuration that debugs the `mega-snake` CLI itself, behind a `.mgsnake-dev` marker, so it stays
+out of every workspace that did not ask for it by creating that file.
+
 Only the current directory is inspected. A repository that keeps its build file in a subfolder — or
 one that uses a build tool this command does not know — needs `--stack`, which replaces the
 detection entirely. The per-tool commands stay unconditional either way, so `set-java` still works

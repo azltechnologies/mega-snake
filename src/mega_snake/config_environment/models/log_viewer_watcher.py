@@ -24,7 +24,12 @@ class LogWatcher(Enum):
     GRADLE_BUILD = ("GRADLE CLEAN BUILD", f"logs/clean_build{SUBSTITUTE_LOG_DATE_TAG}", ProjectStack.GRADLE)
     GENERIC = ("GENERIC LOG", f"logs/output{SUBSTITUTE_LOG_DATE_TAG}")
     JAVA_DEBUG = ("JAVA DEBUG LOG", f"logs/java_debug{SUBSTITUTE_LOG_DATE_TAG}", ProjectStack.JAVA)
-    PYTHON_SNAKE = ("PYTHON SNAKE LOG", f"logs/python_snake{SUBSTITUTE_LOG_DATE_TAG}", ProjectStack.PYTHON)
+    # No stack, so it lands in every workspace: this is the log `mgsnake` itself writes
+    # (`log_file_name` in config.properties), which exists in any repository the CLI is run from,
+    # not only in the Python ones. The title is kept verbatim because `add_watcher` deduplicates by
+    # title -- renaming it would add a second entry pointing at the same file in every workspace
+    # configured before the change.
+    PYTHON_SNAKE = ("PYTHON SNAKE LOG", f"logs/python_snake{SUBSTITUTE_LOG_DATE_TAG}")
     MAVEN_CLEAN_INSTALL = (
         "MAVEN CLEAN INSTALL",
         f"logs/maven_clean_install{SUBSTITUTE_LOG_DATE_TAG}",

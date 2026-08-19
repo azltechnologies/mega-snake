@@ -74,7 +74,8 @@ def test_stack() -> None:
     assert LogWatcher.GRADLE_BUILD.stack is ProjectStack.GRADLE
     assert LogWatcher.JAVA_DEBUG.stack is ProjectStack.JAVA
     assert LogWatcher.MAVEN_TEST.stack is ProjectStack.MAVEN
-    assert LogWatcher.PYTHON_SNAKE.stack is ProjectStack.PYTHON
+    # the mgsnake log exists in every repository the CLI runs in, whatever the repository is made of
+    assert LogWatcher.PYTHON_SNAKE.stack is ProjectStack.COMMON
     # a watcher that is useful for any project falls back to the shared stack
     assert LogWatcher.GENERIC.stack is ProjectStack.COMMON
 

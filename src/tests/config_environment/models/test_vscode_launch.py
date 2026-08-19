@@ -5,7 +5,11 @@ from types import SimpleNamespace, MethodType
 import inspect
 from unittest.mock import patch, MagicMock
 import pytest
-from mega_snake.config_environment.models.project_stack import ProjectStack
+from mega_snake.config_environment.models.project_stack import (
+    ProjectStack,
+    filter_by_stack,
+    resolve_stacks,
+)
 from mega_snake.config_environment.models.vscode_launch import VscodeLaunch, LAUNCH_VERSION_QUERY
 
 VERSION_TEST = "1.2.3"
@@ -98,12 +102,14 @@ def test_stack() -> None:
     for member in VscodeLaunch:
         assert isinstance(member.stack, ProjectStack)
     assert VscodeLaunch.DEBUG_JAVA.stack is ProjectStack.JAVA
-    for member in (
-        VscodeLaunch.DEBUG_PYTHON_FILE,
-        VscodeLaunch.DEBUG_PYTHON_MODULE,
-        VscodeLaunch.DEBUG_PYTHON_SNAKE,
-    ):
+    for member in (VscodeLaunch.DEBUG_PYTHON_FILE, VscodeLaunch.DEBUG_PYTHON_MODULE):
         assert member.stack is ProjectStack.PYTHON
+    # the launch that debugs mega-snake itself belongs to the opt-in development stack, so it never
+    # reaches a user's Python project: the `python` selection alone must not pull it in
+    assert VscodeLaunch.DEBUG_PYTHON_SNAKE.stack is ProjectStack.SNAKE
+    assert VscodeLaunch.DEBUG_PYTHON_SNAKE not in filter_by_stack(VscodeLaunch, resolve_stacks(["python"]))
+    assert VscodeLaunch.DEBUG_PYTHON_SNAKE not in filter_by_stack(VscodeLaunch, resolve_stacks(["all"]))
+    assert VscodeLaunch.DEBUG_PYTHON_SNAKE in filter_by_stack(VscodeLaunch, resolve_stacks(["snake"]))
 
 
 def test_add_launch_config(_launch_config_query: MagicMock) -> None:

@@ -14,6 +14,9 @@ from typing import Iterable, Optional, Protocol, TypeVar
 
 ALL_STACKS: str = "all"
 
+# Marker that switches the opt-in development stack on; see ProjectStack.SNAKE.
+SNAKE_MARKER: str = ".mgsnake-dev"
+
 # Explicitly typed empty values: an inline `()`/`[]`/`{}` inside an enum member tuple leaves the
 # member's type unresolved for the type checker. The mutable ones are shared by identity across
 # every member that uses them, which is why `__init__` copies them instead of storing them as-is.
@@ -33,6 +36,9 @@ class ProjectStack(Enum):
         extensions: Recommended VS Code extensions contributed by the stack.
         file_associations: `files.associations` entries contributed by the stack.
         description: Short explanation shown when the stack list is reported to the user.
+        opt_in: Whether the stack is reachable only through its marker file. An opt-in stack is
+            absent from `--stack` and from `all`, so it never reaches a repository that did not
+            explicitly ask for it by dropping the marker in its root.
     """
 
     COMMON = (
@@ -96,6 +102,18 @@ class ProjectStack(Enum):
         NO_ASSOCIATIONS,
         "Node/TypeScript tooling",
     )
+    # Opt-in only: this one configures the tooling used to develop `mega-snake` itself, so it must
+    # never land in a user's repository. It has no key in `--stack` and is excluded from `all`;
+    # dropping the marker file in a repository root is the only way to switch it on.
+    SNAKE = (
+        "snake",
+        (SNAKE_MARKER,),
+        ("python",),
+        NO_EXTENSIONS,
+        NO_ASSOCIATIONS,
+        "mega-snake's own development launch configurations",
+        True,
+    )
 
     def __init__(
         self,
@@ -105,6 +123,7 @@ class ProjectStack(Enum):
         extensions: list[str],
         file_associations: dict[str, str],
         description: str,
+        opt_in: bool = False,
     ) -> None:
         """Initialize a ProjectStack member with its markers and the artifacts it contributes.
 
@@ -115,6 +134,7 @@ class ProjectStack(Enum):
             extensions: Recommended VS Code extensions contributed by the stack.
             file_associations: `files.associations` entries contributed by the stack.
             description: Short explanation shown when the stack list is reported to the user.
+            opt_in: Whether the stack is reachable only through its marker file.
 
         Returns:
             None
@@ -127,6 +147,7 @@ class ProjectStack(Enum):
         self.extensions = list(extensions)
         self.file_associations = dict(file_associations)
         self.description = description
+        self.opt_in = opt_in
 
     def __str__(self) -> str:
         """Return the user-facing name of the stack.
@@ -172,13 +193,13 @@ T = TypeVar("T", bound=StackAware)
 def selectable_keys() -> list[str]:
     """List the stack keys a user may pass to the `--stack` option.
 
-    `COMMON` is excluded because it is always active, and `all` is offered as a shortcut to force
-    every stack at once.
+    `COMMON` is excluded because it is always active, opt-in stacks because they are reachable only
+    through their marker file, and `all` is offered as a shortcut to force every stack at once.
 
     Returns:
         list[str]: The accepted option values, in stack declaration order.
     """
-    return [stack.key for stack in ProjectStack if stack is not ProjectStack.COMMON] + [ALL_STACKS]
+    return [stack.key for stack in ProjectStack if stack is not ProjectStack.COMMON and not stack.opt_in] + [ALL_STACKS]
 
 
 def from_key(key: str) -> ProjectStack:
@@ -215,6 +236,29 @@ def sort_stacks(stacks: Iterable[ProjectStack]) -> list[ProjectStack]:
     return [stack for stack in ProjectStack if stack in selected]
 
 
+def expand(stack: ProjectStack) -> set[ProjectStack]:
+    """Resolve a stack together with everything it drags along, at any depth.
+
+    The expansion is transitive on purpose: today no stack implies another that implies a third, so
+    a single `update(stack.implied)` would be enough — but the depth would then be an assumption
+    baked into every call site, and a new stack implying `gradle` would silently arrive without
+    `java`. Doing it once here keeps the depth a property of this function alone.
+
+    Parameters:
+        stack: The stack to expand.
+
+    Returns:
+        set[ProjectStack]: The stack itself plus every stack reachable through its implications.
+    """
+    resolved: set[ProjectStack] = set()
+    pending: list[ProjectStack] = [stack]
+    while pending:
+        current: ProjectStack = pending.pop()
+        resolved.add(current)
+        pending.extend(implied for implied in current.implied if implied not in resolved)
+    return resolved
+
+
 def detect_stacks(root: Optional[str] = None) -> set[ProjectStack]:
     """Detect the stacks present in a repository from its marker files.
 
@@ -232,8 +276,7 @@ def detect_stacks(root: Optional[str] = None) -> set[ProjectStack]:
     active: set[ProjectStack] = {ProjectStack.COMMON}
     for stack in ProjectStack:
         if stack.is_present(root):
-            active.add(stack)
-            active.update(stack.implied)
+            active.update(expand(stack))
     return active
 
 
@@ -251,16 +294,19 @@ def resolve_stacks(selected: Iterable[str] = (), root: Optional[str] = None) -> 
     Returns:
         set[ProjectStack]: The active stacks, always including `COMMON`.
     """
-    keys: list[str] = list(selected)
+    # Lowercased up front so `all` follows the same case-insensitive contract as `from_key`: the
+    # CLI never sends anything else through `click.Choice(case_sensitive=False)`, but a direct
+    # caller passing `ALL` used to get `ValueError: Unknown project stack: ALL`.
+    keys: list[str] = [key.lower() for key in selected]
     if not keys:
         return detect_stacks(root)
     if ALL_STACKS in keys:
-        return set(ProjectStack)
+        # `all` means every stack a user can ask for, which is not the same as every member: an
+        # opt-in stack stays out, or the shortcut would be a way around its marker file.
+        return {stack for stack in ProjectStack if not stack.opt_in}
     active: set[ProjectStack] = {ProjectStack.COMMON}
     for key in keys:
-        stack = from_key(key)
-        active.add(stack)
-        active.update(stack.implied)
+        active.update(expand(from_key(key)))
     return active
 
 
