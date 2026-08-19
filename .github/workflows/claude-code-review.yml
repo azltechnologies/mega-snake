@@ -10,6 +10,13 @@ name: Claude Code Review
 #
 # Re-run it by removing and re-adding the label (or by adding a different one).
 #
+# The run announces itself: the first thing the review does is post a fixed
+# line on the pull request, and it keeps that one comment current at three
+# checkpoints. Milestones rather than a timer, because an agent cannot pace
+# itself by elapsed time or tokens, and a status line that lies about where
+# the run is would be worse than no status line at all. The final summary is
+# a separate, new comment: an edit raises no notification.
+#
 # Why a direct prompt instead of the `code-review` plugin: that plugin is built
 # for interactive terminal use and fans out into ~5 parallel (Opus) subagents.
 # In headless CI it burns a large share of the token budget and still fails to
@@ -29,6 +36,7 @@ jobs:
     permissions:
       contents: read # Review only reads code; it does not push commits
       pull-requests: write # Required to post the review and inline comments
+      actions: read # Required to download the previous review's session artifact
       id-token: write
 
     steps:
@@ -41,7 +49,7 @@ jobs:
       # `uses: ./…` resolves against the checked-out workspace, so a branch older
       # than the session actions would fail the whole job with "Can't find
       # 'action.yml'" -- see the longer note in claude-pr.yml. Pinning also means
-      # the branch under review cannot swap out the action that handles the cache.
+      # the branch under review cannot swap out the action that handles its session.
       - name: Check out the pinned session actions
         uses: actions/checkout@v7
         with:
@@ -81,13 +89,14 @@ jobs:
       # it would be reviewing code it remembers writing.
       #
       # There is no `fresh` escape hatch here. To start a review thread over,
-      # delete its cache entry (`gh cache delete`, key prefix
-      # `claude-session-v1-review-<pr>-`) or bump `cache-version`.
+      # delete the stored artifact (`gh api --method DELETE` on the artifact named
+      # `claude-session-v1-review-<pr>`, or the Actions UI) or bump `state-version`.
       - name: Restore Claude session
         id: session
         uses: ./.ci-actions/.github/actions/restore-claude-session
         with:
           thread-id: ${{ github.event.pull_request.number }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           thread-kind: review
 
       - name: Run Claude Code Review
@@ -119,6 +128,28 @@ jobs:
             top-level summary comment with `gh pr comment`. Do NOT spawn subagents;
             do the review yourself, sequentially.
 
+            Announcing the review. BEFORE anything else -- before reading the
+            diff -- post a new comment whose body is EXACTLY this line, byte for
+            byte, with nothing added and nothing removed:
+              🤖 Claude Code Review started - this comment is updated as the review progresses.
+            Then keep that one comment current with
+            `gh pr comment <number> --edit-last`, at exactly these three points
+            and at no others -- do not update on a timer, and do not narrate
+            individual tool calls:
+              1. once you have read the diff: the files and the scope you are
+                 about to review;
+              2. once the four checks below have run: what each one reported;
+              3. once the inline comments are posted and before the summary:
+                 that the review is complete.
+            Begin every updated body with that same first line, so the comment
+            stays recognisable at a glance, and keep the rest to a few lines.
+            `--edit-last` edits your own last comment, so the announcement above
+            must be a plain `gh pr comment` -- using `--edit-last` for it would
+            overwrite the summary comment of the PREVIOUS review of this pull
+            request. If an update fails for any reason, post a plain new comment
+            instead and carry on: a failed status update must never abort the
+            review.
+
             Running the checks. The dependencies are already installed. Run each
             command EXACTLY as written below, as a single command with no pipe, no
             redirection, no `&&`, no subshell and no leading `cd` or `timeout` --
@@ -133,9 +164,13 @@ jobs:
             review and name the command -- never report a check as passing, or as
             impossible to run, without having tried the exact form above.
 
-            Posting the summary. Pass the body to `gh pr comment` in SINGLE quotes:
-            a double-quoted body whose markdown starts a line with `#` is rejected
-            by an argument-safety check, and the comment is silently lost.
+            Posting the summary. It is a NEW comment, posted last, after the
+            final progress update: editing the progress comment into the summary
+            would raise no notification, so nobody would learn the review had
+            finished. Pass the body to `gh pr comment` in SINGLE quotes -- this
+            one and every progress update alike: a double-quoted body whose
+            markdown starts a line with `#` is rejected by an argument-safety
+            check, and the comment is silently lost.
           # Read-only review tools: the inline-comment MCP tool, the `gh` reads the
           # prompt relies on, the read-only half of `git`, and `uv` -- setup-env
           # already ran `uv sync --locked --all-extras`, so `uv run pytest` works.
@@ -149,11 +184,15 @@ jobs:
           # reported it could not execute the tests. The prompt above now names the
           # exact form, and this list backs it.
           #
+          # `Bash(gh pr comment:*)` also covers `gh pr comment --edit-last`, which
+          # is what lets the run keep one progress comment current instead of
+          # posting a new one at every checkpoint. No extra rule is needed for it.
+          #
           # Reading files needs no rule at all -- Read/Grep/Glob are not Bash and
           # are always available, which is why a review can be thorough with a Bash
           # allowlist this narrow.
           claude_args: |
-            --allowed-tools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git log:*),Bash(git show:*),Bash(git diff:*),Bash(git ls-files:*),Bash(uv:*)" --append-system-prompt "Session cache for this run: restored-key='${{ steps.session.outputs.restored-key }}' (empty means a cache miss, otherwise the key restored, exactly or through restore-keys); continue-flag='${{ steps.session.outputs.continue-flag }}' (literal --continue when a transcript for this workspace was restored, empty when this is a fresh conversation); save-key='${{ steps.session.outputs.cache-key }}'. This is the 'review' conversation for this pull request, kept separate from the '@claude' working session on purpose. Report all three values in the summary comment you post, as the temporary note in .github/copilot-instructions.md requires. When a previous review was resumed, say what you had already reported and whether it was addressed, instead of repeating it verbatim." ${{ steps.session.outputs.continue-flag }} ${{ steps.model.outputs.model != '' && format('--model {0}', steps.model.outputs.model) || '' }}
+            --allowed-tools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git log:*),Bash(git show:*),Bash(git diff:*),Bash(git ls-files:*),Bash(uv:*)" --append-system-prompt "Session state for this run: restored-from='${{ steps.session.outputs.restored-from }}' (empty means nothing was stored for this thread, otherwise the id of the workflow run whose transcript was restored); continue-flag='${{ steps.session.outputs.continue-flag }}' (literal --continue when a transcript for this workspace was restored, empty when this is a fresh conversation); artifact='${{ steps.session.outputs.artifact-name }}' (the artifact name this run's state is uploaded under). This is the 'review' conversation for this pull request, kept separate from the '@claude' working session on purpose. Report all three values in the summary comment you post, as the temporary note in .github/copilot-instructions.md requires. When a previous review was resumed, say what you had already reported and whether it was addressed, instead of repeating it verbatim." ${{ steps.session.outputs.continue-flag }} ${{ steps.model.outputs.model != '' && format('--model {0}', steps.model.outputs.model) || '' }}
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
 
@@ -183,5 +222,5 @@ jobs:
       - name: Save Claude session
         uses: ./.ci-actions/.github/actions/save-claude-session
         with:
-          cache-key: ${{ steps.session.outputs.cache-key }}
+          artifact-name: ${{ steps.session.outputs.artifact-name }}
           session-path: ${{ steps.session.outputs.session-path }}

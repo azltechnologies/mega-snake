@@ -79,13 +79,20 @@ uv run mgsnake generate-docs --check
 `pytest`, `ruff` and `mypy` are installed in `.venv` and are not on `PATH`; `uv run` is the only
 form that both matches the allowlist and resolves the binary.
 
-### Session cache
+### Session persistence
 
 `claude-issue.yml`, `claude-pr.yml` and `claude-code-review.yml` persist the conversation across
 runs, and each hands its state to the run through `--append-system-prompt` rather than expecting it
-to be read from a file — the tool allowlist grants nothing that opens one. Report those values as
-the temporary note in `.github/copilot-instructions.md` requires; they are in the conversation
-already, so there is nothing to look up.
+to be read from a file — the tool allowlist grants nothing that opens one. Report those values
+(`restored-from`, `continue-flag`, the artifact name) as the temporary note in
+`.github/copilot-instructions.md` requires; they are in the conversation already, so there is
+nothing to look up.
+
+The state travels as a **workflow artifact**, not an `actions/cache` entry. Since 2026-06-26 GitHub
+issues a read-only cache token to untrusted triggers, and `issue_comment` — the trigger of this
+whole conversation — is one of them, so every cache write from an issue thread was denied while the
+job still went green. If you are ever tempted to move this back to the cache, that is the reason it
+is not there. The full evidence is in the temporary note.
 
 The review conversation is namespaced separately (`thread-kind: review`) from the `@claude` working
 conversation on the same pull request. That is on purpose: a reviewer resuming the session that
