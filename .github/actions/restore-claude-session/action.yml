@@ -79,13 +79,20 @@ inputs:
       Issues and pull requests share a single numbering sequence in GitHub, so a
       bare number is already unambiguous.
     required: true
+  # Never write the `secrets.GITHUB_TOKEN` reference below as a `${…}` expression,
+  # not even here in the prose: GitHub's template parser evaluates every expression
+  # in this file wherever it sits, description strings included, and `secrets` is
+  # not a context a composite action has. One in a description was enough to make
+  # the whole file fail to load with "Unrecognized named-value: 'secrets'", taking
+  # all three Claude workflows down at once. The secret is passed in by the calling
+  # workflow, which is the only place that can read one.
   github-token:
     description: >-
       Token used to list and download the stored artifact. Needs the `actions:
-      read` permission; `${{ secrets.GITHUB_TOKEN }}` is enough as long as the
-      calling job grants it. Unlike a cache restore, reading an artifact written
-      by a *previous* run goes through the REST API, so there is no way to do
-      this tokenless.
+      read` permission; the workflow's own GITHUB_TOKEN is enough as long as the
+      calling job grants that permission. Unlike a cache restore, reading an
+      artifact written by a *previous* run goes through the REST API, so there is
+      no way to do this tokenless.
     required: true
   thread-kind:
     description: >-
