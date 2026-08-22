@@ -1,5 +1,195 @@
 # GitHub Copilot Instructions for `unix-scripts` (Mega Snake)
 
+## ⏳ TEMPORARY NOTE — Claude session persistence is under observation
+
+> **This section is temporary. Added 2026-08-18, on the branch that introduced Claude Code session
+> persistence across GitHub Actions runs; rewritten 2026-08-19, when the mechanism changed from
+> `actions/cache` to workflow artifacts. Delete it once the open items below are closed — do not treat
+> anything in it as a settled convention of this repository.**
+
+**Why it cannot be validated before merging.** None of the triggers of `claude-issue.yml` and
+`claude-pr.yml` (`issues`, `issue_comment`, `pull_request_review`, `pull_request_review_comment`) is a
+`pull_request` event, so GitHub always runs those two **from the default branch**. A pull request cannot
+exercise them at all: the first real execution happens only after the merge to `master`.
+`claude-code-review.yml` *is* a `pull_request` event and so runs the branch's own copy — but
+`anthropics/claude-code-action` then refuses the OIDC exchange when the file differs from the default
+branch's (`workflow_not_found_on_default_branch`), which the `Verify the review actually ran` step turns
+into a red check. So it cannot be validated before merging either, just for a different reason.
+
+### What landed
+
+| File | Role |
+|---|---|
+| `.github/actions/restore-claude-session/action.yml` | Resolves the per-thread artifact name, downloads the newest artifact carrying it, and decides whether `--continue` is safe to pass. |
+| `.github/actions/save-claude-session/action.yml` | Prunes the transcripts and uploads them under the name the restore action produced. |
+| `.github/workflows/claude-issue.yml` | Wires both actions around the Claude step, namespaced by the issue number. |
+| `.github/workflows/claude-pr.yml` | Same, namespaced by the originating issue for `claude/issue-<n>-*` branches and by the PR number otherwise. |
+| `.github/workflows/claude-code-review.yml` | Same, namespaced by the pull request number under the separate `review` kind, so consecutive reviews chain to each other without ever resuming the working conversation. |
+
+All three read the two composite actions from a **second, sparse checkout of the default branch**
+(`.ci-actions/`), never from the tree the job checked out — see "settled" below for why. All three must
+also grant **`actions: read`**, which the artifact lookup needs and a cache restore did not.
+
+### The cache is read-only for the trigger this feature runs on
+
+**This is why the mechanism changed, and it is the single most surprising fact here.** On 2026-06-26
+GitHub made the Actions cache [read-only for untrusted
+triggers](https://github.blog/changelog/2026-06-26-read-only-actions-cache-for-untrusted-triggers/).
+Only `push`, `schedule`, `workflow_dispatch`, `repository_dispatch`, `delete`, `registry_package` and
+`page_build` keep write access to the **default branch's** cache scope. `issue_comment` — the trigger of
+the entire `@claude` conversation — is on the restricted side, and its `GITHUB_REF` *is* the default
+branch, so the only scope it could write to is exactly the one it was denied:
+
+```text
+Cache reservation failed: cache write denied: token has no writable scopes
+Failed to save: Unable to reserve cache with key claude-session-v1-issue-73-32259758933-1
+```
+
+Three details worth keeping, because each one misleads on its own:
+
+- **The job goes green.** `actions/cache/save` reports the denial as a *warning*. Runs `32259758933` and
+  `32260399886` (issue #73) both succeeded while storing nothing, and `gh cache list` held no
+  `claude-session-*` entry for any issue thread.
+- **It is not a `permissions:` problem.** Those jobs run with `Contents: write`, `Issues: write` and
+  `PullRequests: write`. Adding scopes cannot fix it; the restriction is on the trigger.
+- **`setup-uv` failed to save in the very same job**, which is how you tell a job-wide token restriction
+  from a bug in our own action. Check that first next time.
+
+`claude-code-review.yml` was never affected: it is a `pull_request` event, so it writes into
+`refs/pull/<n>/merge`, its own scope, which is still writable. That is why reviews chained while issue
+threads silently did not — the same code, the same day, opposite outcomes.
+
+Artifacts are not restricted by that change, and are the workaround GitHub's own documentation points
+to. They also drop the branch-scope problem entirely (see settled item 4).
+
+### Settled by observation — and only what survives the switch to artifacts
+
+**All three workflows share one persistence implementation on purpose: one front to maintain rather
+than two.** The price is that evidence is shared too. Replacing the storage mechanism invalidated
+every observation that was *about* the storage, including the reviewer's — see open item 1. Only
+these two are independent of it:
+
+1. **A local `uses: ./…` resolves against the checked-out workspace**, not against the ref the workflow
+   file came from. Run `32191217625` died before Claude started with `Can't find 'action.yml' … under
+   /home/runner/work/mega-snake/mega-snake/.github/actions/restore-claude-session`, because the pull
+   request it checked out predated the actions. The `.ci-actions/` sparse checkout fixed it, and every
+   run since has reached the session steps. It also means a branch cannot swap out the action handling
+   its own session. **`setup-env` is deliberately left unpinned**: it contains a nested local `uses:`,
+   whose resolution from a relocated composite action is ambiguous and untestable from a pull request.
+2. **`anthropics/claude-code-action@v1` forwards `--continue` to the CLI.** Interpolating it into
+   `claude_args` reaches the process rather than being swallowed by the action's own session handling.
+   This survives the mechanism change because the claim is narrow: it is about the *flag* reaching the
+   CLI, not about how the transcript it resolves got onto the disk. Do not stretch it into "resumption
+   works" — that is open item 1.
+
+### Open items — keep these under observation
+
+1. **Observed on an issue thread; still unobserved for the reviewer.** Runs `32272669129`,
+   `32273047017` and `32273325879` on issue #73 are the first chain over artifacts: a genuine miss, then
+   two runs that each restored the previous run's artifact, resumed transcript
+   `18b27378-9751-4c5f-afab-8ad865814918` and were passed `--continue`. So the artifact implementation
+   works, at least for `thread-kind: issue`. **`claude-code-review.yml` has still never stored or restored
+   an artifact**, and it is the workflow whose `actions: read` permission was added for this — the one
+   thing in the change that is exercised nowhere else. Two consecutive `*-cr` labels on one pull request
+   are what close this.
+
+   The turn counter is likewise unproven on a runner: it was exercised locally over a three-run
+   round-trip, both mutations of it were seen to fail, but a fixture is not a runner.
+
+   Everything below in this item is the *previous* mechanism, kept because it is what the design was
+   proven on. Three consecutive reviews of
+   PR #55 — `32211995416` (miss, saved), `32213482561` (restored, resumed), `32215871797` (restored,
+   resumed) — each resumed the *same* transcript, `7c4eb90b-c492-4557-9b7b-512e2b76a152.jsonl`. That is
+   real, and it proves the **design**: restore → `--continue` → save does chain, and a reviewer that
+   resumes reports on what it already said instead of re-reading the diff from zero. It proves nothing
+   about the **implementation that runs now**, which stores and retrieves the transcript by a different
+   route entirely. `claude-code-review.yml` therefore goes back under observation alongside the other
+   two, despite having demonstrably worked, and its next run is a first run in every sense that matters
+   here.
+
+   **The first run after any change to the storage layout is a mandatory miss**, on every thread,
+   including one with a long history behind it — nothing was ever stored under the new scheme. Read a
+   miss there as arithmetic, not as evidence.
+2. **Cross-trigger visibility is new, and unobserved.** A cache written on `refs/pull/<n>/merge` was
+   invisible to a later `issue_comment` run on the default branch, so a review turn and a comment turn
+   on the same pull request could not see each other's state. Artifacts are looked up by name through
+   the REST API and are not branch-scoped, so that gap is closed **by construction, not by
+   observation** — an API property we are relying on, not something a run has shown us. Nobody has yet
+   seen an `issue_comment` run resume state written by a `pull_request_review` run.
+3. **The workspace slug spelling cannot be decided from this repository.** `restore-claude-session`
+   probes both `${GITHUB_WORKSPACE//\//-}` and a full non-alphanumeric substitution, because the
+   sanitisation has differed between Claude Code versions. The two are **indistinguishable** for any
+   workspace path whose only non-alphanumeric characters are `/` and `-`, which is exactly
+   `/home/runner/work/mega-snake/mega-snake`. Only a repository or owner name containing `_` or `.`
+   would tell them apart, so the dead candidate cannot be dropped on evidence from here.
+4. **Stored transcripts are readable by every reader of the repository**, and artifacts are easier to
+   download from the UI than caches were. They contain whatever Claude read during a run — repository
+   content, and anything pulled from the private `AI_CONTEXT` repository. `retention-days` (7) is now
+   the exposure window as well as the storage policy. Revisit before this repository ever accepts fork
+   pull requests.
+5. **Growth is capped by guesswork.** `save-claude-session` keeps the 3 newest transcripts per project
+   directory, warns above 50 MB, and expires after 7 days. Watch the reported sizes across real runs and
+   adjust from evidence rather than from the current defaults.
+6. **Artifacts accumulate; nothing prunes them.** Every run uploads one more artifact under the thread's
+   name, and only retention removes them. Deleting the older ones after a successful upload would need
+   `actions: write` in every calling workflow — a broader token for a storage saving that may never
+   matter. Decide once real volumes are visible.
+7. **GNU `find` only.** Both actions use `find -printf`, which is absent from the BSD `find` on macOS
+   runners *and* from busybox `find`. They are GNU-runner-only until that is rewritten.
+8. **Concurrent turns race.** Two comments posted on the same thread while a run is in flight restore the
+   same state and then upload one artifact each; the chain keeps whichever finished last and the other
+   turn's history is lost. Left in place deliberately — a `concurrency` group would make GitHub cancel a
+   queued run, and losing a request outright is worse than losing its history.
+
+### The session state is reported by the workflow, not by the agent
+
+`restore-claude-session` posts a **sticky session-log comment** on the thread and appends one row per
+run; `save-claude-session` fills in the size once the state has actually been stored. One comment per
+conversation, namespaced by `thread-kind`, so a pull request's `review` log and its `@claude` log never
+collide:
+
+| Turn | Run | Resumed from | `--continue` | Persisted |
+| ---: | --- | --- | :---: | ---: |
+| 1 | `32272669129` | -- | no | 24 KB |
+| 2 | `32273047017` | `32272669129` | yes | 39 KB |
+
+**This used to be the agent's job, and the agent could not do it.** Five consecutive runs on issue #73
+were required to report their own restore state and got it wrong five times, in both directions, while
+the machinery underneath worked perfectly on every one of them:
+
+- runs `32272669129` → `32273047017` → `32273325879` chained (same session id, `--continue` passed,
+  artifacts growing) and every comment said "miss";
+- the second of those quoted its real `restored-from` value one line below reporting the field as
+  empty;
+- after the turn counter landed, run `32286014497` was asked point blank for its turn number and its
+  restore source, answered **"Turn: 4"** — a value that exists nowhere but its own system prompt, so the
+  prompt demonstrably arrives — and then reported the restore as empty in the same breath.
+
+Three things follow, and they are the reason this section exists at all:
+
+1. **A value known exactly by the workflow must not be relayed through a language model.** The relay can
+   only lose information; it cannot add any.
+2. **The failure was self-sustaining.** `claude-code-action` injects the thread into every run whether or
+   not anything was restored, so a wrong state written into a comment became the next run's evidence.
+   Writing the log from the workflow cuts that loop.
+3. **The size is now reportable.** It never was before: `save-claude-session` runs after the Claude step,
+   so nothing inside the run could see it. A second write from the save step can.
+
+What the run is still told, and all it is told, is which turn it is and whether it has any memory of the
+thread — so it does not re-derive context it already has, and does not contradict itself. It is asked to
+report none of it.
+
+**A row still reading `running` means a run that never reached its save step.** That is a signal, not a
+glitch: the log is written before Claude starts and completed after it finishes.
+
+### How to close this note
+
+Once several consecutive runs confirm the restore → `--continue` → save chain **over artifacts** on a
+review thread (the issue side is observed; see open item 1), and open items 2–6 are decided from observed
+behaviour: delete this entire section, and fold whatever is still true into the permanent documentation of
+the workflows and the composite actions. The session log makes that cheap to check — the whole chain of a
+thread is one comment.
+
 ## 1. Project Overview & Philosophy
 
 `mega_snake` is a robust Python 3.13+ CLI tool designed to standardize the local development lifecycle. It acts as a "Swiss Army Knife" for developers, primarily automating the complex configuration of VS Code environments for Java/Gradle, but extending into Git management, Release orchestration context, and Google Cloud observability.
