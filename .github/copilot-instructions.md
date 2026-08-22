@@ -242,6 +242,17 @@ preserved_attrs: tuple[str, ...] = (ATTR_ALIAS, ATTR_DOCS, ATTR_GROUP)
 If you ever add a new custom attribute, **add it to that tuple** — otherwise it will vanish silently at registration
 and the failure will only show up much later (e.g. a command landing in the wrong documentation group).
 
+**A `click.Group` keeps being a group.** The same rebuild would otherwise drop `commands`, since
+`click.Command.__init__` knows nothing about it, and a nested group registered through a module wrapper would come
+out as a leaf command with no subcommands — `mgsnake config get` would simply stop resolving, with nothing to see
+until someone ran it. `_rebuild_command` therefore instantiates `type(command)` and adds `commands` for groups.
+`test_wrapper_decorator_keeps_a_group_a_group` pins it.
+
+**Per-command initialization flags win over the module wrapper's.** `update_flags` merges the wrapper's metadata
+first and the command callback's second, so a module whose commands need different levels (see `jira_api`, §3.9)
+declares no `flags` on its wrapper and lets each command carry its own `@cli_metadata(flags={...})`. Aliases go
+through the same path, because they are built from the same callback.
+
 ---
 
 ## 3. Core Functional Modules
@@ -660,6 +671,68 @@ that was not. A test pins the expected `-h, --help` rendering.
 (e.g. `flags={"skip"}`) or by relying on registration order in `MODULES` — the generated file is committed and diffed
 in CI, so any instability turns into spurious failures.
 
+### 3.8 Persistent State (`src/mega_snake/state/`)
+
+The `config` command group (`get` / `set` / `unset` / `list` / `export`) is the user-facing half of
+`util/store.py` (§4.4). Two details about how it is wired:
+
+- **It is a `click.Group` nested inside the module's `CliGroup`**, so it is one entry in `COMMANDS.md` with one
+  fragment. The generator does not introspect subcommands, so `resources/docs/config.md` is where they are
+  documented — that is the "what only a human knows" half of §6.3, not an accident.
+- **The whole group is `no_init`, not `no_init` + `skip` per subcommand.** A group carries a single set of
+  initialization flags for everything under it, and `config get` / `config export` must answer before the
+  environment exists (they are read with `$(...)` and `eval`). That costs nothing because the store is
+  deliberately independent of `AppProperties`. Consequence: **no `ws_*` output in `get` or `export`** — every
+  helper in `formatting.py` prints to stdout and would end up parsed as a value.
+
+### 3.9 Jira Integration (`src/mega_snake/jira_api/`)
+
+Replaces four Bash scripts (`get_auth_header.sh`, `getJiraBoard.sh`, `getSprintInfo.sh`,
+`jira_board_issues.sh`) that depended on `bash`, `jq`, process substitution and `base64 -w 0` (a GNU-only flag
+that fails on macOS). Layout: `auth.py` (Authorization header), `client.py` (`JiraClient`), `models.py`
+(`JiraConfig`, `Board`, `Sprint`), `board.py` / `sprint.py` / `issues.py` (one command each), `projection.py`
+(the raw-issue → compact-schema mapping plus `FieldIds`), `module.py`.
+
+**`requests` is imported lazily, inside `_build_session`.** ~100 ms against ~28 ms for `urllib.request` — noise
+next to a Jira round trip, but pure loss for the other 19 commands, which never make one. `docs_gen` already uses
+this pattern for the root `cli`. `test_requests_is_not_imported_at_module_import_time` imports the CLI in a clean
+subprocess and asserts `requests` is absent from `sys.modules`; **never hoist that import to module level.**
+
+**Retry and pooling are delegated to `urllib3.util.Retry` and `requests.Session`, on purpose.** Backoff,
+honouring `Retry-After`, and deciding which statuses to replay is exactly the kind of hand-written code that
+produced the defects this module replaces, and every branch of it would need its own test to clear the 98% bar.
+Only `GET` is retried; 401/403/404 are deliberately **not** in `RETRY_STATUS`, because a bad token does not
+become valid on the second attempt. Tests assert the *policy mounted on the adapter*, not the mechanics —
+retrying for real would be testing urllib3.
+
+**Failures are decided by the HTTP status, never by the shape of the body.** The shell version asked `jq` whether
+the response looked like an error object, so a 401 with an empty body sailed through as success. Every handled
+status has one message in `STATUS_MESSAGES`, which the tests compare by equality.
+
+**Settings resolve through the store (§4.4); credentials never do.** `jira.domain` and `jira.email` come from
+`env var > repo > global`; `JIRA_API_TOKEN` is read from the environment only (`JIRA_MCP_TOKEN` still works as a
+deprecated fallback and warns **on stderr**). `jira.board_id`, `jira.field.story_points` and `jira.field.sprint`
+are caches written by the commands themselves — the board cache is only trusted when the resolved project key
+matches the stored one, so an explicit key can never be answered with another project's board.
+
+**Custom field ids are resolved by name.** `customfield_10016`/`customfield_10020` are per-instance, so the
+hardcoded ids silently projected `null` on any other tenant. They survive only as a last-resort fallback, with a
+warning.
+
+**`_pick` must keep `jq`'s null semantics.** `null | {id, key}` yields `{"id": null, "key": null}`, not `null`.
+The documented recipes find orphan stories with `.fields.parent.key == null`, which throws the moment `parent`
+itself becomes null. A test pins it with the negative assertion.
+
+**This module mixes initialization levels, so its `wrapper` is empty and carries only `docs_group`.**
+`jira-board`/`jira-sprint` are `no_init` (machine-readable stdout) and `jira-issues` is `skip` (writes to
+`working_path`). A module wrapper runs for *every* command in the module, so the pre-flight that `jira-issues`
+needs — `ensure_working_path()` + `complete_app_properties()` — lives in its own command body instead. Per-command
+flags win because `wrapper_decorator.update_flags` merges the module wrapper first and the callback second.
+
+**Rule for the `no_init` commands:** `click.echo` with the JSON, and nothing else, ever. Errors are
+`click.ClickException`, which Click writes to stderr with exit code 1. Warnings from `auth.py` go through
+`click.echo(..., err=True)` for the same reason.
+
 ---
 
 ## 4. Utilities & Helpers
@@ -749,15 +822,52 @@ if result.returncode != 0:
 
 **Shared helpers — always reuse these, never reimplement them:**
 
-| Helper                                      | Use it for                                                                                                                                                                                                                                                                                                      |
-| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `get_remote()`                              | The repository's remote. **Memoized per process**: one `git remote`, and with several remotes the user is prompted only once no matter how many call sites ask. Returns `None` (with a warning) instead of raising when `git remote` fails, e.g. outside a repository. `reset_remote_cache()` exists for tests. |
-| `require_remote()`                          | Same, for commands that cannot work without a remote: raises `click.ClickException(NO_REMOTE_MESSAGE)`. This is the **single** place that message lives — do not re-raise your own.                                                                                                                             |
-| `ensure_working_path(decline_message=None)` | Get `working_path`, offering to create it when missing (and excluding it from git right away), or failing with a clean `click.ClickException`. Used by `working-env` and by every light-weight pre-flight wrapper.                                                                                              |
-| `exclude_from_git(entries)`                 | Append `(entry, description)` pairs to `.git/info/exclude`. Idempotent; skips with a warning outside a git repository and creates the exclude file when missing.                                                                                                                                                |
+| Helper                                                   | Use it for                                                                                                                                                                                                                                                                                                      |
+| --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `get_remote()`                                           | The repository's remote. **Memoized per process**: one `git remote`, and with several remotes the user is prompted only once no matter how many call sites ask. Returns `None` (with a warning) instead of raising when `git remote` fails, e.g. outside a repository. `reset_remote_cache()` exists for tests. |
+| `require_remote()`                                       | Same, for commands that cannot work without a remote: raises `click.ClickException(NO_REMOTE_MESSAGE)`. This is the **single** place that message lives — do not re-raise your own.                                                                                                                             |
+| `ensure_working_path(decline_message=None)`              | Get `working_path`, offering to create it when missing (and excluding it from git right away), or failing with a clean `click.ClickException`. Used by `working-env` and by every light-weight pre-flight wrapper.                                                                                              |
+| `exclude_from_git(entries)`                              | Append `(entry, description)` pairs to `.git/info/exclude`. Idempotent; skips with a warning outside a git repository and creates the exclude file when missing.                                                                                                                                                |
+| `write_json_atomically(path, payload, sort_keys=False)` | Serialize JSON through a temporary file in the destination directory + `os.replace`. Leave `sort_keys` False when the key order is part of a published contract (the Jira projection). Used by the store and by `jira-issues`; never hand-roll a second one.                                                     |
 
 **Anything that creates a folder under the repo must exclude it from git in the same step** — that is what
 `ensure_working_path` does, and why nothing else should call `os.makedirs(working_path)` directly.
+
+### 4.4 Persistent State (`src/mega_snake/util/store.py`)
+
+The three pre-existing configuration layers are all read-only from the CLI's point of view: `config.properties`
+ships in the wheel, `AppProperties` is a per-process singleton `_check_forbidden_execution` keeps immutable, and
+`local_config_file`/`local_env_file` are a shell prelude the CLI writes once and never reads back. `Store` is the
+missing middle piece — state the CLI both writes and reads.
+
+| Scope | File | For |
+|---|---|---|
+| `repo` | `<git-dir>/mgsnake/state.json` | Per-clone settings (`jira.project_key`, `jira.board_id`, the field ids) |
+| `global` | `~/.config/mgsnake/state.json`, `%APPDATA%\mgsnake\state.json` on Windows | User-wide settings (`jira.domain`, `jira.email`) |
+
+Reads resolve **`env var > repo > global > default`**. The environment on top is deliberate: every workflow that
+exported these variables before the store keeps working, so migration can be gradual.
+
+Non-negotiables when touching this file:
+
+- **Lazy, and independent of `AppProperties`.** Nothing is read until the first `get()`, which is what lets it
+  work under all three initialization levels, `no_init` included.
+- **No subprocess.** The repo scope is found by walking up the filesystem for `.git` (handling the `.git` *file*
+  that worktrees and submodules leave), **not** through `run_operation` — that helper reads
+  `get_property("shell")`, which requires the singleton `no_init` never builds. `exclude_from_git` already
+  inspects `.git` directly, so this is the established precedent.
+- **`.git/` and not `workspace_temp/`.** The latter is explicitly disposable (`diff-tree` wipes its subfolder on
+  every run), and state that evaporates is not state. Living in `.git` also means no `.gitignore` or
+  `.git/info/exclude` entry is needed.
+- **Atomic writes** via `write_json_atomically` (§4.3): a `Ctrl-C` must never leave a corrupt JSON that then
+  breaks every command.
+- **Secrets are rejected, not warned about.** Any key matching `SECRET_KEY_PATTERN` raises `click.ClickException`
+  and **nothing is written**. Tokens live in environment variables only: a plaintext credential in a state file
+  is worse than an exported variable because it persists and is forgotten.
+- **Keys are validated** against `KEY_PATTERN` (lowercase, dotted namespace), so the file stays navigable.
+- **Corrupt JSON produces a message naming the path**, never a raw `json.JSONDecodeError`.
+- `reset_instance()` exists for tests and after a `chdir` (both the paths and the contents are memoized), the
+  same way `reset_remote_cache()` does.
 
 ---
 
