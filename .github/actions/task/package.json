@@ -1,0 +1,25 @@
+{
+  "name": "task-action",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TypeScript port of the composite `task` action.",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc --noEmit && vitest run --coverage && ncc build src/index.ts -o dist --minify",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@actions/core": "^1.11.1",
+    "@actions/github": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@vercel/ncc": "^0.38.3",
+    "@vitest/coverage-v8": "^4.1.11",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.11"
+  }
+}

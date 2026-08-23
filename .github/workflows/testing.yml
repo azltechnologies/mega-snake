@@ -29,5 +29,5 @@ jobs:
           fetch-depth: 1
 
       - name: running test
-        uses: ./.ci-actions/.github/actions/task-ts
+        uses: ./.ci-actions/.github/actions/task
 
