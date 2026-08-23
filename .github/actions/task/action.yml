@@ -58,11 +58,11 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.token }}
         API: "repos/${{ inputs.repo }}"
-        MARKER: "<!-- mgsnake-session-log:${{ github.event.issue.pull_request && 'pull_request' || 'issue' }} -->"
+        MARKER: "<!-- mgsnake-session-log:${{ env.THREAD_TYPE }} -->"
       run: |
         set -euo pipefail
         call=$(gh api "${API}/issues/${THREAD_ID}/comments?per_page=100" --paginate \
-        --jq '.[] | "\(.id)\t\(.body | split("\n")[0] | rtrimstr("\r"))"' 2>/dev/null)
+        --jq '.[] | "\(.id)\t\(.body | split("\n")[0] | rtrimstr("\r"))"')
         echo "results: ${call}"
         echo "Searching for comment with marker: ${MARKER}"
         comment_id=$(echo "$call" | awk -F'\t' -v m="${MARKER}" '$2 == m { print $1 }' | tail -n 1)
@@ -72,7 +72,7 @@ runs:
         else
           echo -e "No comment found with marker: $MARKER\n creating a new comment..."
           create_id=$(gh api --method POST "${API}/issues/${THREAD_ID}/comments" -F body="${MARKER}" \
-          --jq '.id' 2>/dev/null)
+          --jq '.id')
           echo "Created comment ID: $create_id"
           echo "COMMENT_ID=$create_id" >> "$GITHUB_ENV"
         fi
