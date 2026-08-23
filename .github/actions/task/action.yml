@@ -58,7 +58,7 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.token }}
         API: "repos/${{ inputs.repo }}"
-        MARKER: "<!-- mgsnake-session-log:${{ env.THREAD_TYPE }} -->"
+        MARKER: "<!-- mgsnake-session-log:${{ env.THREAD_TYPE }}/${{ env.THREAD_ID }} -->"
       run: |
         set -euo pipefail
         call=$(gh api "${API}/issues/${THREAD_ID}/comments?per_page=100" --paginate \
