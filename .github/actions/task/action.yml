@@ -70,8 +70,8 @@ runs:
           echo "Found comment ID: $comment_id"
           echo "COMMENT_ID=$comment_id" >> "$GITHUB_ENV"
         else
-          echo -e "No comment found with marker: $MARKER\n creating a new comment..."
-          create_id=$(gh api --method POST "${API}/issues/${THREAD_ID}/comments" -F body="${MARKER}" \
+          echo -e "No comment found with marker: ${MARKER}\n creating a new comment..."
+          create_id=$(gh api --method POST "${API}/issues/${THREAD_ID}/comments" -f body="${MARKER}" \
           --jq '.id')
           echo "Created comment ID: $create_id"
           echo "COMMENT_ID=$create_id" >> "$GITHUB_ENV"
