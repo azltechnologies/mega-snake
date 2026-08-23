@@ -10,11 +10,12 @@
 import { vi } from "vitest";
 
 import { ThreadEvent } from "../domain/thread-resolver";
-import { ThreadContext } from "../models/thread-context";
+import { Issue, ThreadContext } from "../models/thread-context";
 import { GitHubClient } from "../services/github-client";
 
 type ThreadType = ThreadContext["type"];
-type Repository = ThreadContext["repository"];
+/** The repository halves of an `Issue`, without the thread number. */
+type Repository = Omit<Issue, "id">;
 
 /** The repository every fixture resolves against unless it passes its own. */
 export const REPOSITORY: Repository = { owner: "azltechnologies", repo: "unix-scripts" };
@@ -84,7 +85,7 @@ export function threadOf(
   id: number,
   repository: Repository = REPOSITORY,
 ): ThreadContext {
-  return { repository, id, type };
+  return { issue: { ...repository, id }, type };
 }
 
 /**
@@ -94,6 +95,11 @@ export function threadOf(
  * as parsed JSON, so the negative tests have to express payloads that
  * `WebhookPayload` forbids (an `issue` without a `number`, for instance).
  * Keeping the cast in the builder is what stops it from spreading.
+ *
+ * `issue` is derived from the payload exactly as the `context.issue` getter
+ * does, so every test stays payload-driven and no test can describe a context
+ * the runner could never produce. `describe("context.issue")` in the resolver
+ * suite pins the real getter against this derivation.
  *
  * @param eventName - Value of `GITHUB_EVENT_NAME`.
  * @param payload - The webhook payload, as the runner would deliver it.
@@ -105,5 +111,10 @@ export function eventOf(
   payload: Record<string, unknown>,
   repo: Repository = REPOSITORY,
 ): ThreadEvent {
-  return { eventName, payload: payload as ThreadEvent["payload"], repo };
+  const parsed = payload as ThreadEvent["payload"];
+  return {
+    eventName,
+    payload: parsed,
+    issue: { ...repo, number: (parsed.issue || parsed.pull_request || parsed).number },
+  };
 }

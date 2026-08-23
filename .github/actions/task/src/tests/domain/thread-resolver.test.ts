@@ -8,11 +8,12 @@
  * a substring assertion would not tell them apart.
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { Context } from "@actions/github/lib/context";
 
 import { resolveThread, ThreadEvent, UNRESOLVED_THREAD_MESSAGE } from "../../domain/thread-resolver";
 import { ThreadContext } from "../../models/thread-context";
-import { eventOf, OTHER_REPOSITORY, REPOSITORY } from "../helpers";
+import { eventOf, OTHER_REPOSITORY, REPOSITORY, threadOf } from "../helpers";
 
 type ThreadType = ThreadContext["type"];
 
@@ -86,11 +87,7 @@ describe("resolveThread", () => {
   it.each(SUPPORTED)(
     "resolves the whole thread context for $name",
     ({ name, eventName, payload, expectedId, expectedType }) => {
-      const expected: ThreadContext = {
-        repository: REPOSITORY,
-        id: expectedId,
-        type: expectedType,
-      };
+      const expected: ThreadContext = threadOf(expectedType, expectedId);
 
       expect(resolveThread(eventOf(eventName, payload)), `wrong thread for ${name}`).toEqual(expected);
     },
@@ -98,13 +95,16 @@ describe("resolveThread", () => {
 
   it.each(SUPPORTED)(
     "returns the repository it was given for $name, never one of its own",
-    ({ name, eventName, payload }) => {
+    ({ name, eventName, payload, expectedId }) => {
       // Resolved with a repository no other fixture uses, so a hardcoded or
       // default-valued return cannot satisfy this.
       const resolved = resolveThread(eventOf(eventName, payload, OTHER_REPOSITORY));
 
-      expect(resolved.repository, `wrong repository for ${name}`).toEqual(OTHER_REPOSITORY);
-      expect(resolved.repository, `${name} fell back to the default repository`).not.toEqual(REPOSITORY);
+      expect(resolved.issue, `wrong issue for ${name}`).toEqual({ ...OTHER_REPOSITORY, id: expectedId });
+      expect(resolved.issue, `${name} fell back to the default repository`).not.toEqual({
+        ...REPOSITORY,
+        id: expectedId,
+      });
     },
   );
 
@@ -118,22 +118,6 @@ describe("resolveThread", () => {
     expect(asIssue.type).toBe("issue");
     expect(asPull.type).toBe("pull_request");
     expect(asIssue.type).not.toBe(asPull.type);
-  });
-
-  it("reads the number from pull_request, ignoring an issue the payload also carries", () => {
-    // A review payload carries both keys; reading the wrong one would point
-    // the session log at an unrelated thread with no error at all.
-    const resolved = resolveThread(
-      eventOf("pull_request_review", {
-        action: "submitted",
-        pull_request: { number: 5 },
-        issue: { number: 99 },
-      }),
-    );
-
-    expect(resolved.id).toBe(5);
-    expect(resolved.id).not.toBe(99);
-    expect(resolved.type).toBe("pull_request");
   });
 
   it.each([
@@ -153,13 +137,14 @@ describe("resolveThread", () => {
     );
   });
 
-  it("rejects an unsupported event before it ever reads the repository", () => {
-    // `github.context.repo` is a getter that throws when GITHUB_REPOSITORY is
-    // unset. Reading it eagerly would replace the real diagnosis with that one.
+  it("rejects an unsupported event before it ever reads the issue reference", () => {
+    // `context.issue` is a getter, and it reaches `context.repo`, which throws
+    // when GITHUB_REPOSITORY is unset. Destructuring it above the switch would
+    // replace the real diagnosis with that one, on an event we never supported.
     const event = {
       eventName: "push",
       payload: { action: "created" },
-      get repo(): never {
+      get issue(): never {
         throw new Error("context.repo requires a GITHUB_REPOSITORY environment variable");
       },
     } as unknown as ThreadEvent;
@@ -200,7 +185,7 @@ describe("resolveThread", () => {
     // A truthiness check would reject this; only `=== undefined` accepts it.
     const resolved = resolveThread(eventOf(eventName, { action, [key]: { number: 0 } }));
 
-    expect(resolved.id).toBe(0);
+    expect(resolved.issue.id).toBe(0);
   });
 
   it("never reports a missing thread number as an unsupported event", () => {
@@ -211,5 +196,58 @@ describe("resolveThread", () => {
 
     expect(thrown).toThrowError(new Error(UNRESOLVED_THREAD_MESSAGE));
     expect(thrown).not.toThrowError("Unsupported event");
+  });
+});
+
+/**
+ * The resolver no longer reads the thread number itself: it takes whatever
+ * `context.issue` derived. That makes the getter's behaviour part of this
+ * module's contract, and `eventOf` a *stub of the SDK* rather than a plain
+ * fixture - so the stub is compared against the real class here. Without this,
+ * a change of precedence upstream would silently retarget every session log.
+ */
+describe("context.issue", () => {
+  const previousRepository = process.env.GITHUB_REPOSITORY;
+  const previousEventPath = process.env.GITHUB_EVENT_PATH;
+
+  afterEach(() => {
+    process.env.GITHUB_REPOSITORY = previousRepository;
+    process.env.GITHUB_EVENT_PATH = previousEventPath;
+  });
+
+  /**
+   * Read `issue` off a real `Context` carrying `payload`.
+   *
+   * @param payload - The webhook payload the runner would deliver.
+   * @returns Whatever the SDK getter derives from it.
+   */
+  function realIssue(payload: Record<string, unknown>): Context["issue"] {
+    process.env.GITHUB_REPOSITORY = `${REPOSITORY.owner}/${REPOSITORY.repo}`;
+    delete process.env.GITHUB_EVENT_PATH;
+
+    const context = new Context();
+    context.payload = payload as Context["payload"];
+    return context.issue;
+  }
+
+  it.each([
+    { name: "an issue payload", payload: { issue: { number: 42 } }, expectedId: 42 },
+    { name: "a pull request payload", payload: { pull_request: { number: 7 } }, expectedId: 7 },
+    {
+      name: "a payload carrying both keys",
+      payload: { issue: { number: 42 }, pull_request: { number: 7 } },
+      expectedId: 42,
+    },
+    { name: "a bare payload", payload: { number: 3 }, expectedId: 3 },
+    { name: "a payload with no number anywhere", payload: {}, expectedId: undefined },
+  ])("derives $name the same way eventOf does", ({ name, payload, expectedId }) => {
+    const real = realIssue(payload);
+
+    expect(real.number, `the SDK changed how it derives the number for ${name}`).toBe(expectedId);
+    expect(eventOf("issue_comment", payload).issue, `eventOf drifted for ${name}`).toEqual(real);
+  });
+
+  it("carries the repository, so the resolver never has to read it separately", () => {
+    expect(realIssue({ issue: { number: 42 } })).toEqual({ ...REPOSITORY, number: 42 });
   });
 });

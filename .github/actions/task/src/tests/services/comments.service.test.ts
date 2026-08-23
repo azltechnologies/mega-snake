@@ -105,9 +105,9 @@ describe("findMarkerComment", () => {
 
     expect(paginate).toHaveBeenCalledTimes(1);
     expect(paginate).toHaveBeenCalledWith(listComments, {
-      owner: THREAD.repository.owner,
-      repo: THREAD.repository.repo,
-      issue_number: THREAD.id,
+      owner: THREAD.issue.owner,
+      repo: THREAD.issue.repo,
+      issue_number: THREAD.issue.id,
       per_page: 100,
     });
   });
@@ -125,7 +125,7 @@ describe("findMarkerComment", () => {
     });
     expect(paginate).not.toHaveBeenCalledWith(
       listComments,
-      expect.objectContaining({ owner: THREAD.repository.owner }),
+      expect.objectContaining({ owner: THREAD.issue.owner }),
     );
   });
 
@@ -138,7 +138,8 @@ describe("findMarkerComment", () => {
     await findMarkerComment(client, pull, MARKER);
 
     expect(paginate).toHaveBeenCalledWith(listComments, {
-      ...pull.repository,
+      owner: pull.issue.owner,
+      repo: pull.issue.repo,
       issue_number: 9,
       per_page: 100,
     });
@@ -165,9 +166,9 @@ describe("createMarkerComment", () => {
     expect(created).toBe(4321);
     expect(createComment).toHaveBeenCalledTimes(1);
     expect(createComment).toHaveBeenCalledWith({
-      owner: THREAD.repository.owner,
-      repo: THREAD.repository.repo,
-      issue_number: THREAD.id,
+      owner: THREAD.issue.owner,
+      repo: THREAD.issue.repo,
+      issue_number: THREAD.issue.id,
       body: MARKER,
     });
   });

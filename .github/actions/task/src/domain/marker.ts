@@ -21,5 +21,5 @@ export const MARKER_SUFFIX = " -->";
  * @returns The marker line, e.g. `<!-- mgsnake-session-log:issue/42 -->`.
  */
 export function buildMarker(thread: ThreadContext): string {
-  return `${MARKER_PREFIX}${thread.type}/${thread.id}${MARKER_SUFFIX}`;
+  return `${MARKER_PREFIX}${thread.type}/${thread.issue.id}${MARKER_SUFFIX}`;
 }

@@ -20,6 +20,15 @@ npm run build        # tsc --noEmit + vitest run --coverage + ncc bundle -> dist
 git add dist         # dist/ MUST be committed: the runner executes it as-is
 ```
 
+`npm run build:no-verify` produces the **same bundle** without running the suite, for when the
+bundle is needed before the tests are green. It still type-checks the production code, through
+`tsconfig.build.json`, which is the base config minus `src/tests`.
+
+That second config is not cosmetic: `ncc` type-checks through `ts-loader`, and `ts-loader` builds
+its program from `include` rather than from what the entry point reaches. Without it, a type error
+in a **test** file fails the **bundle** - even though no test is reachable from `src/index.ts`.
+`--transpile-only` then stops `ncc` from repeating the check `tsc` just did.
+
 ## Exported variables
 
 | Variable      | Value                                                     |
@@ -45,7 +54,7 @@ The split is by *purity*, not by noun - which is what keeps the layers testable:
 
 | Directory   | Contents                                        | Rule                                          |
 | ----------- | ----------------------------------------------- | --------------------------------------------- |
-| `models/`   | `ThreadContext`, `Repository`, `ActionInputs`   | Data shapes only; **no `@actions/*` imports**  |
+| `models/`   | `ThreadContext`, `Issue`, `ActionInputs`        | Data shapes only; **no `@actions/*` imports**  |
 | `domain/`   | `resolveThread`, `buildMarker`                  | Pure functions: data in, data out; no I/O      |
 | `services/` | `comments.service`, `session-log.service`       | GitHub API calls; the client is **injected**   |
 | `config/`   | `inputs`, `outputs`                             | The only callers of `getInput`/`exportVariable`|

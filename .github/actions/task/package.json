@@ -6,6 +6,7 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc --noEmit && vitest run --coverage && ncc build src/index.ts -o dist --minify",
+    "build:no-verify": "tsc --noEmit -p tsconfig.build.json && ncc build src/index.ts -o dist --minify --transpile-only",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

@@ -61,7 +61,8 @@ describe("ensureSessionLogComment", () => {
     expect(id).toBe(555);
     expect(createComment).toHaveBeenCalledTimes(1);
     expect(createComment).toHaveBeenCalledWith({
-      ...pull.repository,
+      owner: pull.issue.owner,
+      repo: pull.issue.repo,
       issue_number: 9,
       body: MARKER,
     });
@@ -73,8 +74,9 @@ describe("ensureSessionLogComment", () => {
     await ensureSessionLogComment(client, THREAD, MARKER);
 
     expect(paginate).toHaveBeenCalledWith(listComments, {
-      ...THREAD.repository,
-      issue_number: THREAD.id,
+      owner: THREAD.issue.owner,
+      repo: THREAD.issue.repo,
+      issue_number: THREAD.issue.id,
       per_page: 100,
     });
   });

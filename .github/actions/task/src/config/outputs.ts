@@ -17,7 +17,7 @@ import { ThreadContext } from "../models/thread-context";
  * @returns None.
  */
 export function exportThread(thread: ThreadContext): void {
-  core.exportVariable("THREAD_ID", String(thread.id));
+  core.exportVariable("THREAD_ID", String(thread.issue.id));
   core.exportVariable("THREAD_TYPE", thread.type);
 }
 

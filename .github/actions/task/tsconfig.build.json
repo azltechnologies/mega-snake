@@ -1,0 +1,7 @@
+{
+  // Type checking for the bundle only: `src/tests` is excluded because nothing
+  // under it is reachable from `src/index.ts`, yet ts-loader builds its program
+  // from `include`, so a type error in a test would otherwise fail the build.
+  "extends": "./tsconfig.json",
+  "exclude": ["src/tests"]
+}

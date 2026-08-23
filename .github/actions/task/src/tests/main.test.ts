@@ -17,7 +17,7 @@ import * as github from "@actions/github";
 
 import { UNRESOLVED_THREAD_MESSAGE } from "../domain/thread-resolver";
 import { run } from "../main";
-import { REPOSITORY, stubGitHubClient } from "./helpers";
+import { eventOf, OTHER_REPOSITORY, REPOSITORY, stubGitHubClient } from "./helpers";
 
 // Hoisted above the imports, so the values are placeholders: `beforeEach`
 // rewrites them from the shared fixtures once the modules have loaded.
@@ -25,7 +25,7 @@ const { mockContext } = vi.hoisted(() => ({
   mockContext: {
     eventName: "",
     payload: {} as Record<string, unknown>,
-    repo: { owner: "", repo: "" },
+    issue: { owner: "", repo: "" } as { owner: string; repo: string; number?: number },
   },
 }));
 
@@ -72,13 +72,23 @@ const [ISSUE_EVENT] = EVENTS;
 /**
  * Point `github.context` at an event.
  *
+ * Built through `eventOf` so the mocked context derives its `issue` from the
+ * payload exactly as the real `Context` getter would; a hand-written pair
+ * could describe a context the runner cannot produce.
+ *
  * @param event - Event name and payload the runner would deliver.
+ * @param repo - Repository the runner reports.
  * @returns None.
  */
-function useEvent(event: { eventName: string; payload: Record<string, unknown> }): void {
-  mockContext.eventName = event.eventName;
-  mockContext.payload = event.payload;
-  mockContext.repo = { ...REPOSITORY };
+function useEvent(
+  event: { eventName: string; payload: Record<string, unknown> },
+  repo: typeof REPOSITORY = REPOSITORY,
+): void {
+  const built = eventOf(event.eventName, event.payload, repo);
+
+  mockContext.eventName = built.eventName;
+  mockContext.payload = built.payload as Record<string, unknown>;
+  mockContext.issue = { ...built.issue };
 }
 
 /**
@@ -149,17 +159,20 @@ describe("run", () => {
   );
 
   it("addresses the repository the runner reported, not one of its own", async () => {
-    mockContext.repo = { owner: "someone", repo: "else" };
+    useEvent(ISSUE_EVENT, OTHER_REPOSITORY);
     const { paginate, listComments } = withComments([]);
 
     await run();
 
     expect(paginate).toHaveBeenCalledWith(listComments, {
-      owner: "someone",
-      repo: "else",
+      ...OTHER_REPOSITORY,
       issue_number: 42,
       per_page: 100,
     });
+    expect(paginate).not.toHaveBeenCalledWith(
+      listComments,
+      expect.objectContaining({ owner: REPOSITORY.owner }),
+    );
   });
 
   it("authenticates with the token input", async () => {

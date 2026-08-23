@@ -26,7 +26,7 @@ export async function findMarkerComment(
   context: ThreadContext,
   marker: string,
 ): Promise<number | undefined> {
-  const { repository, id: issue_number } = context;
+  const { id: issue_number, ...repository } = context.issue;
   const comments = await client.paginate(client.rest.issues.listComments, {
     ...repository,
     issue_number,
@@ -58,7 +58,7 @@ export async function createMarkerComment(
   context: ThreadContext,
   marker: string,
 ): Promise<number> {
-  const { repository, id: issue_number } = context;
+  const { id: issue_number, ...repository } = context.issue;
   const created = await client.rest.issues.createComment({
     ...repository,
     issue_number,

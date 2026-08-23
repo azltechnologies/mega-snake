@@ -24,7 +24,7 @@ import { ensureSessionLogComment } from "./services/session-log.service";
  * @returns None.
  */
 export async function run(): Promise<void> {
-  // `github.context.repo` reads GITHUB_REPOSITORY, which the runner always
+  // `github.context.issue` reads GITHUB_REPOSITORY, which the runner always
   // sets, and throws a descriptive error when it is absent.
   const thread = resolveThread(github.context);
   exportThread(thread);
