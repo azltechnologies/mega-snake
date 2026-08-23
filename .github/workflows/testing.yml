@@ -1,0 +1,25 @@
+name: testing
+on:
+  pull_request:
+    types: [labeled]
+
+jobs:
+  claude-review:
+    # Only run when the label is equal to "bug"
+    if: github.event.label.name == 'bug'
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # Review only reads code; it does not push commits
+      pull-requests: write # Required to post the review and inline comments
+      actions: read # Required to download the previous review's session artifact
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Set up environment
+        uses: ./.ci-actions/.github/actions/task
+
