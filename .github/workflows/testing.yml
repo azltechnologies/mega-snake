@@ -28,6 +28,6 @@ jobs:
           sparse-checkout: .github/actions
           fetch-depth: 1
 
-      - name: Set up environment
+      - name: running test
         uses: ./.ci-actions/.github/actions/task
 

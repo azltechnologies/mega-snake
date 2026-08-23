@@ -61,18 +61,18 @@ runs:
         MARKER: "<!-- mgsnake-session-log:${{ github.event.issue.pull_request && 'pull_request' || 'issue' }} -->"
       run: |
         set -euo pipefail
-        call=(gh api "${API}/issues/${THREAD_ID}/comments?per_page=100" --paginate \
+        call=$(gh api "${API}/issues/${THREAD_ID}/comments?per_page=100" --paginate \
         --jq '.[] | "\(.id)\t\(.body | split("\n")[0] | rtrimstr("\r"))"' 2>/dev/null)
-        echo "results: ${call[@]}"
+        echo "results: ${call}"
         echo "Searching for comment with marker: ${MARKER}"
-        comment_id=$("${call[@]}" | awk -F'\t' -v m="${MARKER}" '$2 == m { print $1 }' | tail -n 1)
+        comment_id=$(echo "$call" | awk -F'\t' -v m="${MARKER}" '$2 == m { print $1 }' | tail -n 1)
         if [[ -n "$comment_id" ]]; then
           echo "Found comment ID: $comment_id"
           echo "COMMENT_ID=$comment_id" >> "$GITHUB_ENV"
         else
           echo -e "No comment found with marker: $MARKER\n creating a new comment..."
-          create_id=(gh api --method POST "${API}/issues/${THREAD_ID}/comments" -F body="${MARKER}" \
+          create_id=$(gh api --method POST "${API}/issues/${THREAD_ID}/comments" -F body="${MARKER}" \
           --jq '.id' 2>/dev/null)
-          echo "Created comment ID: ${create_id[@]}"
-          echo "COMMENT_ID=${create_id[@]}" >> "$GITHUB_ENV"
+          echo "Created comment ID: $create_id"
+          echo "COMMENT_ID=$create_id" >> "$GITHUB_ENV"
         fi
