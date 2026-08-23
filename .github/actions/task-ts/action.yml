@@ -1,0 +1,18 @@
+name: Setup Env
+description: >-
+  TypeScript port of the composite `task` action. Resolves the thread
+  (issue or pull request) that triggered the workflow and ensures a
+  session-log comment exists on it, exporting THREAD_ID, THREAD_TYPE and
+  COMMENT_ID to the job environment.
+
+inputs:
+  token:
+    description: Token used to read and create issue comments.
+    default: ${{ github.token }}
+  repo:
+    description: Target repository in `owner/name` form.
+    default: ${{ github.repository }}
+
+runs:
+  using: node20
+  main: dist/index.js
