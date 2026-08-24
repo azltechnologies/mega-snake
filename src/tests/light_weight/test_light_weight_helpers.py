@@ -63,7 +63,7 @@ def test_create_release_flows() -> None:
     with patch("mega_snake.light_weight.create_release.handler.git_fetch"), patch(
         "mega_snake.light_weight.create_release.get_latest_release", return_value=latest
     ), patch("mega_snake.light_weight.create_release.handler.publish_release"), patch(
-        "mega_snake.light_weight.create_release.get_current_commit", return_value="abc"
+        "mega_snake.light_weight.create_release.Repo.resolve_head", return_value="abc"
     ), patch(
         "mega_snake.light_weight.create_release.get_validated_input", return_value="n"
     ):

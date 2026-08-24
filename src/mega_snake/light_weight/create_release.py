@@ -8,7 +8,8 @@ import click
 import mega_snake.light_weight.release_handler as handler
 from mega_snake.light_weight.release import DEFAULT_TAG_PATTERN, Release, get_latest_release, resolve_tag_pattern
 from mega_snake.util.formatting import ws_info, ws_success
-from mega_snake.util.util import get_validated_input, get_current_commit
+from mega_snake.util.repo import Repo
+from mega_snake.util.util import get_validated_input
 from mega_snake.constants import RELEASE_TYPE_OPT, VERSION_PART_OPT
 
 NUM_RETRIES = 3
@@ -104,7 +105,7 @@ def create_release(
         )
     tag_flag: str = RELEASE_TYPE_OPT[release_type]
     if not branch:
-        branch = get_current_commit()
+        branch = Repo.resolve_head()
     handler.git_fetch()
 
     if release_type.lower() == "l":

@@ -258,7 +258,7 @@ def fixture_os_replace() -> Generator[MagicMock, None, None]:
 @pytest.fixture(name="get_remote_url")
 def fixture_get_remote_url() -> Generator[MagicMock, None, None]:
     """Mock get_remote_url"""
-    with patch("mega_snake.config_environment.create_working_env.get_remote_url") as mock:
+    with patch("mega_snake.config_environment.create_working_env.Repo.get_remote_url") as mock:
         yield mock
 
 

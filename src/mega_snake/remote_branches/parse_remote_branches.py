@@ -8,7 +8,7 @@ from typing import NamedTuple, Optional
 from mega_snake.util.formatting import ws_success
 from mega_snake.remote_branches.remote_branch import GitBranch
 from mega_snake.util.repo import Repo
-from mega_snake.util.util import get_validated_input, require_remote, run_operation
+from mega_snake.util.util import get_validated_input, run_operation
 
 
 class Garbage(NamedTuple):
@@ -97,7 +97,7 @@ def delete_branches(garbage: list[Garbage]) -> None:
     """
     if not garbage:
         return
-    remote: Optional[str] = require_remote() if any(item.remote for item in garbage) else None
+    remote: Optional[str] = Repo.require_remote() if any(item.remote for item in garbage) else None
     for garbage_item in garbage:
         branch = garbage_item.branch
         try:
