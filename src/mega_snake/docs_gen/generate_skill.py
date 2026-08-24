@@ -1,6 +1,7 @@
 """Command that generates AI agent skill files from the CLI metadata."""
 
-from pathlib import Path
+from pathlib import Path, PurePath
+from typing import Sequence
 
 import click
 
@@ -12,9 +13,31 @@ from mega_snake.util.util import add_to_gitignore, cli_metadata, exclude_from_gi
 # Output file name written into each skill directory.
 SKILL_FILE = "SKILL.md"
 
+# YAML frontmatter identifying the document as a skill. Both runtimes this command targets discover
+# a skill by reading these two keys off the top of the file; a SKILL.md that opens with a heading is
+# simply not registered, so the frontmatter is what makes the generated file a skill rather than a
+# stray Markdown document. The same pair serves both targets, which is why one rendered document is
+# still written to every selected directory.
+SKILL_NAME = "mgsnake"
+SKILL_DESCRIPTION = (
+    "Complete command reference for the mgsnake CLI (package mega-snake), covering every command, "
+    "alias, option and documented behaviour. Use it when running, choosing or explaining an mgsnake "
+    "command - VS Code workspace setup for Java, Gradle and Maven projects, git and release "
+    "workflows, dependency vulnerability audits, GraphQL and keystore utilities, or shell "
+    "integration."
+)
+
 # Canonical skill directories, relative to the project root.
 SKILL_COPILOT_DIR: Path = Path(".github") / "skills" / "mgsnake"
 SKILL_CLAUDE_DIR: Path = Path(".claude") / "skills" / "mgsnake"
+
+# Human label per directory, used in the git-tracking log lines. The helpers take
+# (entry, description) pairs where the description names the thing for a reader, so passing the path
+# a second time would produce "Excluded .github/skills/mgsnake/ in .git/info/exclude" and say nothing.
+SKILL_DIR_LABEL: dict[PurePath, str] = {
+    SKILL_COPILOT_DIR: "GitHub Copilot skill folder",
+    SKILL_CLAUDE_DIR: "Claude skill folder",
+}
 
 # All known skill directories in deterministic order (used for --check iteration).
 ALL_SKILL_DIRS: tuple[Path, ...] = (SKILL_COPILOT_DIR, SKILL_CLAUDE_DIR)
@@ -47,6 +70,46 @@ def _skill_path(skill_dir: Path) -> Path:
     return skill_dir / SKILL_FILE
 
 
+def _skill_document(markdown: str) -> str:
+    """Prepend the skill frontmatter to the rendered command reference.
+
+    The description is emitted as a double-quoted YAML scalar because a plain one may not contain a
+    colon followed by a space, which is easy to reintroduce the next time the wording is edited.
+
+    Parameters:
+        markdown: The rendered Markdown command reference.
+
+    Raises:
+        None
+
+    Returns:
+        str: The complete SKILL.md document, frontmatter first.
+    """
+    return f'---\nname: {SKILL_NAME}\ndescription: "{SKILL_DESCRIPTION}"\n---\n\n{markdown}'
+
+
+def _tracking_entries(skill_dirs: Sequence[PurePath]) -> list[tuple[str, str]]:
+    """Build the (entry, description) pairs the git-tracking helpers expect.
+
+    Uses ``as_posix()`` and never ``str()``: on Windows ``str(Path)`` yields backslashes, and git
+    reads a backslash inside an ignore pattern as an escape — ``.github\\skills\\mgsnake/`` becomes
+    the pattern ``.githubskillsmgsnake/``, which matches nothing, so the files the user asked to
+    untrack stay tracked with no error at all. The idempotency check in the helpers escapes the same
+    string, so a re-run would not recognise its own line either and would append a duplicate.
+
+    Parameters:
+        skill_dirs: The skill directories to build entries for.
+
+    Raises:
+        KeyError: If a directory has no entry in ``SKILL_DIR_LABEL``, which would mean a new target
+            was added without giving it a human label.
+
+    Returns:
+        list[tuple[str, str]]: One (pattern, label) pair per directory, in the order given.
+    """
+    return [(f"{skill_dir.as_posix()}/", SKILL_DIR_LABEL[skill_dir]) for skill_dir in skill_dirs]
+
+
 def _apply_tracking(skill_dirs: tuple[Path, ...], tracking: str) -> None:
     """Apply the chosen git-tracking strategy to the generated skill directories.
 
@@ -56,7 +119,7 @@ def _apply_tracking(skill_dirs: tuple[Path, ...], tracking: str) -> None:
             ``"v"`` to leave the files versioned (no-op).
 
     Raises:
-        None
+        KeyError: Propagated from ``_tracking_entries`` when a directory has no human label.
 
     Returns:
         None
@@ -65,23 +128,21 @@ def _apply_tracking(skill_dirs: tuple[Path, ...], tracking: str) -> None:
         ws_success("Skill files left versioned — they will be committed to the repository.")
         return
 
-    # TODO (copilot-instructions §8.2, items 2 and 3): str(Path) yields backslashes on Windows, which
-    # git reads as escapes, and the description repeats the path instead of naming it.
-    entries: list[tuple[str, str]] = [(str(skill_dir) + "/", f"{skill_dir}/") for skill_dir in skill_dirs]
+    entries: list[tuple[str, str]] = _tracking_entries(skill_dirs)
     if tracking == "e":
         exclude_from_git(entries)
     elif tracking == "g":
         add_to_gitignore(entries)
 
 
-def _check_all_existing_skill_files(markdown: str) -> None:
+def _check_all_existing_skill_files(document: str) -> None:
     """Validate every skill file that already exists on disk.
 
     Only files that are present are checked; missing ones are silently skipped so --check does not
     mandate that skill files exist, only that existing ones are up to date.
 
     Parameters:
-        markdown: The freshly rendered Markdown to compare against.
+        document: The freshly rendered SKILL.md document, frontmatter included, to compare against.
 
     Raises:
         ValidationError: If any existing skill file is stale.
@@ -92,7 +153,7 @@ def _check_all_existing_skill_files(markdown: str) -> None:
     for skill_dir in ALL_SKILL_DIRS:
         skill_file: Path = _skill_path(skill_dir)
         if skill_file.is_file():
-            write_or_check_document(skill_file, markdown, check=True)
+            write_or_check_document(skill_file, document, check=True)
 
 
 def _prompt_target() -> tuple[Path, ...]:
@@ -138,12 +199,12 @@ def _prompt_tracking() -> str:
     )
 
 
-def _write_skill_files(skill_dirs: tuple[Path, ...], markdown: str) -> list[Path]:
+def _write_skill_files(skill_dirs: tuple[Path, ...], document: str) -> list[Path]:
     """Write the SKILL.md file into every selected skill directory.
 
     Parameters:
         skill_dirs: The directories to write into.
-        markdown: The rendered Markdown content.
+        document: The rendered SKILL.md content, frontmatter included.
 
     Raises:
         None
@@ -154,7 +215,7 @@ def _write_skill_files(skill_dirs: tuple[Path, ...], markdown: str) -> list[Path
     written: list[Path] = []
     for skill_dir in skill_dirs:
         skill_file: Path = _skill_path(skill_dir)
-        write_or_check_document(skill_file, markdown, check=False)
+        write_or_check_document(skill_file, document, check=False)
         ws_success(f"Generated {skill_file}")
         written.append(skill_file)
     return written
@@ -164,9 +225,10 @@ def _write_skill_files(skill_dirs: tuple[Path, ...], markdown: str) -> list[Path
     name="generate-skill",
     short_help="Generate AI agent skill files (SKILL.md) from CLI metadata.",
     help="Generates SKILL.md for AI agent skill discovery by introspecting the registered CLI"
-    " commands and rendering the same reference as generate-docs. Creates the file under"
-    " .github/skills/mgsnake/ for GitHub Copilot, .claude/skills/mgsnake/ for Claude, or both,"
-    " then asks how those files should be tracked in git.",
+    " commands and rendering the same reference as generate-docs, behind the YAML frontmatter the"
+    " agent runtimes read. Asks which assistant to target — .github/skills/mgsnake/ for GitHub"
+    " Copilot, .claude/skills/mgsnake/ for Claude, or both — and how the files should be tracked in"
+    " git, then writes them.",
 )
 @cli_metadata(flags={"no_init"})
 @click.option(
@@ -189,16 +251,16 @@ def generate_skill(check: bool) -> None:
     Returns:
         None
     """
-    markdown: str = render_command_reference()
+    document: str = _skill_document(render_command_reference())
 
     if check:
-        _check_all_existing_skill_files(markdown)
+        _check_all_existing_skill_files(document)
         return
 
-    # TODO (copilot-instructions §8.2, items 1 and 4): the document still lacks the YAML frontmatter
-    # an agent runtime needs to register it as a skill, and writing before the second prompt leaves
-    # files behind when that prompt fails.
+    # Both questions are asked before anything is written, so exhausting the retries on either
+    # prompt leaves the working tree exactly as it was. Writing first would strand SKILL.md files on
+    # disk, untracked and un-excluded, for a user who only fumbled the second answer.
     skill_dirs: tuple[Path, ...] = _prompt_target()
-    _write_skill_files(skill_dirs, markdown)
     tracking: str = _prompt_tracking()
+    _write_skill_files(skill_dirs, document)
     _apply_tracking(skill_dirs, tracking)

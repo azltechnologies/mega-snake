@@ -2,7 +2,12 @@
 
 ## 1. Project Overview & Philosophy
 
-`mega_snake` is a robust Python CLI tool designed to standardize the local development lifecycle. It acts as a "Swiss Army Knife" for developers, primarily automating the complex configuration of VS Code environments for Java/Gradle, but extending into Git workflows, release orchestration, dependency auditing and shell integration.
+`mega_snake` is a Python CLI tool that standardizes the local development lifecycle. It acts as a "Swiss Army
+Knife" for developers: configuring VS Code environments for Java/Gradle/Maven projects, and extending into Git
+workflows, release orchestration, dependency auditing and shell integration.
+
+Java/Gradle and VS Code are where it started and where its deepest support lives — they are **not** its boundary.
+The audience is every developer it can reach, whatever their language; see the second rule below.
 
 > ### ⚠️ THE FIRST RULE: `mgsnake` IS A PRODUCT FOR ITS USERS, NOT A SCRIPT FOR ITS AUTHOR
 >
@@ -28,24 +33,72 @@
 > a stranger installing `mega-snake` want this?" — if the answer is no, it does not belong in a user-facing
 > command group.
 >
-> #### ⚠️ Known violation — do not treat the current layout as the example to follow
+> #### The test is the audience, not the subject
 >
-> **`generate-docs`, `man` and `generate-skill` (§3.7) break this rule today.** They introspect
-> **`mgsnake`'s own CLI** (`from mega_snake.__main__ import cli`), so a user running `mgsnake generate-docs`
-> in their project gets a `COMMANDS.md` describing _mgsnake_, not their tool — and `mgsnake generate-skill`
-> writes them a `SKILL.md` teaching their assistant about _mgsnake_. This is **accepted technical debt, not
-> a precedent**; the agreed direction is to move every mega-snake-only command into a dedicated module
-> (§8.1). Until that lands: do not add further repo-only commands to user-facing groups, do not cite the
-> three above as justification for doing so, do not "fix" a user-facing command by making it repo-aware, and
-> keep `docs_gen` self-contained so the eventual move stays mechanical.
+> Every command in `docs_gen` (§3.7) introspects **`mgsnake`'s own CLI**, which looks like a violation and
+> mostly is not. The question the rule asks is _who is this for_, never _what is it about_:
 >
-> The list grew from two entries to three _while the debt was documented_, which is the failure mode this
-> note exists to prevent: an accepted violation reads as permission unless the cost of joining it is written
-> down. It is written down in §8.1 — read it before adding a fourth.
+> - **`man` and `generate-skill` pass.** Their audience is the stranger who installed `mega-snake`. `man`
+>   pages mgsnake's reference for that person; `generate-skill` writes a `SKILL.md` that teaches _their_
+>   assistant to drive mgsnake inside _their_ project. Documenting mgsnake to an mgsnake user is the point,
+>   not a leak — no user expects `mgsnake man` to describe their own tool.
+> - **`generate-docs` is the real debt, and only in part.** Rendering the reference is as user-serviceable
+>   as `man`; what is repo-shaped is where it defaults to writing (`COMMANDS.md` in the current directory)
+>   and `--check`, which exists solely to gate the committed file in this repository's CI. That surface is
+>   this project's own workflow shipped as a public command. It is **accepted technical debt, not a
+>   precedent** — the fix is catalogued in §8.1.
+>
+> So: do not add a command whose audience is this repository to a user-facing group, do not cite
+> `generate-docs` as justification for doing so, do not "fix" a user-facing command by making it repo-aware,
+> and keep `docs_gen` self-contained so the eventual split stays mechanical.
 >
 > Everything outside `docs_gen` honours the rule: `dependency_audit` reads the _user's_ lockfiles through
 > ecosystem auto-detection, and `create-release` derives tags from the _user's_ GitHub releases — neither
 > reads this repository's `pyproject.toml` or `CHANGELOG.md`.
+
+> ### ⚠️ THE SECOND RULE: REACH EVERY DEVELOPER YOU CAN — AND ONLY BUILD WHAT PAYS FOR ITSELF
+>
+> These are one rule with two halves, and the halves check each other. The first sets how wide the tool
+> aims; the second stops that width from turning into a pile of features nobody needed.
+>
+> **Reach.** `mgsnake` is meant to help as many developers as it can, **independently of the language they
+> work in**, with a special — but never exclusive — emphasis on those who use VS Code. Java/Gradle support
+> is the deepest because that is where the tool grew up; it is not a fence. When a command _can_ be written
+> language-agnostically at no real cost, write it that way: `scan-dependencies` detecting the ecosystem from
+> marker files (§3.5) is the shape to copy, not an exception.
+>
+> **Prudence.** Width is not an excuse to build everything. Effort spent on a feature that adds no real
+> value to a developer is effort taken from one that does, and every command shipped is maintained,
+> documented, tested and supported forever. **Before building anything, decide which side of this it falls
+> on.**
+>
+> **Do NOT build it when:**
+>
+> - A common, popular, industry-standard tool already covers the need and we have nothing to add on top of
+>   it. Reimplementing it from scratch buys the user a second way to do what they already do.
+> - All we would offer is a _different_ way to reach the same result a popular tool or method already
+>   reaches. Novelty of route is not value.
+> - The need is met inside the user's `local_config.sh` / `.ps1` (§3.1) in **under about four lines**, using
+>   utilities a developer of that language already has. Promoting that to a command is overkill; the local
+>   config file exists precisely to absorb it.
+>
+> **DO build it when:**
+>
+> - Many developers want it and it exists only in insecure or dubious-reputation tooling, with no reliable
+>   way to get it easily and automatically. **That is the niche** — the strongest reason for a command to
+>   exist at all.
+> - A popular tool gets there, but we can go _palpably_ beyond it. Two honest routes, and the second is
+>   usually the right one: rebuild it and add the value on top, or — when the tool is genuinely popular —
+>   take it as a **runtime dependency** (invoked through `subprocess`, or fetched with `curl` where that
+>   applies) and build the added value on its output. This is already the house pattern: `create-release`
+>   drives `gh`, `scan-dependencies` drives `pip-audit`/`osv-scanner`, `expired-certs-jks` drives `keytool`.
+>   Python owns the control flow and the parsing; the external binary owns the action it is already good at.
+> - The only way, or the only well-known way, to get the result is a multi-line function in the local config
+>   **plus** libraries or packages that most developers of that language do not normally carry. The cost of
+>   that setup is exactly what a command should be absorbing.
+>
+> **When the answer is not obvious, it is a "do not build".** A command that has to be argued into existence
+> will have to be argued into every future refactor too.
 
 **Core Philosophy:**
 
@@ -567,22 +620,35 @@ single-command page is the same document with one entry, which is what keeps the
 
 #### `generate-skill`
 
-Writes the same reference as `SKILL.md` into the agent-skill directories (`.github/skills/mgsnake/` for GitHub
-Copilot, `.claude/skills/mgsnake/` for Claude, or both), then asks how those files should be tracked in git —
-`.git/info/exclude`, `.gitignore`, or left versioned. Also `no_init`, and it renders through
-`render_command_reference()` so its content cannot diverge from `COMMANDS.md`.
+Writes `SKILL.md` into the agent-skill directories (`.github/skills/mgsnake/` for GitHub Copilot,
+`.claude/skills/mgsnake/` for Claude, or both) so the _user's_ assistant can drive mgsnake inside the user's
+own project — which is what makes it user-facing despite documenting mgsnake (§1). Also `no_init`, and its
+body renders through `render_command_reference()` so it cannot diverge from `COMMANDS.md`.
 
-Two properties of the current implementation that a reader will otherwise misjudge:
+Four properties a reader will otherwise misjudge:
 
+- **The YAML frontmatter is what makes the file a skill.** `_skill_document()` prepends `name` and
+  `description`; a `SKILL.md` opening with the reference's own `# Available Commands` heading is not
+  discovered by either runtime, so the command would write a file that achieves nothing. The description is
+  emitted as a **quoted** scalar — a plain YAML scalar may not contain `": "`, which that prose can easily
+  reacquire. The same pair serves both targets, which is why one rendered string still feeds every directory.
+- **Both answers are collected before the first byte is written.** Prompting after writing would strand
+  `SKILL.md` files that are neither excluded nor gitignored whenever the second prompt exhausts its retries.
+  Keep the order; two tests pin that nothing survives an abandoned prompt.
 - **The write path is unconditionally interactive.** It always prompts for the target and always prompts for
   the tracking strategy — there is no "already up to date, skip the questions" branch. Never document or
   script it as if there were: a bare `mgsnake generate-skill` in a hook or a CI step blocks on `input()`.
 - **`--check` only validates files that already exist.** Its purpose is "existing skill files are not stale",
-  not "skill files exist", so it passes on a checkout that has none. What that means for its value as a CI
-  gate — and what would have to change — is recorded in §8.2, not decided here.
+  not "skill files exist", so it passes on a checkout that has none — which is the accepted behaviour, stated
+  in the fragment, not a gap waiting to be closed. It compares the frontmatter like any other line.
 
-**Its outstanding defects are catalogued in §8.2, not fixed.** Read that entry before extending the command:
-it lists what a `SKILL.md` needs to actually be loaded as a skill, and what breaks on Windows today.
+**Git entries are built with `as_posix()`, never `str(Path)`.** On Windows `str()` yields backslashes, and git
+reads a backslash inside an ignore pattern as an escape, so the pattern matches nothing and the files the user
+asked to untrack stay tracked with no error at all — while the idempotency regex, escaping the same string,
+appends a duplicate line on every re-run. This applies to **any** path this project writes into an
+ignore-pattern file, not just this command. `_tracking_entries()` exists as a separate function so the rule
+can be tested against a `PureWindowsPath`: on Linux `str()` and `as_posix()` agree, so nothing else
+discriminates.
 
 #### Document structure (heading levels)
 
@@ -779,6 +845,24 @@ if result.returncode != 0:
 | `ensure_working_path(decline_message=None)` | Get `working_path`, offering to create it when missing (and excluding it from git right away), or raising `UserDeclinedError` when the user says no. Used by `working-env` and by every light-weight pre-flight wrapper. |
 | `exclude_from_git(entries)`                 | Append `(entry, description)` pairs to `.git/info/exclude` — a machine-local exclusion, never committed. Idempotent; skips with a warning outside a git repository and creates the exclude file when missing.            |
 | `add_to_gitignore(entries)`                 | The same, against `.gitignore` — an exclusion the whole team gets. Same signature and same idempotency, so the caller picks the file and nothing else changes.                                                          |
+
+Both ignore-file helpers are thin wrappers over one private `_append_missing_entries()`, which owns the whole
+read-modify-write: the `.git` guard, the presence check, the unterminated-last-line guard, and the decision not
+to write at all. They differ only in the target file and the wording of three messages. **Keep it that way** —
+when the two were separate copies, every fix to the matching or the newline handling had to be applied twice,
+and the descriptions of what "idempotent" meant had already started to drift apart.
+
+Two behaviours of that shared implementation are contractual, not incidental:
+
+- **A run that adds nothing writes nothing.** The missing entries are computed before the text is touched, so
+  the file is not reopened at all — its bytes and its mtime survive. Appending the separator newline up front
+  would rewrite an unterminated file on every no-op run, which is what "idempotent" in the docstrings denies.
+- **A file whose last line has no newline gets a separator first.** Otherwise the first new entry is merged
+  onto the existing last pattern, producing a line that matches nothing and silently loses two exclusions.
+  `.gitignore` files edited by hand routinely end mid-line — this repository's own does.
+
+Entries handed to either helper must use forward slashes (`Path.as_posix()`), for the reason spelled out under
+`generate-skill` in §3.7: git reads a backslash in an ignore pattern as an escape.
 
 **Anything that creates a folder under the repo must exclude it from git in the same step** — that is what
 `ensure_working_path` does, and why nothing else should call `os.makedirs(working_path)` directly.
@@ -1358,62 +1442,59 @@ entry names the fragment sentence that has to be deleted when the work lands.
 > still true into the permanent sections (§6.4 rule 1). An entry that survives its own fix is worse than none:
 > it advertises a defect the code no longer has.
 
-### 8.1 Repo-only commands shipped in user-facing groups (§1, §3.7)
+### 8.1 `generate-docs` carries this repository's own workflow (§1, §3.7)
 
-**What.** `generate-docs`, `man` and `generate-skill` introspect `mgsnake`'s own CLI. A user who installs
-`mega-snake` and runs them in their Java project gets a `COMMANDS.md` / `SKILL.md` describing _mgsnake_, which
-directly contradicts §1's first rule.
+**What.** `generate-docs` is a public command whose two defining surfaces exist for this repository:
+it defaults to writing `COMMANDS.md` into the current directory — a filename that means something
+here and nothing in a user's Java project — and `--check` exists only to fail this repository's CI
+when that committed file drifts. Rendering the reference is legitimate user-facing behaviour (`man`
+does the same thing to a pager, `generate-skill` to a `SKILL.md`); the default target and the check
+mode are the maintainer's workflow shipped to strangers.
 
-**Where.** `src/mega_snake/docs_gen/` — the lazy `from mega_snake.__main__ import cli` inside
-`render_command_reference()` and `man_page._introspected_commands()`; registration in `docs_gen/module.py`.
+**Where.** `src/mega_snake/docs_gen/generate_docs.py` — the `--output` default (`DOCS_OUTPUT_FILE`)
+and the `--check` flag; registration in `docs_gen/module.py`.
 
-**Why it was left.** The commands are genuinely needed for this repository's own workflow, and the correct
-home — a mega-snake-only command module, hidden from the user-facing groups — is a bigger change than any of
-the PRs that added them. Each was accepted as debt on the promise it would not become a precedent; the list
-has since grown from one entry to three, which is the reason this catalogue exists.
+**Why it was left.** The command is genuinely needed for this repository's workflow, and the correct
+home — a mega-snake-only command group, hidden from an installed user — is a bigger change than any
+of the PRs that touched it. `man` and `generate-skill` were examined against the same rule and pass
+it (§1): their audience is the mgsnake user, so they must **not** be swept into this move.
 
-**Shape of the fix.** Move the three commands into a dedicated module whose group is not registered in
-`MODULES` for a normal invocation (e.g. registered only when `mgsnake` runs from a source checkout of itself,
-or exposed under an explicitly internal group). `docs_gen` was deliberately kept self-contained so the move
-stays mechanical: nothing outside it imports its internals except `__main__`'s registration.
+**Shape of the fix.** Move `generate-docs` into a module whose group is not registered in `MODULES`
+for a normal invocation — registered only when `mgsnake` runs from a source checkout of itself, or
+exposed under an explicitly internal group. `docs_gen` was deliberately kept self-contained so the
+move stays mechanical: nothing outside it imports its internals except `__main__`'s registration,
+and `render_command_reference()` is already the public seam the other two commands share. If the
+"export the reference to a file" half turns out to be worth keeping for users, it survives as an
+option on `man` rather than as a second command.
 
-**Verify.** The three commands disappear from `mgsnake --help` for an installed user; `COMMANDS.md` no longer
-documents them (regenerate it — the fragments move with the commands, §6.3); §1's known-violation block and
-§3.7 are deleted rather than reworded.
+**Verify.** `generate-docs` disappears from `mgsnake --help` for an installed user while `man` and
+`generate-skill` stay; `COMMANDS.md` no longer documents it (regenerate it — the fragment moves with
+the command, §6.3); the release workflow's `generate-docs --check` step still runs in this
+repository; §1's "the test is the audience" block and §3.7 are updated rather than reworded.
 
-### 8.2 `generate-skill` defects, unfixed and shipped (§3.7)
+### 8.2 The generated `SKILL.md` loads the whole reference eagerly (§3.7)
 
-The command writes files and asks about git tracking, and does both with known defects. They are listed
-individually because they are independent fixes.
+**What.** `generate-skill` writes valid frontmatter followed by the entire ~900-line command
+reference as the skill body. Both runtimes load a skill's body eagerly once the skill triggers, and
+both are designed for progressive disclosure — a short body that points at reference files read on
+demand. So the file works, but it spends far more of the user's assistant context than it needs to.
 
-1. **The generated `SKILL.md` has no YAML frontmatter, so no runtime loads it as a skill.** The content is
-   byte-for-byte `COMMANDS.md`, starting with `# Available Commands`; both agent-skill formats the command
-   targets require the file to open with frontmatter carrying at least `name` and `description`. As shipped,
-   the command's stated purpose is not achieved by the file it writes. **Fix:** prepend per-target frontmatter
-   — which means `write_or_check_document()` can no longer receive one shared string for both targets, and
-   `--check` must compare the frontmatter too or a `name`/`description` edit is invisible to it. Decide at the
-   same time whether the entire ~900-line reference should be the skill _body_: these formats expect
-   progressive disclosure, and the body is loaded eagerly once the skill triggers.
-2. **The git-tracking entries are broken on Windows.** `_apply_tracking` builds them as `str(skill_dir) + "/"`,
-   which on Windows yields `.github\skills\mgsnake/`; git reads `\s` and `\m` as escapes, so the pattern
-   matches nothing and the files the user asked to untrack stay tracked, silently. The idempotency regex
-   escapes the same string, so a re-run appends a duplicate line every time. **Fix:** `skill_dir.as_posix()`.
-   **Verify:** the assertion must be the literal `".github/skills/mgsnake/"`, not `str(SKILL_COPILOT_DIR) + "/"`
-   — the current test restates the expression under test, which is why it passes on every platform regardless
-   of what the code produces (testing principles §9).
-3. **The `(entry, description)` pair is passed the same path twice**, so the log line reads `Excluded
-   .github/skills/mgsnake/ in .git/info/exclude`. The description field is the human label (`"workspace_temp
-   folder"`); give it one.
-4. **The write path leaves files behind when the tracking prompt fails.** `generate_skill()` writes first and
-   prompts second, so exhausting the retries on `_prompt_tracking()` exits `109` with `SKILL.md` written and
-   not excluded. **Fix:** ask both questions before touching disk. **Verify:** a test that drives the `KeyError`
-   and asserts both halves — what survived (the files) and what never ran (`exclude_from_git` /
-   `add_to_gitignore` not called). No test in `src/tests/docs_gen/test_generate_skill.py` currently drives a
-   failing prompt at all (testing principles §8).
-5. **`--check` is vacuous as a CI gate for the `e`/`g` tracking options.** It validates only files that exist,
-   so for a team that excluded them the check can never do anything but pass. Either accept it as a local
-   staleness check and say so, or give it a notion of which targets are expected (a committed marker, or an
-   explicit `--target`).
+**Where.** `src/mega_snake/docs_gen/generate_skill.py`, `_skill_document()` and `_write_skill_files()`.
+
+**Why it was left.** The fix changes what lands in the user's repository (one file becomes a
+directory of them), which is a product decision, not a cleanup. Getting the file *loadable* was the
+defect worth fixing on its own.
+
+**Shape of the fix.** Keep `SKILL.md` as frontmatter plus a generated index — command name, aliases
+and `short_help`, which introspection already provides — and write the full reference beside it as
+`reference.md` that the body tells the agent to read when it needs detail. Note the constraint this
+runs into: §3.7 forbids a second renderer, and an index is a second projection of the same
+`IntrospectedCommand` list. Render it from that list, never from a second walk of the CLI, so the
+two documents cannot disagree.
+
+**Verify.** `--check` has to compare every file the command writes, not just `SKILL.md`, or the
+reference half drifts invisibly; the `## Output` section of `resources/docs/generate-skill.md` lists
+both files; `COMMANDS.md` regenerated (§6.3).
 
 ### 8.3 `load-env`'s bare-invocation fallback and the double load (§7.4)
 

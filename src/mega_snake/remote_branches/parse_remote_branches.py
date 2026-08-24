@@ -154,18 +154,19 @@ def delete_branches(garbage: list[Garbage]) -> DeletionOutcome:
     the inventory, so re-probing the references here would only repeat that answer. Each side is
     also deleted under **its own** name, which the two are free to disagree on (see :class:`Garbage`).
 
-    The two sides are caught independently. Sharing one ``except`` made a failed local deletion
-    indistinguishable from a successful one: once ``git push -d`` had removed the remote copy, a
-    failing ``git branch -D`` (a checked-out branch, another worktree, an ``index.lock``) left the
-    local copy in place while the run still reported success — the local deletion is the destructive
-    half, and it was the half nobody heard about. Every attempt now reports its own outcome, and the
-    failures are returned so the caller can say what survived. A failure on either side moves on to
-    the next branch, so a single unreachable or protected branch does not abort the whole cleanup.
+    **The two sides are caught independently, and must stay that way.** One ``except`` around both
+    makes a failed local deletion indistinguishable from a successful one: with ``git push -d`` done,
+    a failing ``git branch -D`` — a checked-out branch, another worktree, an ``index.lock`` — leaves
+    the local copy in place while the run still reports success. That is the destructive half of the
+    operation going unreported, which is the worst thing a cleanup command can do. Every attempt
+    reports its own outcome, and the failures are returned so the caller can say what survived. A
+    failure on either side moves on to the next branch, so a single unreachable or protected branch
+    does not abort the whole cleanup.
 
-    What the split does **not** change is the policy: a branch whose remote deletion failed keeps its
-    local copy, because the remote copy survived and dropping the local one would leave the user
-    without the copy they can act on. That was already the behaviour — it was just implied by the
-    shared ``except`` rather than stated, and therefore never reported.
+    The policy the split makes visible: a branch whose remote deletion failed keeps its local copy,
+    because the remote copy survived and dropping the local one would leave the user without the copy
+    they can act on. State it in the reporting — a policy only a reader of the control flow can infer
+    is a policy the user never learns about.
 
     The remote is only resolved (and required) when at least one selected branch has a remote side,
     so a local-only cleanup works in a repository without remotes.

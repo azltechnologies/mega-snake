@@ -1,6 +1,7 @@
 """Test cases for formatting.py"""
 
 import logging
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 from typing import Generator, Callable
 from types import SimpleNamespace
@@ -297,7 +298,7 @@ def test_ws_error(mk_logger: MagicMock) -> None:
         assert extra.get("namefile") == "unknown file"
 
 
-def test_workspace_error(mk_error: MagicMock) -> None:
+def test_workspace_error(mk_error: MagicMock, tmp_path: Path) -> None:
     """Test WorkspaceError class"""
     value_error_message = "This is a value error"
     workspace_error_message = "This is a workspace error"
@@ -336,7 +337,9 @@ def test_workspace_error(mk_error: MagicMock) -> None:
 
     # Test when logs are set up
     # with patch("mega_snake.util.formatting.logging") as mock_file_handler:
-    config_log("workspace_error_file.log", logging.INFO)
+    # Into tmp_path, never the repository root: a relative name here made every test run drop a
+    # workspace_error_file.log into the working tree, untracked and growing.
+    config_log(str(tmp_path / "workspace_error_file.log"), logging.INFO)
     try:
         raise ValueError(value_error_message)
     except ValueError as val_err:

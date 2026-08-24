@@ -30,7 +30,7 @@ def render_command_reference() -> str:
     Returns:
         str: The fully rendered Markdown command reference.
     """
-    from mega_snake.__main__ import cli  # noqa: PLC0415
+    from mega_snake.__main__ import cli
 
     return render_markdown(iter_introspected_commands(cli))
 

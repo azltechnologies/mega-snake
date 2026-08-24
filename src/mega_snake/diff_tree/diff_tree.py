@@ -308,15 +308,21 @@ def _create_files(
     """
     Creates new files for each file type in the specified location.
 
-    Binary files are detected via ``binary_files`` and written with a placeholder instead
-    of their raw contents, since dumping binary bytes into a text snapshot has no value and
-    previously crashed the command with a UnicodeDecodeError.
+    Binary files are detected via ``binary_files`` and written with a placeholder instead of their
+    raw contents: dumping binary bytes into a text snapshot has no value for a reader and cannot be
+    decoded, so writing them raises UnicodeDecodeError and takes the whole command down.
 
-    Args:
-        location: str
-        main_branch: str
-        show_contents: bool
-        binary_files: Optional[set[str]]
+    Parameters:
+        location: Directory the snapshot files are written into.
+        main_branch: Name of the branch the diff is taken against.
+        show_contents: Whether to write each file's contents rather than an empty placeholder.
+        binary_files: Paths git reported as binary, or None when nothing is binary.
+
+    Raises:
+        None
+
+    Returns:
+        None
     """
     contents: str
     binary_files = binary_files or set()

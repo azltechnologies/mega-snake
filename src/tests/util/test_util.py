@@ -540,6 +540,44 @@ def test_add_to_gitignore_separates_an_unterminated_last_line(
     mk_ws_advice.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    ("helper_name", "target_name"),
+    [("add_to_gitignore", "GITIGNORE_FILE"), ("exclude_from_git", "GIT_EXCLUDE_FILE")],
+)
+def test_appending_nothing_leaves_the_file_byte_identical(
+    helper_name: str,
+    target_name: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_util_ws_success: MagicMock,
+    mk_ws_advice: MagicMock,
+) -> None:
+    """A run where every entry is already listed must not rewrite the file at all.
+
+    The fixture deliberately omits the final newline: with one present, rewriting and not rewriting
+    produce identical bytes, so only an unterminated file distinguishes a real no-op from a
+    read-modify-write that happens to reproduce the same content plus a normalized ending.
+    """
+    import mega_snake.util.util as util_module
+
+    helper = getattr(util_module, helper_name)
+    target = getattr(util_module, target_name)
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".git").mkdir()
+    file_path = tmp_path / target
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    before = ".github/skills/mgsnake/\n.claude/skills/mgsnake/"  # No trailing newline, on purpose.
+    file_path.write_text(before, encoding="utf-8")
+
+    helper(GITIGNORE_ENTRIES)
+
+    after = file_path.read_text(encoding="utf-8")
+    assert after == before, f"{target} was rewritten although every entry was already present"
+    mk_util_ws_success.assert_not_called()
+    assert mk_ws_advice.call_count == len(GITIGNORE_ENTRIES)
+
+
 def test_add_to_gitignore_outside_a_git_repository(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

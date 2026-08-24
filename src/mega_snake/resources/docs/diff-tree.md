@@ -2,7 +2,7 @@ Useful for code reviews, progress comments on a ticket, and release notes: it an
 touch since master?" without scrolling through `git log`.
 
 Both ends of the comparison move independently: `--origin-hash` sets where it starts, `--target-hash`
-sets where it ends. With both, the range is fully explicit and no longer anchored to the current checkout,
+sets where it ends. With both, the range is fully explicit and not anchored to the current checkout,
 which is what makes it possible to reconstruct a past release from the two commits that bound it.
 
 ## Output

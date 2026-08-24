@@ -47,8 +47,8 @@ def execute(override: bool) -> None:
     if not os.path.exists(local_file) or override:
         shell = get_property("shell")
         env_name = os.path.basename(env_file)
-        # The shell init script no longer announces its helpers on every new terminal, so this
-        # header is where a user finds out how to reload the file they are looking at.
+        # The shell init script deliberately stays silent on every new terminal, so this header is
+        # the one place a user finds out how to reload the file they are looking at.
         contents = "# This file is used to store local configurations for the project.\n"
         contents += f"# Reload it in your current terminal with: {APP_NAME} {RELOAD_CONFIG_COMMAND}\n"
         contents += f"# See every available command with: {APP_NAME} --help\n"
