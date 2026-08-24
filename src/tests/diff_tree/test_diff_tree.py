@@ -305,8 +305,8 @@ def test_diff_tree_main_paths() -> None:
     with patch("mega_snake.diff_tree.diff_tree.get_property", return_value="/tmp"), patch(
         "mega_snake.diff_tree.diff_tree.os.path.exists", return_value=False
     ), patch("mega_snake.diff_tree.diff_tree.get_current_commit", return_value="head"), patch(
-        "mega_snake.diff_tree.diff_tree.get_remote", return_value="origin"
-    ), patch("mega_snake.diff_tree.diff_tree.get_main_branch", return_value="main"), patch(
+        "mega_snake.diff_tree.diff_tree.Repo", **{"return_value.MAIN_BRANCH": "main"}
+    ), patch(
         "mega_snake.diff_tree.diff_tree.os.makedirs"
     ), patch("mega_snake.diff_tree.diff_tree.run_operation") as run_operation:
         run_operation.return_value.stdout = ""
@@ -468,8 +468,8 @@ def test_diff_tree_rejects_an_invalid_target() -> None:
     with patch("mega_snake.diff_tree.diff_tree.get_property", return_value="/tmp"), patch(
         "mega_snake.diff_tree.diff_tree.os.path.exists", return_value=False
     ), patch("mega_snake.diff_tree.diff_tree.os.makedirs"), patch(
-        "mega_snake.diff_tree.diff_tree.get_main_branch", return_value="master"
-    ), patch("mega_snake.diff_tree.diff_tree.get_remote", return_value="origin"), patch(
+        "mega_snake.diff_tree.diff_tree.Repo", **{"return_value.MAIN_BRANCH": "master"}
+    ), patch(
         "mega_snake.diff_tree.diff_tree.run_operation"
     ) as run_operation:
         run_operation.return_value = SimpleNamespace(returncode=0, stdout="blob")
@@ -559,8 +559,8 @@ def test_diff_tree_validates_the_target_before_touching_the_output() -> None:
     ), patch("mega_snake.diff_tree.diff_tree.shutil.rmtree") as rmtree, patch(
         "mega_snake.diff_tree.diff_tree.os.makedirs"
     ) as makedirs, patch(
-        "mega_snake.diff_tree.diff_tree.get_main_branch", return_value="master"
-    ), patch("mega_snake.diff_tree.diff_tree.get_remote", return_value="origin"), patch(
+        "mega_snake.diff_tree.diff_tree.Repo", **{"return_value.MAIN_BRANCH": "master"}
+    ), patch(
         "mega_snake.diff_tree.diff_tree.run_operation"
     ) as run_operation:
         run_operation.return_value = SimpleNamespace(returncode=0, stdout="tree")
@@ -597,9 +597,9 @@ def test_diff_tree_reports_a_mistyped_hash_as_an_invalid_commit(option: str) -> 
         "mega_snake.diff_tree.diff_tree.os.path.exists", return_value=True
     ), patch("mega_snake.diff_tree.diff_tree.shutil.rmtree") as rmtree, patch(
         "mega_snake.diff_tree.diff_tree.os.makedirs"
-    ), patch("mega_snake.diff_tree.diff_tree.get_main_branch", return_value="master"), patch(
-        "mega_snake.diff_tree.diff_tree.get_remote", return_value="origin"
-    ), patch("mega_snake.diff_tree.diff_tree.get_current_commit", return_value="head"), patch(
+    ), patch("mega_snake.diff_tree.diff_tree.Repo", **{"return_value.MAIN_BRANCH": "master"}), patch(
+        "mega_snake.diff_tree.diff_tree.get_current_commit", return_value="head"
+    ), patch(
         "mega_snake.diff_tree.diff_tree.run_operation"
     ) as run_operation:
         # What git actually returns for a name it cannot resolve: non-zero, and nothing on stdout.

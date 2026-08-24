@@ -1,61 +1,41 @@
-"""Creates a detailed list of remote branches filtered by type"""
+"""Creates a detailed markdown report of the repository's branches filtered by merge status."""
 
-import re
-import os
-from typing import Optional
+from datetime import datetime, timezone
 import click
-from mega_snake.util.formatting import ws_info, ws_success, ws_advice
-from mega_snake.remote_branches.remote_branch import GitBranch, REMOTE_PREFIX, LOCAL_PREFIX
-from mega_snake.util.util import run_operation, get_main_branch, require_remote
-from mega_snake.util.props import get_property
 from mega_snake.constants import REMOTE_BRANCHES_OPT
+from mega_snake.remote_branches.remote_branch import BranchLoader, GitBranch
+from mega_snake.util.formatting import ws_info, ws_success
+from mega_snake.util.props import get_property
+from mega_snake.util.repo import Repo
+from mega_snake.util.util import run_operation
+
+FILTER_LABELS: dict[str, str] = {
+    "A": "all branches",
+    "M": "fully merged branches",
+    "U": "not fully merged branches",
+}
 
 
 def get_output_file() -> str:
-    """Returns the path to the output file"""
-    return f"{get_property('working_path')}/remote_branches.txt"
-
-
-def _get_local_only_branches(remote_refs: list[str], remote: str, main_branch: str) -> list[str]:
-    """List the local branches that have no counterpart on the remote.
-
-    These are the branches the remote-only listing structurally cannot see, and they are the most
-    common form of dead branch: once a pull request is merged the hosting platform usually deletes the
-    branch, ``git fetch --prune`` drops the remote-tracking reference, and the local branch is left
-    behind forever with nothing left to compare it to. Reporting them here lets the same merge
-    detection — run against ``remotes/{remote}/{main_branch}`` — decide whether they are safe to
-    delete, instead of leaving the user to eyeball ``git branch`` by hand.
-
-    The remote-tracking references already collected by the caller are reused as the exclusion set, so
-    a branch that still exists on the remote keeps being reported once, through the remote listing.
-    The main branch is excluded because it is never a deletion candidate.
+    """Return the path to the markdown report file.
 
     Parameters:
-        remote_refs: The remote references already collected, e.g. ``remotes/origin/feature``.
-        remote: The name of the remote the references belong to.
-        main_branch: The name of the main branch.
+        None
 
     Raises:
         None
 
     Returns:
-        list[str]: The local branch names with no counterpart on the remote, in the order git lists them.
+        str: The report path under the working path.
     """
-    tracked: set[str] = {ref.strip().replace(f"{REMOTE_PREFIX}/{remote}/", LOCAL_PREFIX) for ref in remote_refs}
-    local_branches: str = run_operation(
-        f"git for-each-ref --format='%(refname)' {LOCAL_PREFIX}", "Getting local branches"
-    ).stdout.strip()
-    return [
-        branch
-        for branch in (line.strip() for line in local_branches.splitlines())
-        if branch and branch != main_branch and branch not in tracked
-    ]
+    return f"{get_property('working_path')}/remote_branches.md"
 
 
 @click.command(
     name="remote-branches-details",
-    short_help="Gets details of remote branches",
-    help="Creates a detailed list of remote branches filtered by type",
+    short_help="Gets details of the repository branches",
+    help="Creates a detailed markdown report of the repository's branches — local, remote and paired — "
+    "filtered by merge status against the main branch",
     epilog="usage: mgsnake remote-branches-details [OPTIONS]",
 )
 @click.option(
@@ -63,80 +43,77 @@ def _get_local_only_branches(remote_refs: list[str], remote: str, main_branch: s
     "-f",
     type=click.Choice(REMOTE_BRANCHES_OPT, False),
     help="""filter branches by merge status against main branch:\n
-    'M' - merged branches\n
-    'U' - unmerged branches\n
+    'M' - fully merged branches (every existing side is merged)\n
+    'U' - not fully merged branches\n
     'A' - all branches (default)\n""",
     default="A",
 )
 def remote_branches_details(filter_by: str) -> None:
     """
-    Calls the execute function to create a detailed list of remote branches filtered by type
+    Calls the execute function to create a detailed markdown report of the repository branches.
 
     Args:
-        filter_by: str - (A)ll [default], (M)erged or (U)nmerged against the main branch
+        filter_by: str - (A)ll [default], fully (M)erged or (U)nmerged against the main branch
     """
     execute(filter_by)
 
 
-def execute(filter_by: str, remote: Optional[str] = None) -> None:
+def execute(filter_by: str) -> None:
     """
-    Creates a detailed list of remote branches filtered by type: fetches and prunes the remotes,
-    inspects every remote branch, and writes the report to workspace_temp/remote_branches.txt.
+    Creates the branches report: builds the branch inventory (which offers to fetch/prune first),
+    applies the requested filter, and writes the markdown report to workspace_temp/remote_branches.md.
 
     Args:
-        filter_by: str - (A)ll [default], (M)erged or (U)nmerged against the main branch
-        remote: Optional[str] - The remote to inspect; resolved via require_remote() when omitted
+        filter_by: str - (A)ll [default], fully (M)erged or (U)nmerged against the main branch
+
+    Raises:
+        ValueError: If the filter is not one of the allowed values, or the repository has no branches.
     """
     if filter_by not in REMOTE_BRANCHES_OPT:
         raise ValueError(
             f"Invalid filter: {filter_by}; filter value must be one of:\n {' | '.join(REMOTE_BRANCHES_OPT)}"
         )
-    if not remote:
-        remote = require_remote()
-    run_operation(f"git fetch {remote} --prune", "Fetching all remotes and pruning deleted branches", timeout=15)
-    main_branch: str = get_main_branch(remote)
-    list_output: str = get_output_file()
-    # check if list_output directory exists. if so, delete it
-    if os.path.exists(list_output):
-        os.remove(list_output)
-
-    opt_remote_branches: list[Optional[GitBranch]] = []
-    branches: str = run_operation(
-        f"git for-each-ref --format='%(refname)' {REMOTE_PREFIX}", "Getting remote branches"
-    ).stdout.strip()
+    branches: list[GitBranch] = BranchLoader.from_repository()
     if not branches:
-        raise ValueError("No remote branches found in the current repository")
-    matches = re.findall(rf"^\s*{REMOTE_PREFIX}/(?!{remote}/HEAD){remote}/\S+$", branches, re.MULTILINE)
-    total_branches = len(matches)
-    ws_info(f"Main branch: {main_branch}; Found {total_branches} remote branches to process")
-    ws_advice(f"remote branches found:\n{matches}")
-    for match in matches:
-        branch: str = str(match)
-        # if branch include single or double quotes, wrap it in the opposite quotes
-        if '"' in branch:
-            branch = f"'{branch}'"
-        elif "'" in branch:
-            branch = f'"{branch}"'
-        ws_info(f"Processing branch: {branch} filtered by: '{filter_by}'")
-        if remote:
-            opt_remote_branches.append(GitBranch.from_branch(branch, filter_by, main_branch, remote))
-        total_branches -= 1
-        ws_info(f"Remaining branches to process: {total_branches}")
+        raise ValueError("No branches found in the current repository")
+    ws_info(f"Main branch: {Repo.MAIN_BRANCH}; Found {len(branches)} branches to describe")
+    if filter_by == "M":
+        branches = [branch for branch in branches if branch.fully_merged]
+    elif filter_by == "U":
+        branches = [branch for branch in branches if not branch.fully_merged]
+    branches = sorted(branches, reverse=True)
+    output_file: str = get_output_file()
+    with open(output_file, "w", encoding="utf-8") as file:
+        file.write(render_markdown_report(branches, filter_by))
+    run_operation(f"code {output_file}", "opening remote branches file")
+    ws_success(f"Successfully created remote branches details file at: {output_file}")
 
-    local_only_branches: list[str] = _get_local_only_branches(matches, remote, main_branch)
-    ws_info(f"Found {len(local_only_branches)} local branches with no counterpart on '{remote}' to process")
-    ws_advice(f"local-only branches found:\n{local_only_branches}")
-    for local_branch in local_only_branches:
-        ws_info(f"Processing local-only branch: {local_branch} filtered by: '{filter_by}'")
-        opt_remote_branches.append(GitBranch.from_branch(local_branch, filter_by, main_branch, remote, local_only=True))
 
-    remote_branches: list[GitBranch] = [x for x in opt_remote_branches if x is not None]
-    # sort the remote branches by
-    remote_branches = sorted(remote_branches, key=lambda r: r.commit.dt, reverse=True)
-    output: str = ""
-    for remote_branch in remote_branches:
-        output += remote_branch.printing_remote_branches_details()
-    with open(list_output, "a", encoding="utf-8") as file:
-        file.write(output)
-    run_operation(f"code {list_output}", "opening remote branches file")
-    ws_success(f"Successfully created remote branches details file at: {list_output}")
+def render_markdown_report(branches: list[GitBranch], filter_by: str) -> str:
+    """Render the full markdown report: title, repository context and the branches table.
+
+    Parameters:
+        branches: The branches to report, already filtered and sorted.
+        filter_by: The filter the report was built with, echoed in the header.
+
+    Raises:
+        None
+
+    Returns:
+        str: The markdown document.
+    """
+    # TODO: add a --format option so the user can choose the columns and the output shape instead
+    # of this fixed table (tracked alongside GitBranch.MD_HEADER).
+    generated: str = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    header: str = (
+        "# Branches Report\n\n"
+        f"- **Remote:** {Repo.REMOTE or GitBranch.SHORT_NA}\n"
+        f"- **Main branch:** {Repo.MAIN_BRANCH}"
+        f" (local: {GitBranch.hash_cell(Repo.MAIN_LOCAL_HASH)},"
+        f" remote: {GitBranch.hash_cell(Repo.MAIN_REMOTE_HASH)})\n"
+        f"- **Filter:** {filter_by} ({FILTER_LABELS[filter_by]})\n"
+        f"- **Generated:** {generated}\n\n"
+        f"## Branches ({len(branches)})\n\n"
+    )
+    rows: str = "\n".join(branch.to_markdown_row() for branch in branches)
+    return f"{header}{GitBranch.MD_HEADER}\n{rows}\n" if rows else f"{header}No branches match the filter.\n"

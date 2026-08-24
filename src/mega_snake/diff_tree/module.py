@@ -22,8 +22,8 @@ def wrapper(_ctx: click.Context, *_args, **_kwargs) -> None:
     so this check runs instead: it offers to create the folder and, if the user declines, fails
     with a clean error rather than letting the command crash while writing its output files.
 
-    Unlike the remote_branches commands, no remote is required here: when the repository has none,
-    ``get_main_branch`` falls back to the current local branch.
+    No remote is required here: the ``Repo`` snapshot resolves the main branch from the remote when
+    one exists, and asks the user to name the local main branch otherwise.
 
     Once the working path is secured, ``complete_app_properties`` finishes the initialization that
     light-weight mode deferred, so the rest of the command logs to file and honours --log-level.

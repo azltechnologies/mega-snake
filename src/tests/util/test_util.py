@@ -16,11 +16,10 @@ from mega_snake.util.util import (
     get_command_return_code,
     get_input_or_default,
     get_validated_input,
+    get_typed_validated_input,
     get_remote,
     get_remote_url,
-    get_main_branch,
     get_current_commit,
-    ref_exists,
     cli_metadata,
     require_remote,
     reset_remote_cache,
@@ -129,7 +128,7 @@ def test_run_operation(mk_ws_warning: MagicMock, mk_subprocess_run: MagicMock) -
         result = run_operation(command, description)
     mk_ws_warning.assert_not_called()
     mk_subprocess_run.assert_called_once_with(
-        ["bash", "-c", command], shell=False, check=True, capture_output=True, text=True, errors="replace"
+        ["bash", "-c", command], shell=False, check=True, capture_output=True, text=True, errors="replace", timeout=None
     )
     assert result.stdout == "Hello, World!"
     mk_subprocess_run.reset_mock()
@@ -160,37 +159,74 @@ def test_get_command_return_code() -> None:
     # Test with a valid command
     command = "echo 'Hello, World!'"
     expected_return_code = 0
-    result = get_command_return_code(command)
+    result = get_command_return_code(command, "Running a valid command")
     assert result == expected_return_code
 
     # Test with an invalid command
     command = "invalid_command"
     expected_return_code = 127  # Typically, this is the return code for command not found
-    result = get_command_return_code(command)
+    result = get_command_return_code(command, "Running an invalid command")
     assert result == expected_return_code
 
 
-def test_ref_exists_reports_presence_from_the_return_code() -> None:
-    """A reference is reported as present only for a zero status, and the probe must ask git about
-    the exact fully qualified reference it was given."""
-    with patch("mega_snake.util.util.get_command_return_code", return_value=0) as return_code:
-        assert ref_exists("refs/heads/feature") is True
-    return_code.assert_called_once_with('git show-ref --verify --quiet "refs/heads/feature"')
-
-    with patch("mega_snake.util.util.get_command_return_code", return_value=1) as return_code:
-        assert ref_exists("refs/remotes/origin/feature") is False
-    return_code.assert_called_once_with('git show-ref --verify --quiet "refs/remotes/origin/feature"')
+def test_get_typed_validated_input_accepts_a_listed_value(mk_input: MagicMock, mk_ws_warning: MagicMock) -> None:
+    """A value present in the allowed list is returned as-is, with no warning shown."""
+    mk_input.return_value = "master"
+    assert get_typed_validated_input("Main branch?", "not a branch", ["master", "develop"]) == "master"
+    mk_ws_warning.assert_not_called()
 
 
-def test_ref_exists_does_not_go_through_run_operation() -> None:
-    """A missing reference is an expected answer, not a failure: routing the probe through
-    ``run_operation`` would retry three times with a two second pause and log the miss as a
-    successful operation, so the probe must not use it."""
-    with patch("mega_snake.util.util.run_operation") as run_operation, patch(
-        "mega_snake.util.util.get_command_return_code", return_value=1
-    ):
-        assert ref_exists("refs/heads/never-checked-out") is False
-    run_operation.assert_not_called()
+def test_get_typed_validated_input_retries_until_a_listed_value_arrives(
+    mk_input: MagicMock, mk_ws_warning: MagicMock
+) -> None:
+    """A rejected value is warned about and asked again; the caller only ever receives a listed
+    one, never the rejected input."""
+    mk_input.side_effect = ["nope", "develop"]
+    result = get_typed_validated_input("Main branch?", "not a branch", ["master", "develop"])
+    assert result == "develop"
+    assert result != "nope", "a rejected value must never reach the caller"
+    mk_ws_warning.assert_called_once_with("not a branch")
+
+
+def test_get_typed_validated_input_gives_up_after_too_many_rejections(
+    mk_input: MagicMock, mk_ws_warning: MagicMock
+) -> None:
+    """Prompting forever would trap a scripted caller, so the attempts are capped: the failure is
+    raised (carrying the guidance message) instead of returning a value nobody validated."""
+    mk_input.side_effect = ["a", "b", "c", "d", "e"]
+    with pytest.raises(KeyError, match="run git branch"):
+        get_typed_validated_input("Main branch?", "not a branch", ["master"], fail_msg="run git branch")
+    assert mk_ws_warning.call_count == 4
+
+
+def test_get_typed_validated_input_matches_branch_names_case_sensitively(
+    mk_input: MagicMock, mk_ws_warning: MagicMock
+) -> None:
+    """The answer is compared verbatim, because the values are git branch names and git treats
+    `Main` and `main` as two different branches.
+
+    This is the regression: the answer used to be lowercased before the comparison, which made
+    every branch carrying an uppercase letter impossible to select — the user typed the name git
+    itself reports, and the tool rejected it while warning that names are case-sensitive.
+    """
+    mk_input.return_value = "Main"
+    assert get_typed_validated_input("Main branch?", "not a branch", ["Main", "develop"]) == "Main"
+    mk_ws_warning.assert_not_called()
+
+    # The mirror half: matching verbatim must also reject a case that does not exist, rather than
+    # quietly resolving to the branch that differs only in case.
+    mk_input.side_effect = ["main", "main", "main", "main", "main"]
+    with pytest.raises(KeyError):
+        get_typed_validated_input("Main branch?", "not a branch", ["Main"])
+
+
+def test_get_typed_validated_input_returns_the_answer_untouched(mk_input: MagicMock) -> None:
+    """Whatever transformation the comparison applied would also reach the caller, and the caller
+    builds git references out of this value — so it must come back exactly as it was typed."""
+    for branch in ("release/ABC-123", "Feature_X", "MASTER"):
+        mk_input.side_effect = None
+        mk_input.return_value = branch
+        assert get_typed_validated_input("Main branch?", "warn", [branch]) == branch
 
 
 def test_get_input_or_default(mk_input: MagicMock, mk_ws_warning: MagicMock) -> None:
@@ -356,62 +392,6 @@ def test_get_remote_url(mk_run_operation: MagicMock, mk_get_remote: MagicMock) -
     mk_run_operation.return_value.stdout = expected_url
     result = get_remote_url()
     assert result == expected_url
-    mk_get_remote.assert_called_once()
-    mk_run_operation.assert_called_once()
-
-
-def test_get_main_branch(mk_run_operation: MagicMock, mk_get_remote: MagicMock) -> None:
-    """Test get_main_branch function."""
-
-    # Tes when no remote is found
-    mk_get_remote.return_value = None
-    current_branch = "curent"
-    run_operation_result = SimpleNamespace(stdout=current_branch)
-    mk_run_operation.return_value = run_operation_result
-    result = get_main_branch()
-    assert result == current_branch
-    mk_get_remote.assert_called_once()
-    mk_run_operation.assert_called_once()
-    mk_run_operation.reset_mock()
-    mk_get_remote.reset_mock()
-
-    # Test when a remote is found
-    remote_name = "origin"
-    main_branch = "master"
-    mk_get_remote.return_value = remote_name
-    stdout_srt = (
-        f"Fetch URL: https://github.com/dummy/repo.git\n"
-        f"Push  URL: https://github.com/dummy/repo.git\n"
-        f"HEAD branch: {main_branch}\n"
-        f"Remote branches:\n"
-    )
-    run_operation_result = SimpleNamespace(stdout=stdout_srt)
-    mk_run_operation.return_value = run_operation_result
-    result = get_main_branch()
-    assert result == main_branch
-    mk_get_remote.assert_called_once()
-    mk_run_operation.assert_called_once()
-    mk_run_operation.reset_mock()
-    mk_get_remote.reset_mock()
-
-    # Test when a remote is found but no main branch is found
-    mk_get_remote.return_value = remote_name
-    run_operation_result = SimpleNamespace(stdout="")
-    mk_run_operation.return_value = run_operation_result
-    with pytest.raises(LookupError):
-        get_main_branch()
-    mk_get_remote.assert_called_once()
-    mk_run_operation.assert_called_once()
-    mk_run_operation.reset_mock()
-    mk_get_remote.reset_mock()
-
-    # Test when a remote is found but failed to parse the main branch
-    mk_get_remote.return_value = remote_name
-    stdout_srt = "Fetch URL:"
-    run_operation_result = SimpleNamespace(stdout=stdout_srt)
-    mk_run_operation.return_value = run_operation_result
-    with pytest.raises(LookupError):
-        get_main_branch()
     mk_get_remote.assert_called_once()
     mk_run_operation.assert_called_once()
 
