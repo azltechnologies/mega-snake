@@ -66,7 +66,7 @@ def expired_certs(jks_path: str, password: str, verbose: bool) -> None:
     list_cmd: str = f"keytool -v -list -keystore '{jks_path}' -storepass '{password}'"
     # An external command returned non-zero: a wrong password or an unreadable keystore, both of
     # which the user can act on.
-    if get_command_return_code(list_cmd) != 0:
+    if get_command_return_code(list_cmd, "Validating the keytool parameters") != 0:
         raise subprocess.SubprocessError("keytool command failed on implementing parameters.")
     ws_info("Validation of parameters in keytool command succeeded.")
 

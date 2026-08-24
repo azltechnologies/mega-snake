@@ -5,11 +5,12 @@ This module contains utility functions for common operations.
 import json
 import os
 import re
+from typing import Optional, Tuple, Union
 import subprocess
 import platform
 import time
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 import inspect
 import click
 from colorama import init, Fore, Back, Style
@@ -27,15 +28,10 @@ from mega_snake.util.props import get_property
 
 OS = platform.system()
 
-NO_REMOTE_MESSAGE = "No remote repository found. Please add a remote repository to the current repository."
 GIT_EXCLUDE_FILE = os.path.join(".git", "info", "exclude")
 
-# Caches the resolved remote for the lifetime of the process. Resolving it is not free: it spawns a
-# `git remote` subprocess and, when the repository has more than one remote, it prompts the user to
-# pick one. Several call sites need the remote during a single command run (pre-flight wrappers, the
-# commands themselves, get_main_branch), so without this cache the user would be prompted repeatedly
-# for the very same answer.
-_remote_cache: dict[str, Optional[str]] = {}
+REMOTE_PREFIX = "refs/remotes"
+LOCAL_PREFIX = "refs/heads"
 
 # Initialize colopiprama
 init(autoreset=True)
@@ -58,19 +54,59 @@ def load_json_with_comments(file_path: str) -> dict:
         return parser.loads(json_str)
 
 
-def run_operation(cwd: str, description: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-    """
-    Runs the given command and retries on failure up to 3 times.
+def _as_text(stream: Optional[Union[str, bytes]]) -> str:
+    """Render a captured subprocess stream as text, whatever the exception carried.
 
-    Args:
-        cwd: str
-        description: str
+    ``CalledProcessError`` carries the decoded strings ``run_operation`` asked for with ``text=True``,
+    but ``TimeoutExpired`` carries whatever had been read when the timer fired, which is ``bytes`` or
+    ``None``. Both reach the same warning, so the difference is absorbed here instead of at each
+    call site.
+
+    Parameters:
+        stream: The captured stream, already decoded, still raw, or absent.
+
+    Raises:
+        None
 
     Returns:
-        subprocess.CompletedProcess[str]
+        str: The stream as text, or an empty string when there was nothing captured.
+    """
+    if stream is None:
+        return ""
+    return stream if isinstance(stream, str) else stream.decode(errors="replace")
+
+
+def run_operation(
+    cwd: str, description: str, check: bool = True, timeout: Optional[float] = None
+) -> subprocess.CompletedProcess[str]:
+    """Runs the given command and retries on failure up to 3 times.
+
+    Parameters:
+        cwd: The shell command to execute.
+        description: Human-readable description of the operation, used in log messages.
+        check: Whether a non-zero exit code should raise subprocess.CalledProcessError.
+        timeout: Maximum number of seconds to wait for the command to finish, or None to wait
+            indefinitely.
+
+    A timeout is retried like any other failure. It used to propagate on the first attempt instead,
+    because ``subprocess.TimeoutExpired`` is a ``SubprocessError`` but **not** a
+    ``CalledProcessError``, so the ``except`` clause never saw it — which meant a single slow network
+    call (a cold fetch, a VPN, a credential prompt) aborted the whole command with a raw traceback,
+    and the retries that exist precisely for transient failures never ran. The two are caught
+    together and reported the same way; only the wording differs, since a timeout has no exit code
+    to show.
+
+    Raises:
+        subprocess.SubprocessError: If the command still fails — or still times out — after 3
+            attempts.
+
+    Returns:
+        subprocess.CompletedProcess[str]: The result of the last (successful) attempt.
     """
     num_retries = 3
-    ws_advice(f"Running operation: {description} ñnCommand: {cwd}")
+    ws_advice(
+        f"Running operation: {description}; Command: {cwd}; Timeout: {timeout if timeout is not None else 'None'} secs"
+    )
     for attempt in range(1, num_retries + 1):
         shell: str = get_property("shell")
         if OS == "Windows" and shell not in ["powershell", "pwsh"]:
@@ -83,19 +119,30 @@ def run_operation(cwd: str, description: str, check: bool = True) -> subprocess.
         try:
             ws_advice(f"Running: {cwd}")
             result = subprocess.run(
-                [shell, flag, cwd], shell=False, check=check, capture_output=True, text=True, errors="replace"
+                [shell, flag, cwd],
+                shell=False,
+                check=check,
+                capture_output=True,
+                text=True,
+                errors="replace",
+                timeout=timeout,
             )
             ws_advice(f"{description} successfully on attempt {attempt}!")
             ws_advice(f"stdout: {result.stdout}")
             break  # Exit the loop on successful push
-        except subprocess.CalledProcessError as error:
-            ws_warning(f"{description} failed on attempt {attempt}. Error: {error.stdout}")
-            ws_warning(f"Error details: {error.stderr}")
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+            timed_out: bool = isinstance(error, subprocess.TimeoutExpired)
+            detail: str = (
+                f"timed out after {timeout} seconds" if timed_out else f"failed. Error: {_as_text(error.stdout)}"
+            )
+            ws_warning(f"{description} {detail} on attempt {attempt}.")
+            ws_warning(f"Error details: {_as_text(error.stderr)}")
             if attempt == num_retries:
                 raise subprocess.SubprocessError(
                     (
-                        f"{description} failed after {num_retries} attempts.\n"
-                        f"Error: {error.stderr}\n"
+                        f"{description} {'timed out' if timed_out else 'failed'} after "
+                        f"{num_retries} attempts.\n"
+                        f"Error: {_as_text(error.stderr)}\n"
                         f"Commnad: {cwd}, Shell: {shell}"
                     )
                 ) from error
@@ -104,23 +151,68 @@ def run_operation(cwd: str, description: str, check: bool = True) -> subprocess.
     return result
 
 
-def get_command_return_code(command: str) -> int:
+def get_command_return_code(command: str, description: str, timeout: Optional[float] = None) -> int:
     """
     Gets the return code of the given command.
     """
-    result = subprocess.run(command, shell=True, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    ws_advice(
+        f"Getting return code for command: {command}; Description: {description};"
+        f" Timeout: {timeout if timeout is not None else 'None'} secs"
+    )
+    result = subprocess.run(
+        command, shell=True, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=timeout
+    )
     return result.returncode
 
 
-def get_input_or_default(prompt: str, default: Any) -> str:
+def get_typed_validated_input(p_prompt: str, warn: str, valid_values: list[str], fail_msg: Optional[str] = None) -> str:
+    """Ask the user for one of the given values, comparing the answer verbatim.
+
+    The answer is matched **case-sensitively**, unlike ``get_validated_input``. The two exist for
+    different kinds of value: that one offers single-letter choices the tool itself defines
+    (``y``/``n``, ``M``/``U``/``A``), where accepting either case is a convenience; this one offers
+    identifiers that come from the system and whose case is meaningful — git branch names, which
+    git itself treats as distinct. Lowercasing the answer here made every branch carrying an
+    uppercase letter impossible to select, while the warning text told the user the opposite.
+
+    Parameters:
+        p_prompt: The question shown to the user.
+        warn: Message shown after a rejected answer, explaining what is expected.
+        valid_values: The accepted answers, matched exactly as given.
+        fail_msg: Extra guidance appended to the error once the attempts run out.
+
+    Raises:
+        KeyError: If the user fails to give an accepted value within the allowed attempts.
+
+    Returns:
+        str: The accepted value, exactly as the user typed it.
+    """
+    tries: int = 0
+    prompt = p_prompt
+    while True:
+        user_input = input(f"\n{prompt}\n")
+        if user_input in valid_values:
+            return user_input
+        prompt = (
+            f"{Back.BLACK}{Fore.YELLOW}{p_prompt}\ttry again\t—\t{Fore.RED}{3 - tries} attempts left\n{Style.RESET_ALL}"
+        )
+        ws_warning(warn)
+        tries += 1
+        if tries > 3:
+            raise KeyError(
+                f"Too many invalid inputs for '{p_prompt}'. Exiting. {fail_msg if fail_msg is not None else ''}"
+            )
+
+
+def get_input_or_default(p_prompt: str, default: Any) -> str:
     """
     Get user input or return default value
 
     Args:
-        prompt: str
+        p_prompt: str
         default: str
     """
-    user_input = input(f"{prompt} (default: {default})\n")
+    user_input = input(f"{p_prompt} (default: {default})\n")
     if user_input.strip() == "":
         return default
     try:
@@ -158,132 +250,7 @@ def get_validated_input(p_prompt: str, valid_values: list[str]) -> str:
             raise KeyError(f"Too many invalid inputs for '{p_prompt} —— {instructions}'. Exiting.")
 
 
-def reset_remote_cache() -> None:
-    """Clear the cached remote so the next call to get_remote resolves it again.
-
-    Parameters:
-        None
-
-    Raises:
-        None
-
-    Returns:
-        None
-    """
-    _remote_cache.clear()
-
-
-def get_remote() -> Optional[str]:
-    """Get the remote of the repository, resolving it only once per process.
-
-    The result (including ``None``) is cached, so repeated calls within the same command run reuse
-    the first answer instead of spawning another ``git remote`` or prompting the user again when the
-    repository has multiple remotes. If ``git remote`` fails altogether (e.g. the current directory
-    is not a git repository), the failure is reported as a warning and treated as "no remote", so
-    callers get the same friendly handling as a repository without remotes.
-
-    Parameters:
-        None
-
-    Raises:
-        None
-
-    Returns:
-        Optional[str]: The remote name, or None when there is no remote available.
-    """
-    if "remote" in _remote_cache:
-        return _remote_cache["remote"]
-    try:
-        result: str = run_operation("git remote", "Getting remotes").stdout.strip()
-    except subprocess.SubprocessError as error:
-        ws_warning(f"{NO_REMOTE_MESSAGE} Unable to get the remotes: {error}")
-        _remote_cache["remote"] = None
-        return None
-    if not result:
-        _remote_cache["remote"] = None
-        return None
-    remotes: list[str] = result.split("\n")
-    if len(remotes) == 1:
-        _remote_cache["remote"] = remotes[0]
-        return remotes[0]
-    options: list[str] = [str(i) for i in range(0, len(remotes))]
-    prompt: str = "Multiple remotes found in the current repository; Please select one of the following:\n"
-    for index, remote in enumerate(remotes):
-        prompt += f"\t{index}: {remote}\n"
-    remote_index = int(get_validated_input(prompt, options))
-    _remote_cache["remote"] = remotes[remote_index]
-    return remotes[remote_index]
-
-
-def require_remote() -> str:
-    """Get the remote of the repository, failing with a friendly error when there is none.
-
-    This is the single entry point for commands that cannot work without a remote, so they all
-    share the same message and the same (cached) resolution.
-
-    A repository without a remote is not a misuse of the CLI — the user broke no contract — so this
-    raises an environment error rather than a ClickException: the exit status then says "the
-    environment is not set up", which is a different thing for a script to react to than "you called
-    this wrong".
-
-    Parameters:
-        None
-
-    Raises:
-        EnvironmentError: If the repository has no remote configured.
-
-    Returns:
-        str: The remote name.
-    """
-    remote: Optional[str] = get_remote()
-    if not remote:
-        raise EnvironmentError(NO_REMOTE_MESSAGE)
-    return remote
-
-
-def get_remote_url() -> Optional[str]:
-    """
-    Gets the remote URL of the repository.
-    """
-    remote = get_remote()
-    if not remote:
-        return None
-    return re.sub(r"\.git$", "", run_operation(f"git remote get-url {remote}", "Getting remote URL").stdout.strip())
-
-
-def get_main_branch(remote: Optional[str] = None) -> str:
-    """
-    Gets the main branch of the repository.
-
-    Returns:
-        str
-    """
-    if remote is None:
-        remote = get_remote()
-    if not remote:
-        return run_operation("git symbolic-ref --short HEAD", "Getting current local branch").stdout.strip()
-    result = run_operation(f"git remote show {remote}", "Getting main branch").stdout.strip()
-    if not result:
-        raise LookupError(f"No main branch found in the current repository for remote {remote}")
-    pattern = r"^(\s*HEAD branch:\s*)(\S+)"
-    match = re.search(pattern, result, re.MULTILINE)
-    if match:
-        return match.group(2)
-    raise LookupError("No main branch found in the current repository")
-
-
-def get_current_commit() -> str:
-    """
-    Gets the current commit of the repository.
-
-    Returns:
-        str
-    """
-    result = run_operation("git rev-parse HEAD", "Getting current branch").stdout.strip()
-    return result
-
-
-def exclude_from_git(entries: list[tuple[str, str]]) -> None:
+def exclude_from_git(entries: list[Tuple[str, str]]) -> None:
     """Add the given entries to the repository's local git exclude file when missing.
 
     Entries already present are left untouched, so the operation is idempotent. When the current
@@ -385,7 +352,7 @@ def cli_metadata(**metadata) -> Callable:
 def wrapper_decorator(sub_wrapper: Callable) -> Callable:
     """Decorator to wrap a command with additional logic"""
 
-    preserved_attrs: tuple[str, ...] = (ATTR_ALIAS, ATTR_DOCS, ATTR_GROUP)
+    preserved_attrs: Tuple[str, ...] = (ATTR_ALIAS, ATTR_DOCS, ATTR_GROUP)
 
     def apply_command_metadata(target: click.Command, source: Any) -> None:
         """Copy custom documentation metadata from a wrapper or callback onto a command.

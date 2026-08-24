@@ -7,7 +7,8 @@ from typing import Optional
 import click
 from directory_tree import DisplayTree
 from mega_snake.util.formatting import ws_info, ws_success
-from mega_snake.util.util import run_operation, get_main_branch, get_current_commit, get_remote
+from mega_snake.util.repo import Repo
+from mega_snake.util.util import run_operation
 from mega_snake.util.props import get_property
 from mega_snake.diff_tree.file_type import FileType
 
@@ -74,11 +75,11 @@ def diff_tree(origin_hash: Optional[str], target_hash: Optional[str], delete_ori
     # the user with an empty folder and nothing to fall back on.
     main_branch: str
     if origin_hash is None:
-        main_branch = get_main_branch(get_remote())
+        main_branch = Repo().MAIN_BRANCH
         ws_info(f"Main branch: {main_branch}")
     else:
         main_branch = _validate_commit(origin_hash)
-    current_branch: str = _validate_commit(target_hash) if target_hash is not None else get_current_commit()
+    current_branch: str = _validate_commit(target_hash) if target_hash is not None else Repo.resolve_head()
 
     tree_output: str = f"{get_property('working_path')}/diff_tree"
     diff_commit_file: str = f"{tree_output}/diff_commit.txt"
