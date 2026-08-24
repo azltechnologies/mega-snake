@@ -253,24 +253,34 @@ class RemoteBranch(Branch):
     """
 
     def __new__(cls, *args, **kwargs) -> Self:
-        """Refuse to model a remote branch when the repository has no usable remote main branch.
+        """Refuse to model a remote branch when the repository has no remote at all.
+
+        The guard covers the remote **name** only, which is what :meth:`_ref_prefix` needs to strip
+        the reference prefix, and whose absence really would be our defect: the loader enumerates
+        remote references only when a remote exists, so getting here without one means the loader
+        and this model drifted apart.
+
+        It deliberately does **not** require a remote main hash. A repository whose remote main
+        reference was never fetched (or was pruned) while other remote branches were is an ordinary
+        environment state, not a defect — and one :meth:`Repo.get_main_hash` already handles by
+        falling back to the local main hash. Demanding it here contradicted that fallback and
+        reported a perfectly fixable situation as a bug in ``mgsnake``.
 
         Parameters:
             args: Positional arguments forwarded by the dataclass constructor (ignored).
             kwargs: Keyword arguments forwarded by the dataclass constructor (ignored).
 
         Raises:
-            InternalStateError: If the snapshot was resolved without a remote (or without a remote
-                main hash) and a RemoteBranch is being created anyway: the loader only enumerates
-                remote references when a remote exists, so reaching this is a bug.
+            InternalStateError: If the snapshot was resolved without a remote and a RemoteBranch is
+                being created anyway.
 
         Returns:
             Self: The new instance.
         """
         instance = super().__new__(cls, *args, **kwargs)
-        if not cls.REMOTE or not cls.MAIN_REMOTE_HASH:
+        if not cls.REMOTE:
             raise InternalStateError(
-                "The repository snapshot was resolved without a remote main branch, "
+                "The repository snapshot was resolved without a remote, "
                 "but a RemoteBranch instance is being created. This is a bug."
             )
         return instance

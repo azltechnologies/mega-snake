@@ -217,13 +217,32 @@ def test_the_main_branch_itself_is_never_squash_checked() -> None:
     assert not any(command.startswith("git cherry") for command in issued)
 
 
-def test_remote_branch_requires_a_remote_main_hash() -> None:
-    """Modeling a remote branch without a remote main branch is a bug, not a user error."""
+def test_remote_branch_requires_a_remote_name() -> None:
+    """The loader enumerates remote references only when a remote exists, so building a remote
+    branch without one means the loader and this model drifted apart — our defect, not the user's."""
     Repo.REMOTE = None
-    Repo.MAIN_REMOTE_HASH = None
     with scripted_git():
         with pytest.raises(InternalStateError, match="This is a bug"):
             RemoteBranch(hash=FEATURE_HASH, message="m", mail="a@b", date=FEATURE_DATE, name="refs/remotes/origin/x")
+
+
+def test_remote_branch_works_when_the_remote_main_reference_was_never_fetched() -> None:
+    """A remote whose main reference was never fetched (or was pruned), while other remote branches
+    were, is an ordinary environment state — not a defect in mgsnake.
+
+    Repo.get_main_hash already covers it by falling back to the local main hash, so the branch must
+    simply be judged against that. Refusing here reported a situation the user fixes with a single
+    `git fetch` as an internal bug, with exit 100 and a traceback.
+    """
+    Repo.MAIN_REMOTE_HASH = None
+    with scripted_git(merged_hashes=(FEATURE_HASH,)) as git:
+        branch = RemoteBranch(
+            hash=FEATURE_HASH, message="m", mail="a@b", date=FEATURE_DATE, name="refs/remotes/origin/feature"
+        )
+
+    assert branch.short_name == "feature"
+    ancestor_check = git.get_command_return_code.call_args_list[0].args[0]
+    assert LOCAL_MAIN_HASH in ancestor_check, "the comparison must fall back to the local main hash"
 
 
 def test_from_local_without_upstream_finishes_as_local_only() -> None:
