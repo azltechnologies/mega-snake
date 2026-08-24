@@ -5,6 +5,7 @@ This module contains utility functions for common operations.
 import json
 import os
 import re
+from typing import ClassVar, Optional, Tuple
 import subprocess
 import platform
 import time
@@ -29,6 +30,9 @@ OS = platform.system()
 
 NO_REMOTE_MESSAGE = "No remote repository found. Please add a remote repository to the current repository."
 GIT_EXCLUDE_FILE = os.path.join(".git", "info", "exclude")
+
+REMOTE_PREFIX = "refs/remotes"
+LOCAL_PREFIX = "refs/heads"
 
 # Caches the resolved remote for the lifetime of the process. Resolving it is not free: it spawns a
 # `git remote` subprocess and, when the repository has more than one remote, it prompts the user to
@@ -58,19 +62,31 @@ def load_json_with_comments(file_path: str) -> dict:
         return parser.loads(json_str)
 
 
-def run_operation(cwd: str, description: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-    """
-    Runs the given command and retries on failure up to 3 times.
+def run_operation(
+    cwd: str, description: str, check: bool = True, timeout: Optional[float] = None
+) -> subprocess.CompletedProcess[str]:
+    """Runs the given command and retries on failure up to 3 times.
 
-    Args:
-        cwd: str
-        description: str
+    Parameters:
+        cwd: The shell command to execute.
+        description: Human-readable description of the operation, used in log messages.
+        check: Whether a non-zero exit code should raise subprocess.CalledProcessError.
+        timeout: Maximum number of seconds to wait for the command to finish, or None to wait
+            indefinitely.
+
+    Raises:
+        subprocess.SubprocessError: If the command still fails after 3 attempts.
+        subprocess.TimeoutExpired: If the command does not finish within ``timeout`` seconds. Unlike
+            a failed exit code, a timeout is not retried; it propagates immediately on the attempt
+            that exceeded it.
 
     Returns:
-        subprocess.CompletedProcess[str]
+        subprocess.CompletedProcess[str]: The result of the last (successful) attempt.
     """
     num_retries = 3
-    ws_advice(f"Running operation: {description} ñnCommand: {cwd}")
+    ws_advice(
+        f"Running operation: {description}; Command: {cwd}; Timeout: {timeout if timeout is not None else 'None'} secs"
+    )
     for attempt in range(1, num_retries + 1):
         shell: str = get_property("shell")
         if OS == "Windows" and shell not in ["powershell", "pwsh"]:
@@ -83,7 +99,13 @@ def run_operation(cwd: str, description: str, check: bool = True) -> subprocess.
         try:
             ws_advice(f"Running: {cwd}")
             result = subprocess.run(
-                [shell, flag, cwd], shell=False, check=check, capture_output=True, text=True, errors="replace"
+                [shell, flag, cwd],
+                shell=False,
+                check=check,
+                capture_output=True,
+                text=True,
+                errors="replace",
+                timeout=timeout,
             )
             ws_advice(f"{description} successfully on attempt {attempt}!")
             ws_advice(f"stdout: {result.stdout}")
@@ -104,11 +126,17 @@ def run_operation(cwd: str, description: str, check: bool = True) -> subprocess.
     return result
 
 
-def get_command_return_code(command: str) -> int:
+def get_command_return_code(command: str, description: str, timeout: Optional[float] = None) -> int:
     """
     Gets the return code of the given command.
     """
-    result = subprocess.run(command, shell=True, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    ws_advice(
+        f"Getting return code for command: {command}; Description: {description};"
+        f" Timeout: {timeout if timeout is not None else 'None'} secs"
+    )
+    result = subprocess.run(
+        command, shell=True, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=timeout
+    )
     return result.returncode
 
 
@@ -130,18 +158,47 @@ def ref_exists(ref: str) -> bool:
     Returns:
         bool: True when the reference exists, False otherwise.
     """
-    return get_command_return_code(f'git show-ref --verify --quiet "{ref}"') == 0
+    return (
+        get_command_return_code(f'git show-ref --verify --quiet "{ref}"', description=f"Checking if ref '{ref}' exists")
+        == 0
+    )
 
 
-def get_input_or_default(prompt: str, default: Any) -> str:
+def get_typed_validated_input(p_prompt: str, warn: str, valid_values: list[str], fail_msg: Optional[str] = None) -> str:
+    """
+    Get user input and validate against allowed values
+
+    Args:
+        prompt: str
+        valid_values: set[str]
+    """
+    tries: int = 0
+    prompt = p_prompt
+    while True:
+        user_input = input(f"\n{prompt}\n").lower()
+        # convert to lowercase all the values in valid_values
+        if user_input in valid_values:
+            return user_input
+        prompt = (
+            f"{Back.BLACK}{Fore.YELLOW}{p_prompt}\ttry again\t—\t{Fore.RED}{3 - tries} attempts left\n{Style.RESET_ALL}"
+        )
+        ws_warning(warn)
+        tries += 1
+        if tries > 3:
+            raise KeyError(
+                f"Too many invalid inputs for '{p_prompt}'. Exiting. {fail_msg if fail_msg is not None else ''}"
+            )
+
+
+def get_input_or_default(p_prompt: str, default: Any) -> str:
     """
     Get user input or return default value
 
     Args:
-        prompt: str
+        p_prompt: str
         default: str
     """
-    user_input = input(f"{prompt} (default: {default})\n")
+    user_input = input(f"{p_prompt} (default: {default})\n")
     if user_input.strip() == "":
         return default
     try:
@@ -272,27 +329,6 @@ def get_remote_url() -> Optional[str]:
     return re.sub(r"\.git$", "", run_operation(f"git remote get-url {remote}", "Getting remote URL").stdout.strip())
 
 
-def get_main_branch(remote: Optional[str] = None) -> str:
-    """
-    Gets the main branch of the repository.
-
-    Returns:
-        str
-    """
-    if remote is None:
-        remote = get_remote()
-    if not remote:
-        return run_operation("git symbolic-ref --short HEAD", "Getting current local branch").stdout.strip()
-    result = run_operation(f"git remote show {remote}", "Getting main branch").stdout.strip()
-    if not result:
-        raise LookupError(f"No main branch found in the current repository for remote {remote}")
-    pattern = r"^(\s*HEAD branch:\s*)(\S+)"
-    match = re.search(pattern, result, re.MULTILINE)
-    if match:
-        return match.group(2)
-    raise LookupError("No main branch found in the current repository")
-
-
 def get_current_commit() -> str:
     """
     Gets the current commit of the repository.
@@ -304,7 +340,7 @@ def get_current_commit() -> str:
     return result
 
 
-def exclude_from_git(entries: list[tuple[str, str]]) -> None:
+def exclude_from_git(entries: list[Tuple[str, str]]) -> None:
     """Add the given entries to the repository's local git exclude file when missing.
 
     Entries already present are left untouched, so the operation is idempotent. When the current
@@ -406,7 +442,7 @@ def cli_metadata(**metadata) -> Callable:
 def wrapper_decorator(sub_wrapper: Callable) -> Callable:
     """Decorator to wrap a command with additional logic"""
 
-    preserved_attrs: tuple[str, ...] = (ATTR_ALIAS, ATTR_DOCS, ATTR_GROUP)
+    preserved_attrs: Tuple[str, ...] = (ATTR_ALIAS, ATTR_DOCS, ATTR_GROUP)
 
     def apply_command_metadata(target: click.Command, source: Any) -> None:
         """Copy custom documentation metadata from a wrapper or callback onto a command.

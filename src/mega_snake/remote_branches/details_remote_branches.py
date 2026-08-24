@@ -4,8 +4,8 @@ import re
 import os
 from typing import Optional
 import click
-from mega_snake.util.formatting import ws_info, ws_success
-from mega_snake.remote_branches.remote_branch import RemoteBranch
+from mega_snake.util.formatting import ws_info, ws_success, ws_advice
+from mega_snake.remote_branches.remote_branch import GitBranch, REMOTE_PREFIX, LOCAL_PREFIX
 from mega_snake.util.util import run_operation, get_main_branch, require_remote
 from mega_snake.util.props import get_property
 from mega_snake.constants import REMOTE_BRANCHES_OPT
@@ -16,7 +16,7 @@ def get_output_file() -> str:
     return f"{get_property('working_path')}/remote_branches.txt"
 
 
-def get_local_only_branches(remote_refs: list[str], remote: str, main_branch: str) -> list[str]:
+def _get_local_only_branches(remote_refs: list[str], remote: str, main_branch: str) -> list[str]:
     """List the local branches that have no counterpart on the remote.
 
     These are the branches the remote-only listing structurally cannot see, and they are the most
@@ -41,9 +41,9 @@ def get_local_only_branches(remote_refs: list[str], remote: str, main_branch: st
     Returns:
         list[str]: The local branch names with no counterpart on the remote, in the order git lists them.
     """
-    tracked: set[str] = {ref.strip().removeprefix(f"remotes/{remote}/") for ref in remote_refs}
+    tracked: set[str] = {ref.strip().replace(f"{REMOTE_PREFIX}/{remote}/", LOCAL_PREFIX) for ref in remote_refs}
     local_branches: str = run_operation(
-        "git for-each-ref --format='%(refname:short)' refs/heads", "Getting local branches"
+        f"git for-each-ref --format='%(refname)' {LOCAL_PREFIX}", "Getting local branches"
     ).stdout.strip()
     return [
         branch
@@ -93,23 +93,25 @@ def execute(filter_by: str, remote: Optional[str] = None) -> None:
         )
     if not remote:
         remote = require_remote()
-    run_operation("git fetch --all --prune", "Fetching all remotes and pruning deleted branches")
+    run_operation(f"git fetch {remote} --prune", "Fetching all remotes and pruning deleted branches", timeout=15)
     main_branch: str = get_main_branch(remote)
     list_output: str = get_output_file()
     # check if list_output directory exists. if so, delete it
     if os.path.exists(list_output):
         os.remove(list_output)
 
-    opt_remote_branches: list[Optional[RemoteBranch]] = []
-    branches: str = run_operation("git branch -a", "Getting remote branches").stdout.strip()
+    opt_remote_branches: list[Optional[GitBranch]] = []
+    branches: str = run_operation(
+        f"git for-each-ref --format='%(refname)' {REMOTE_PREFIX}", "Getting remote branches"
+    ).stdout.strip()
     if not branches:
         raise ValueError("No remote branches found in the current repository")
-    branches = f"{branches}\n remotes/{remote}/HEAD master"
-    matches = re.findall(rf"^\s*(remotes/(?!{remote}/HEAD){remote}/.+)$", branches, re.MULTILINE)
+    matches = re.findall(rf"^\s*{REMOTE_PREFIX}/(?!{remote}/HEAD){remote}/\S+$", branches, re.MULTILINE)
     total_branches = len(matches)
     ws_info(f"Main branch: {main_branch}; Found {total_branches} remote branches to process")
+    ws_advice(f"remote branches found:\n{matches}")
     for match in matches:
-        branch = str(match)
+        branch: str = str(match)
         # if branch include single or double quotes, wrap it in the opposite quotes
         if '"' in branch:
             branch = f"'{branch}'"
@@ -117,19 +119,18 @@ def execute(filter_by: str, remote: Optional[str] = None) -> None:
             branch = f'"{branch}"'
         ws_info(f"Processing branch: {branch} filtered by: '{filter_by}'")
         if remote:
-            opt_remote_branches.append(RemoteBranch.from_branch(branch, filter_by, main_branch, remote))
+            opt_remote_branches.append(GitBranch.from_branch(branch, filter_by, main_branch, remote))
         total_branches -= 1
         ws_info(f"Remaining branches to process: {total_branches}")
 
-    local_only_branches: list[str] = get_local_only_branches(matches, remote, main_branch)
+    local_only_branches: list[str] = _get_local_only_branches(matches, remote, main_branch)
     ws_info(f"Found {len(local_only_branches)} local branches with no counterpart on '{remote}' to process")
+    ws_advice(f"local-only branches found:\n{local_only_branches}")
     for local_branch in local_only_branches:
         ws_info(f"Processing local-only branch: {local_branch} filtered by: '{filter_by}'")
-        opt_remote_branches.append(
-            RemoteBranch.from_branch(local_branch, filter_by, main_branch, remote, local_only=True)
-        )
+        opt_remote_branches.append(GitBranch.from_branch(local_branch, filter_by, main_branch, remote, local_only=True))
 
-    remote_branches: list[RemoteBranch] = [x for x in opt_remote_branches if x is not None]
+    remote_branches: list[GitBranch] = [x for x in opt_remote_branches if x is not None]
     # sort the remote branches by
     remote_branches = sorted(remote_branches, key=lambda r: r.commit.dt, reverse=True)
     output: str = ""
