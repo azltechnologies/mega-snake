@@ -67,26 +67,14 @@ jobs:
             echo "base=" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Parse trigger directives
+      - name: Pick model from trigger body
         id: model
         env:
           COMMENT_BODY: ${{ github.event.comment.body }}
           ISSUE_BODY: ${{ github.event.issue.body }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
         run: |
-          # A directive belongs to the text that triggered THIS run: the comment
-          # on `issue_comment`, the issue itself on `issues` (where the comment
-          # body is empty). Reading all three at once would make every directive
-          # permanent instead -- one "@claude opus" in the issue body would pin
-          # the model for every later comment on the thread, and one mention of
-          # "new session" would reset the conversation on every single run,
-          # quietly defeating the persistence below.
-          if [ -n "$COMMENT_BODY" ]; then
-            trigger="$COMMENT_BODY"
-          else
-            trigger=$(printf '%s\n%s\n' "$ISSUE_TITLE" "$ISSUE_BODY")
-          fi
-          body=$(printf '%s' "$trigger" | tr '[:upper:]' '[:lower:]')
+          body=$(printf '%s\n%s\n%s\n' "$COMMENT_BODY" "$ISSUE_BODY" "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]')
           if printf '%s' "$body" | grep -Eq '@claude[[:space:]]+opus\b'; then
             echo "model=opus" >> "$GITHUB_OUTPUT"
           elif printf '%s' "$body" | grep -Eq '@claude[[:space:]]+sonnet\b'; then
@@ -96,34 +84,6 @@ jobs:
           else
             echo "model=" >> "$GITHUB_OUTPUT"
           fi
-
-          # Escape hatch for the session persistence below: a conversation that
-          # grew too large, or drifted, can be reset from the comment itself
-          # instead of waiting for the cache to be evicted.
-          #
-          # The word boundaries matter: without them "renew session" and
-          # "renewed session" reset the thread too, and a reset is invisible --
-          # Claude simply answers without the history the author expected it to
-          # have. The Spanish branch stops at the "sesi" prefix on purpose, since
-          # the `tr` above is ASCII-only and leaves the accent in "sesión" alone.
-          if printf '%s' "$body" | grep -Eq '\b(new|fresh)[[:space:]]+session\b|\bnueva[[:space:]]+sesi'; then
-            echo "fresh=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "fresh=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      # Runners are ephemeral, so Claude's conversation history dies with the run
-      # unless it is carried across explicitly. This restores what the previous
-      # run of THIS issue left behind; the matching save step runs after Claude.
-      # Keyed by issue number, because `--continue` resumes whatever session the
-      # CLI considers most recent -- state from an unrelated issue would be
-      # resumed just as happily.
-      - name: Restore Claude session
-        id: session
-        uses: ./.github/actions/restore-claude-session
-        with:
-          thread-id: ${{ github.event.issue.number }}
-          fresh: ${{ steps.model.outputs.fresh }}
 
       - name: Run Claude Code
         id: claude
@@ -140,19 +100,5 @@ jobs:
 
           # Allow Claude to run the project's dev toolchain and Git/GitHub commands so it can
           # validate changes (tests, lint, type-check) and manage PRs without manual approval.
-          #
-          # `continue-flag` expands to `--continue` only when a transcript for
-          # this workspace was actually restored: passing it without one makes
-          # the CLI exit with "no conversation found".
           claude_args: |
-            --allowed-tools Bash(uv:*),Bash(pytest:*),Bash(ruff:*),Bash(mypy:*),Bash(gh:*),Bash(git:*) ${{ steps.session.outputs.continue-flag }} ${{ steps.model.outputs.model != '' && format('--model {0}', steps.model.outputs.model) || '' }}
-
-      # No `if:` on purpose. The default `success()` means a failed run does not
-      # become the next checkpoint of the conversation: the following run then
-      # resumes the last state that actually completed, rather than one left
-      # half-written. Switch to `if: always()` to checkpoint failures too.
-      - name: Save Claude session
-        uses: ./.github/actions/save-claude-session
-        with:
-          cache-key: ${{ steps.session.outputs.cache-key }}
-          session-path: ${{ steps.session.outputs.session-path }}
+            --allowed-tools Bash(uv:*),Bash(pytest:*),Bash(ruff:*),Bash(mypy:*),Bash(gh:*),Bash(git:*) ${{ steps.model.outputs.model != '' && format('--model {0}', steps.model.outputs.model) || '' }}

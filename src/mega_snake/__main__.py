@@ -177,6 +177,7 @@ for group, add_wrapper in MODULES:
     for command in group.commands.values():
         cli.add_command(add_wrapper(command))
 
+
 def main() -> None:
     """Run the CLI: the single place where an exception becomes an exit code.
 

@@ -123,9 +123,7 @@ class MavenVersion(ToolVersion):
         return f"Id: {self.id}\n\tMaven Version: {self.version}\n\tpath: {self.path}\n"
 
 
-def _maven_set(
-    workspace_file: str, working_path: str, local_file: str, shell: str, maven_home: Optional[str]
-) -> None:
+def _maven_set(workspace_file: str, working_path: str, local_file: str, shell: str, maven_home: Optional[str]) -> None:
     """
     Configures the Maven version to be used in the workspace.
 

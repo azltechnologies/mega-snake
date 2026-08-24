@@ -253,11 +253,20 @@ which is what makes it possible to reconstruct a past release from the two commi
 
 #### Output
 
-Writes three files to `workspace_temp/diff_tree/` and opens them in VS Code:
+Writes three files to `workspace_temp/diff_tree/` and opens each one in VS Code:
 
-- `diff_tree.txt` — the visual tree of created, modified and deleted files.
+- `diff_tree.txt` — the visual tree of the affected paths. Every entry is tagged with a marker for
+  what happened to it (added, modified, deleted, renamed, copied, type-changed, unmerged), and the
+  file closes with a per-marker legend and its totals.
 - `diff_changes.txt` — the Git-style patch for those files.
 - `diff_commit.txt` — the commit list (hash, date, message), newest first.
+
+Alongside them it reconstructs the affected paths as a real directory tree under
+`workspace_temp/diff_tree/diff_tree_dummy_repo/`, which is what the tree above is rendered from.
+Each file there holds its contents **as of the origin of the comparison** — the "before" version,
+so you can open it next to your working copy. Files you added have no before-version and are left
+empty, and binary files carry a placeholder instead of their bytes rather than dumping raw data
+into a text snapshot.
 
 The tree and the patch follow `--scope`. The commit list cannot, since uncommitted work has no
 commits, so pending files are prepended instead as `Unstaged files:` and `Staged files:` sections
@@ -275,12 +284,16 @@ mgsnake dt -o 85652b7 -t 79108b6
 
 #### Notes
 
-The output directory is wiped and recreated on every run. No remote is required: when the
-repository has none, the comparison falls back to the current local branch.
+The output directory is wiped and recreated on every run, so nothing from a previous comparison
+survives into the current one — including the reconstructed tree, which is rebuilt from scratch.
 
-`--target-hash` only applies to the committed scope (`--scope c`, the default). The staged and unstaged
-scopes read the index and the working tree, which exist only for HEAD, so combining them is rejected
-rather than silently ignoring one of the two.
+No remote is required: when the repository has none, the command asks for the local main branch to
+compare against. With a remote, the main branch is resolved from it and the command offers to
+fetch and prune it first, so the comparison is against a main branch as fresh as you want it.
+
+The rejection of an incompatible `--target-hash`/`--scope` pair happens before the output directory
+is touched, so a rejected invocation leaves the previous run's files intact instead of wiping them
+and then aborting.
 
 ## Documentation
 
@@ -421,7 +434,7 @@ there.
 
 ### remote-branches-cleanup
 
-Iterates over the remote branches asking the user which merged branches to delete
+Builds the branch inventory (local, remote and paired branches) and iterates over the fully merged ones asking which to delete, removing each selected branch from the sides where it exists
 
 **Synopsis:** `mgsnake remote-branches-cleanup [OPTIONS]`
 
@@ -431,21 +444,48 @@ Iterates over the remote branches asking the user which merged branches to delet
 | --- | --- |
 | `-h, --help` | Show this message and exit. |
 
-Consumes the report produced by `remote-branches-details` (and can re-run it first to refresh the
-data), then deletes the branches you select and prunes the local references pointing at them.
+Works from the same branch inventory as `remote-branches-details` — every local branch paired with
+its remote counterpart, judged against the remote main branch — except that here it is never
+written anywhere: it is built in memory and consumed on the spot, so the deletion always acts on
+the repository as it is right now, not on a report that may have been generated hours ago.
 
-Rather than passing objects between commands in memory, the two commands communicate through
-`workspace_temp/remote_branches.txt`. That file is the point: you can inspect it — and edit it —
-before running a destructive command against your remote.
+A selected branch is deleted from the sides where it actually exists: the remote copy when the
+branch has a remote side, the local copy when it has a local one. Neither side is assumed, because
+a branch you never checked out has no local reference and a branch whose remote counterpart was
+deleted on merge has no remote one — attempting the missing half would report a deletion failure
+for something that was already gone.
+
+Local deletion uses `git branch -D` rather than `git branch -d`: the branch has been confirmed merged
+into the *remote* main branch, which is the question that matters, while `-d` refuses whenever the
+local main copy is behind and has not seen the merge yet.
+
+#### Output
+
+It writes no file. What it produces is a change to the repository, so the run itself is the output:
+one prompt per candidate, then the deletions you approved.
+
+Each prompt identifies the branch before you decide on it — name, last commit date, author, commit
+hash and subject — and states its **Location**: `local`, `remote`, or `local and remote`. That last
+line is the one to read, because it is exactly what will be deleted for that branch. Three answers
+are accepted: **yes** marks it for deletion, **no** skips it, and **finalize** ends the review right
+there, keeping everything selected so far and never asking about the remaining branches.
+
+Nothing is deleted while you are answering. The deletions run once the review is over, each one
+reported as it happens, and the remote-tracking references are pruned afterwards when anything was
+removed from the remote. Answering `no` to everything is a legitimate outcome and leaves the
+repository untouched.
 
 #### Notes
 
-It takes no options: run it and follow the prompts. Deletion is `git push origin --delete <branch>`
-and cannot be undone from here. Requires a remote.
+It takes no options: run it and follow the prompts. The command offers to fetch/prune first, so the
+inventory is fresh. Deletion is `git push <remote> --delete <branch>` plus `git branch -D <branch>`,
+and cannot be undone from here. A branch that fails to delete from the remote keeps its local copy
+and does not stop the run. A remote is only required when a selected branch has a remote side, so a
+local-only cleanup works in a repository without remotes.
 
 ### remote-branches-details
 
-Creates a detailed list of remote branches filtered by type
+Creates a detailed markdown report of the repository's branches — local, remote and paired — filtered by merge status against the main branch
 
 **Synopsis:** `mgsnake remote-branches-details [OPTIONS]`
 
@@ -453,23 +493,57 @@ Creates a detailed list of remote branches filtered by type
 
 | Option | Description |
 | --- | --- |
-| `-f, --filter-by [m\|u\|a]` | filter branches by merge status against main branch:<br><br>'M' - merged branches<br><br>'U' - unmerged branches<br><br>'A' - all branches (default) |
+| `-f, --filter-by [m\|u\|a]` | filter branches by merge status against main branch:<br><br>'M' - fully merged branches (every existing side is merged)<br><br>'U' - not fully merged branches<br><br>'A' - all branches (default) |
 | `-h, --help` | Show this message and exit. |
 
-A branch counts as merged when it was merged, fast-forwarded, **rebased**, or **squashed** into the
-main branch — the last two are detected by patch id, so branches that were squash-merged through a
-PR are correctly reported as merged instead of lingering as unmerged noise.
+Every local branch is paired with its remote counterpart (through its configured upstream) into a
+single logical branch, so the report describes each branch once with both sides: a branch never
+checked out shows only its remote side, and a branch whose remote copy was deleted on merge shows
+only its local one. Those local leftovers are the most common form of dead branch — once a pull
+request is merged the hosting platform usually deletes the branch, `git fetch --prune` drops the
+remote-tracking reference, and the local branch lingers indefinitely.
 
-Comparison is always against the remote main branch, never the possibly stale local copy.
+A side counts as merged when it was merged, fast-forwarded, **rebased**, or **squashed** into the
+main branch — the last two are detected by patch id, so branches that were squash-merged through a
+PR are correctly reported as merged instead of lingering as unmerged noise. Comparison is always
+against the remote main branch when one exists, never the possibly stale local copy. A branch is
+*fully merged* only when every side it exists on is merged.
+
+Before enumerating anything, the command offers to fetch and prune the remote so the inventory is
+as fresh as you want it to be.
 
 #### Output
 
-Creates `workspace_temp/remote_branches.txt` with per-branch details: author, last commit date, and
-ahead/behind counts.
+Creates `workspace_temp/remote_branches.md` and opens it in VS Code. The file is rewritten from
+scratch on every run, so it always describes one single inventory rather than accumulating past
+ones.
+
+It opens with the context the report was built from — remote, main branch with both its local and
+remote hashes, the filter that was applied, and the generation timestamp — so a report kept around
+can still be read later without guessing which repository state produced it. Then comes one table
+row per branch, newest commit first, with:
+
+- **Status** — `merged`, `remote merged`, `local merged` or `unmerged`. The middle two are the ones
+  worth looking at: they mean the two sides disagree, so the branch is not yet safe to delete.
+- **Track / Sync** — `local_only` or `remote_only` when the branch lives on one side only,
+  otherwise git's own tracking markers (`[ahead 1, behind 2]` and `>`, `<`, `=`, `<>`), and
+  `[gone]` for a branch whose upstream was pruned.
+- **Local hash / Remote hash** — both tips, abbreviated, with `-` where that side does not exist.
+  They are shown side by side precisely because they can diverge, which is what the status columns
+  above are summarizing.
+- **Last commit, Author, Subject** — of whichever side the branch has, to identify the work at a
+  glance.
+- **Main ancestor** — the commit the branch and the main branch last had in common.
+
+When nothing matches, the report is still written and says so in prose instead of leaving an empty
+table to interpret.
 
 #### Notes
 
-Requires a remote. Feed the output to `remote-branches-cleanup` to act on it.
+A remote is not required: without one, the command asks for the local main branch and reports the
+local branches against it. A `--format` option to customize the columns and output shape is
+planned; for now the table is fixed. `remote-branches-cleanup` builds this same inventory in memory
+for its interactive deletion — this report is for inspection.
 
 ## Light Weight
 

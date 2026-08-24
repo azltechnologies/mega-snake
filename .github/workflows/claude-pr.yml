@@ -45,10 +45,7 @@ jobs:
         id: pr
         env:
           GH_TOKEN: ${{ github.token }}
-          # `issue.number` on issue_comment, `pull_request.number` on the review
-          # events -- each is empty on the other's trigger, and the session key
-          # below needs it on both.
-          PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          PR_NUMBER: ${{ github.event.issue.number }}
           # Present on the review events, absent on issue_comment.
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
@@ -64,22 +61,6 @@ jobs:
           fi
           echo "Checking out PR branch: ${ref}"
           echo "ref=${ref}" >> "$GITHUB_OUTPUT"
-
-          # Which conversation does this run belong to? Work that started in an
-          # issue lands on a 'claude/issue-<n>-<timestamp>' branch, and the
-          # thread the human is actually continuing began on that issue -- so the
-          # persisted session to resume is the issue's, not a new one keyed by
-          # the PR. For any other branch the PR is the start of the conversation
-          # and its own number is the right key. Issues and PRs share a single
-          # numbering sequence in GitHub, so the two cases can never collide.
-          thread=$(printf '%s' "${ref}" | sed -n 's#^claude/issue-\([0-9]\{1,\}\)-.*#\1#p')
-          if [ -z "${thread}" ]; then
-            thread="${PR_NUMBER}"
-            echo "Session thread: PR #${thread}"
-          else
-            echo "Session thread: issue #${thread} (origin of branch ${ref})"
-          fi
-          echo "thread=${thread}" >> "$GITHUB_OUTPUT"
 
       # NOTE: this assumes the PR comes from a branch in this repository. For a
       # fork PR the head ref lives in the fork, so this would either fail or —
@@ -99,17 +80,12 @@ jobs:
           source-repo: ${{ secrets.AI_CONTEXT }}
           context-token: ${{ secrets.AI_CONTEXT_TOKEN }}
 
-      - name: Parse trigger directives
+      - name: Pick model from trigger body
         id: model
         env:
           COMMENT_BODY: ${{ github.event.comment.body }}
           REVIEW_BODY: ${{ github.event.review.body }}
         run: |
-          # Both variables come from the triggering event and only one of them is
-          # ever set (a comment or a review, never both), so concatenating them
-          # still reads exactly the text that asked for this run. Contrast with
-          # claude-issue.yml, which has to choose between the comment and the
-          # issue body to avoid making a directive permanent.
           body=$(printf '%s\n%s\n' "$COMMENT_BODY" "$REVIEW_BODY" | tr '[:upper:]' '[:lower:]')
           if printf '%s' "$body" | grep -Eq '@claude[[:space:]]+opus\b'; then
             echo "model=opus" >> "$GITHUB_OUTPUT"
@@ -120,32 +96,6 @@ jobs:
           else
             echo "model=" >> "$GITHUB_OUTPUT"
           fi
-
-          # Escape hatch for the session persistence below: a conversation that
-          # grew too large, or drifted, can be reset from the comment itself
-          # instead of waiting for the cache to be evicted.
-          #
-          # The word boundaries matter: without them "renew session" and
-          # "renewed session" reset the thread too, and a reset is invisible --
-          # Claude simply answers without the history the author expected it to
-          # have. The Spanish branch stops at the "sesi" prefix on purpose, since
-          # the `tr` above is ASCII-only and leaves the accent in "sesión" alone.
-          if printf '%s' "$body" | grep -Eq '\b(new|fresh)[[:space:]]+session\b|\bnueva[[:space:]]+sesi'; then
-            echo "fresh=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "fresh=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      # Runners are ephemeral, so Claude's conversation history dies with the run
-      # unless it is carried across explicitly. `thread` points at the issue this
-      # PR came from when there is one, so the conversation started on the issue
-      # keeps going here instead of restarting when the PR is opened.
-      - name: Restore Claude session
-        id: session
-        uses: ./.github/actions/restore-claude-session
-        with:
-          thread-id: ${{ steps.pr.outputs.thread }}
-          fresh: ${{ steps.model.outputs.fresh }}
 
       - name: Run Claude Code
         id: claude
@@ -163,19 +113,5 @@ jobs:
 
           # Allow Claude to run the project's dev toolchain and Git/GitHub commands so it can
           # validate changes (tests, lint, type-check) and manage PRs without manual approval.
-          #
-          # `continue-flag` expands to `--continue` only when a transcript for
-          # this workspace was actually restored: passing it without one makes
-          # the CLI exit with "no conversation found".
           claude_args: |
-            --allowed-tools Bash(uv:*),Bash(pytest:*),Bash(ruff:*),Bash(mypy:*),Bash(gh:*),Bash(git:*) ${{ steps.session.outputs.continue-flag }} ${{ steps.model.outputs.model != '' && format('--model {0}', steps.model.outputs.model) || '' }}
-
-      # No `if:` on purpose. The default `success()` means a failed run does not
-      # become the next checkpoint of the conversation: the following run then
-      # resumes the last state that actually completed, rather than one left
-      # half-written. Switch to `if: always()` to checkpoint failures too.
-      - name: Save Claude session
-        uses: ./.github/actions/save-claude-session
-        with:
-          cache-key: ${{ steps.session.outputs.cache-key }}
-          session-path: ${{ steps.session.outputs.session-path }}
+            --allowed-tools Bash(uv:*),Bash(pytest:*),Bash(ruff:*),Bash(mypy:*),Bash(gh:*),Bash(git:*) ${{ steps.model.outputs.model != '' && format('--model {0}', steps.model.outputs.model) || '' }}

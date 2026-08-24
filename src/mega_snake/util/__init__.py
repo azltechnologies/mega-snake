@@ -1,1 +1,1 @@
-""" init file for the util module """
+"""init file for the util module"""
