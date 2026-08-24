@@ -91,7 +91,7 @@ def test_diff_tree_main_rejects_an_invalid_commit_hash() -> None:
     """A reference that is not a commit is rejected before any diff is attempted against it."""
     with patch("mega_snake.diff_tree.diff_tree.get_property", return_value="/tmp"), patch(
         "mega_snake.diff_tree.diff_tree.os.path.exists", return_value=False
-    ), patch("mega_snake.diff_tree.diff_tree.get_current_commit", return_value="head"), patch(
+    ), patch("mega_snake.diff_tree.diff_tree.Repo.resolve_head", return_value="head"), patch(
         "mega_snake.diff_tree.diff_tree.os.makedirs"
     ), patch("mega_snake.diff_tree.diff_tree.run_operation") as run_operation:
         run_operation.return_value = SimpleNamespace(returncode=0, stdout="tree")
@@ -171,7 +171,7 @@ def test_diff_tree_main_writes_the_pending_changes_above_the_commits() -> None:
     try:
         with patch("mega_snake.diff_tree.diff_tree.get_property", return_value="/tmp"), patch(
             "mega_snake.diff_tree.diff_tree.os.path.exists", return_value=True
-        ), patch("mega_snake.diff_tree.diff_tree.get_current_commit", return_value="head"), patch(
+        ), patch("mega_snake.diff_tree.diff_tree.Repo.resolve_head", return_value="head"), patch(
             "mega_snake.diff_tree.diff_tree.run_operation"
         ) as run_operation, patch(
             "mega_snake.diff_tree.diff_tree._create_files"
@@ -213,7 +213,7 @@ def test_diff_tree_main_includes_untracked_files_in_unstaged_scope() -> None:
     try:
         with patch("mega_snake.diff_tree.diff_tree.get_property", return_value="/tmp"), patch(
             "mega_snake.diff_tree.diff_tree.os.path.exists", return_value=True
-        ), patch("mega_snake.diff_tree.diff_tree.get_current_commit", return_value="head"), patch(
+        ), patch("mega_snake.diff_tree.diff_tree.Repo.resolve_head", return_value="head"), patch(
             "mega_snake.diff_tree.diff_tree.run_operation"
         ) as run_operation, patch(
             "mega_snake.diff_tree.diff_tree._create_files"
@@ -275,7 +275,7 @@ def test_diff_tree_main_computes_binary_files() -> None:
     """diff_tree main should compute binary files and forward them to _create_files."""
     with patch("mega_snake.diff_tree.diff_tree.get_property", return_value="/tmp"), patch(
         "mega_snake.diff_tree.diff_tree.os.path.exists", return_value=True
-    ), patch("mega_snake.diff_tree.diff_tree.get_current_commit", return_value="head"), patch(
+    ), patch("mega_snake.diff_tree.diff_tree.Repo.resolve_head", return_value="head"), patch(
         "mega_snake.diff_tree.diff_tree.run_operation"
     ) as run_operation, patch(
         "mega_snake.diff_tree.diff_tree._create_files"
@@ -304,7 +304,7 @@ def test_diff_tree_main_paths() -> None:
     """Cover diff_tree main with empty and non-empty diffs."""
     with patch("mega_snake.diff_tree.diff_tree.get_property", return_value="/tmp"), patch(
         "mega_snake.diff_tree.diff_tree.os.path.exists", return_value=False
-    ), patch("mega_snake.diff_tree.diff_tree.get_current_commit", return_value="head"), patch(
+    ), patch("mega_snake.diff_tree.diff_tree.Repo.resolve_head", return_value="head"), patch(
         "mega_snake.diff_tree.diff_tree.Repo", **{"return_value.MAIN_BRANCH": "main"}
     ), patch(
         "mega_snake.diff_tree.diff_tree.os.makedirs"
@@ -316,7 +316,7 @@ def test_diff_tree_main_paths() -> None:
 
     with patch("mega_snake.diff_tree.diff_tree.get_property", return_value="/tmp"), patch(
         "mega_snake.diff_tree.diff_tree.os.path.exists", return_value=True
-    ), patch("mega_snake.diff_tree.diff_tree.get_current_commit", return_value="head"), patch(
+    ), patch("mega_snake.diff_tree.diff_tree.Repo.resolve_head", return_value="head"), patch(
         "mega_snake.diff_tree.diff_tree.run_operation"
     ) as run_operation, patch(
         "mega_snake.diff_tree.diff_tree._create_files"
@@ -352,7 +352,7 @@ def test_diff_tree_target_replaces_head_in_every_derived_command() -> None:
     try:
         with patch("mega_snake.diff_tree.diff_tree.get_property", return_value="/tmp"), patch(
             "mega_snake.diff_tree.diff_tree.os.path.exists", return_value=False
-        ), patch("mega_snake.diff_tree.diff_tree.get_current_commit") as get_current_commit, patch(
+        ), patch("mega_snake.diff_tree.diff_tree.Repo.resolve_head") as current_commit, patch(
             "mega_snake.diff_tree.diff_tree.run_operation"
         ) as run_operation, patch("mega_snake.diff_tree.diff_tree._create_files"), patch(
             "mega_snake.diff_tree.diff_tree._display_inner_tree"
@@ -374,7 +374,7 @@ def test_diff_tree_target_replaces_head_in_every_derived_command() -> None:
             )
 
         # HEAD must never be consulted: the whole point is that the range is explicit.
-        get_current_commit.assert_not_called()
+        current_commit.assert_not_called()
         issued = [call.args[0] for call in run_operation.call_args_list]
         assert "git cat-file -t tip222 2>/dev/null" in issued, "the target was never validated"
         assert "git diff --raw --no-renames base111 tip222" in issued
@@ -399,8 +399,8 @@ def test_diff_tree_without_target_still_compares_against_head() -> None:
         with patch("mega_snake.diff_tree.diff_tree.get_property", return_value="/tmp"), patch(
             "mega_snake.diff_tree.diff_tree.os.path.exists", return_value=False
         ), patch(
-            "mega_snake.diff_tree.diff_tree.get_current_commit", return_value="headsha"
-        ) as get_current_commit, patch(
+            "mega_snake.diff_tree.diff_tree.Repo.resolve_head", return_value="headsha"
+        ) as current_commit, patch(
             "mega_snake.diff_tree.diff_tree.run_operation"
         ) as run_operation, patch("mega_snake.diff_tree.diff_tree._create_files"), patch(
             "mega_snake.diff_tree.diff_tree._display_inner_tree"
@@ -420,7 +420,7 @@ def test_diff_tree_without_target_still_compares_against_head() -> None:
                 origin_hash="base111", target_hash=None, delete_original_files=True, scope="c"
             )
 
-        get_current_commit.assert_called_once_with()
+        current_commit.assert_called_once_with()
         issued = [call.args[0] for call in run_operation.call_args_list]
         assert "git diff --raw --no-renames base111 headsha" in issued
         # Only the base is validated when no target is given: HEAD needs no validation.
@@ -539,7 +539,7 @@ def test_diff_tree_validates_both_commits_before_touching_the_output() -> None:
         "mega_snake.diff_tree.diff_tree.os.path.exists", return_value=True
     ), patch("mega_snake.diff_tree.diff_tree.shutil.rmtree") as rmtree, patch(
         "mega_snake.diff_tree.diff_tree.os.makedirs"
-    ) as makedirs, patch("mega_snake.diff_tree.diff_tree.get_current_commit", return_value="head"), patch(
+    ) as makedirs, patch("mega_snake.diff_tree.diff_tree.Repo.resolve_head", return_value="head"), patch(
         "mega_snake.diff_tree.diff_tree.run_operation"
     ) as run_operation:
         run_operation.return_value = SimpleNamespace(returncode=0, stdout="blob")
@@ -598,7 +598,7 @@ def test_diff_tree_reports_a_mistyped_hash_as_an_invalid_commit(option: str) -> 
     ), patch("mega_snake.diff_tree.diff_tree.shutil.rmtree") as rmtree, patch(
         "mega_snake.diff_tree.diff_tree.os.makedirs"
     ), patch("mega_snake.diff_tree.diff_tree.Repo", **{"return_value.MAIN_BRANCH": "master"}), patch(
-        "mega_snake.diff_tree.diff_tree.get_current_commit", return_value="head"
+        "mega_snake.diff_tree.diff_tree.Repo.resolve_head", return_value="head"
     ), patch(
         "mega_snake.diff_tree.diff_tree.run_operation"
     ) as run_operation:

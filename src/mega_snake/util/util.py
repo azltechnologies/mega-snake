@@ -28,18 +28,10 @@ from mega_snake.util.props import get_property
 
 OS = platform.system()
 
-NO_REMOTE_MESSAGE = "No remote repository found. Please add a remote repository to the current repository."
 GIT_EXCLUDE_FILE = os.path.join(".git", "info", "exclude")
 
 REMOTE_PREFIX = "refs/remotes"
 LOCAL_PREFIX = "refs/heads"
-
-# Caches the resolved remote for the lifetime of the process. Resolving it is not free: it spawns a
-# `git remote` subprocess and, when the repository has more than one remote, it prompts the user to
-# pick one. Several call sites need the remote during a single command run (pre-flight wrappers, the
-# commands themselves, the Repo snapshot), so without this cache the user would be prompted
-# repeatedly for the very same answer.
-_remote_cache: dict[str, Optional[str]] = {}
 
 # Initialize colopiprama
 init(autoreset=True)
@@ -223,110 +215,6 @@ def get_validated_input(p_prompt: str, valid_values: list[str]) -> str:
         tries += 1
         if tries > 3:
             raise KeyError(f"Too many invalid inputs for '{p_prompt} —— {instructions}'. Exiting.")
-
-
-def reset_remote_cache() -> None:
-    """Clear the cached remote so the next call to get_remote resolves it again.
-
-    Parameters:
-        None
-
-    Raises:
-        None
-
-    Returns:
-        None
-    """
-    _remote_cache.clear()
-
-
-def get_remote() -> Optional[str]:
-    """Get the remote of the repository, resolving it only once per process.
-
-    The result (including ``None``) is cached, so repeated calls within the same command run reuse
-    the first answer instead of spawning another ``git remote`` or prompting the user again when the
-    repository has multiple remotes. If ``git remote`` fails altogether (e.g. the current directory
-    is not a git repository), the failure is reported as a warning and treated as "no remote", so
-    callers get the same friendly handling as a repository without remotes.
-
-    Parameters:
-        None
-
-    Raises:
-        None
-
-    Returns:
-        Optional[str]: The remote name, or None when there is no remote available.
-    """
-    if "remote" in _remote_cache:
-        return _remote_cache["remote"]
-    try:
-        result: str = run_operation("git remote", "Getting remotes").stdout.strip()
-    except subprocess.SubprocessError as error:
-        ws_warning(f"{NO_REMOTE_MESSAGE} Unable to get the remotes: {error}")
-        _remote_cache["remote"] = None
-        return None
-    if not result:
-        _remote_cache["remote"] = None
-        return None
-    remotes: list[str] = result.split("\n")
-    if len(remotes) == 1:
-        _remote_cache["remote"] = remotes[0]
-        return remotes[0]
-    options: list[str] = [str(i) for i in range(0, len(remotes))]
-    prompt: str = "Multiple remotes found in the current repository; Please select one of the following:\n"
-    for index, remote in enumerate(remotes):
-        prompt += f"\t{index}: {remote}\n"
-    remote_index = int(get_validated_input(prompt, options))
-    _remote_cache["remote"] = remotes[remote_index]
-    return remotes[remote_index]
-
-
-def require_remote() -> str:
-    """Get the remote of the repository, failing with a friendly error when there is none.
-
-    This is the single entry point for commands that cannot work without a remote, so they all
-    share the same message and the same (cached) resolution.
-
-    A repository without a remote is not a misuse of the CLI — the user broke no contract — so this
-    raises an environment error rather than a ClickException: the exit status then says "the
-    environment is not set up", which is a different thing for a script to react to than "you called
-    this wrong".
-
-    Parameters:
-        None
-
-    Raises:
-        EnvironmentError: If the repository has no remote configured.
-
-    Returns:
-        str: The remote name.
-    """
-    remote: Optional[str] = get_remote()
-    if not remote:
-        raise EnvironmentError(NO_REMOTE_MESSAGE)
-    return remote
-
-
-def get_remote_url() -> Optional[str]:
-    """
-    Gets the remote URL of the repository.
-    """
-    remote = get_remote()
-    if not remote:
-        return None
-    return re.sub(r"\.git$", "", run_operation(f"git remote get-url {remote}", "Getting remote URL").stdout.strip())
-
-
-def get_current_commit() -> str:
-    """
-    Gets the current commit of the repository.
-
-    Returns:
-        str
-    """
-    result = run_operation("git rev-parse HEAD", "Getting current branch").stdout.strip()
-    return result
 
 
 def exclude_from_git(entries: list[Tuple[str, str]]) -> None:

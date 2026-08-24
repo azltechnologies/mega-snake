@@ -9,6 +9,7 @@ import click
 import jq
 from mega_snake.constants import APP_NAME, WORKSPACE_EXTENSIONS
 from mega_snake.util.props import get_property
+from mega_snake.util.repo import Repo
 from mega_snake.util.formatting import ws_success
 from mega_snake.config_environment.util import update_workspace
 from mega_snake.config_environment.models.github_queries import PrQueries, IssuesQueries
@@ -33,7 +34,6 @@ from mega_snake.util.util import (
     cli_metadata,
     ensure_working_path,
     exclude_from_git,
-    get_remote_url,
     load_json_with_comments,
     get_input_or_default,
 )
@@ -271,7 +271,7 @@ def _add_recommended_extensions(json_data: dict[str, Any]) -> tuple[dict[str, An
 def _update_git_blame(json_data: dict[str, Any]) -> tuple[dict[str, Any], bool]:
     """Update git blame settings in workspace"""
     result = jq.compile(GIT_BLAME_QUERY).input(json_data).first()
-    remote_url = get_remote_url()
+    remote_url = Repo.get_remote_url()
     if not result and remote_url:
         remote_url = re.sub(r"^git@", "https://", remote_url)
         match = re.match(r"https\://\w+\.\w+\:", remote_url)

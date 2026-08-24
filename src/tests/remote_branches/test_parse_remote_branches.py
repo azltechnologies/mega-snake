@@ -121,7 +121,7 @@ def test_delete_branches_deletes_both_sides_when_the_branch_lives_on_both() -> N
     (1) remote push -d, (2) local branch -D. The remote success message must be reported, followed
     by the local deletion message."""
     with patch.object(module, "run_operation") as run_operation, patch.object(
-        module, "require_remote", return_value="origin"
+        module.Repo, "require_remote", return_value="origin"
     ), patch.object(module, "ws_success") as ws_success:
         run_operation.return_value = SimpleNamespace(stdout="deleted remote", returncode=0)
         module.delete_branches([Garbage(branch="feature/foo", local=True, remote=True)])
@@ -141,7 +141,7 @@ def test_delete_branches_skips_local_delete_when_branch_never_checked_out() -> N
     reference. `git branch -D` must NOT be attempted for it (it would fail), while the remote
     deletion still happens and is reported."""
     with patch.object(module, "run_operation") as run_operation, patch.object(
-        module, "require_remote", return_value="origin"
+        module.Repo, "require_remote", return_value="origin"
     ), patch.object(module, "ws_success") as ws_success:
         run_operation.return_value = SimpleNamespace(stdout="deleted remote", returncode=0)
         module.delete_branches([Garbage(branch="someone-elses/branch", local=False, remote=True)])
@@ -157,7 +157,7 @@ def test_delete_branches_deletes_local_only_branch_without_touching_the_remote()
     survives locally. `git push -d` must NOT be attempted for it — there is nothing on the remote to
     delete and the push would fail — while the local deletion still happens."""
     with patch.object(module, "run_operation") as run_operation, patch.object(
-        module, "require_remote"
+        module.Repo, "require_remote"
     ) as require_remote, patch.object(module, "ws_success") as ws_success:
         run_operation.return_value = SimpleNamespace(stdout="", returncode=0)
         module.delete_branches([Garbage(branch="merged-and-pruned", local=True, remote=False)])
@@ -181,7 +181,7 @@ def test_delete_branches_continues_when_remote_deletion_fails() -> None:
         return SimpleNamespace(stdout="deleted remote", returncode=0)
 
     with patch.object(module, "run_operation", side_effect=fake_run_operation) as run_operation, patch.object(
-        module, "require_remote", return_value="origin"
+        module.Repo, "require_remote", return_value="origin"
     ), patch.object(module, "ws_success") as ws_success:
         module.delete_branches(
             [
@@ -207,7 +207,7 @@ def test_delete_branches_propagates_a_missing_remote_when_one_is_needed() -> Non
     """A branch with a remote side cannot be deleted without a remote: the failure must surface
     instead of being swallowed into a partial local-only deletion."""
     with patch.object(module, "run_operation") as run_operation, patch.object(
-        module, "require_remote", side_effect=EnvironmentError("No remote repository found.")
+        module.Repo, "require_remote", side_effect=EnvironmentError("No remote repository found.")
     ):
         with pytest.raises(EnvironmentError, match="No remote repository found"):
             module.delete_branches([Garbage(branch="feature", local=True, remote=True)])
@@ -220,7 +220,7 @@ def test_delete_branches_with_nothing_to_delete_does_not_resolve_the_remote() ->
     """An empty selection is a legitimate outcome of the prompt loop, so it must be a no-op: no git
     call, and no remote resolution either, which would fail in a repository without a remote."""
     with patch.object(module, "run_operation") as run_operation, patch.object(
-        module, "require_remote"
+        module.Repo, "require_remote"
     ) as require_remote:
         module.delete_branches([])
 
@@ -243,7 +243,7 @@ def test_delete_branches_only_absorbs_subprocess_failures() -> None:
     swallow a defect in our own code, silently reporting a branch as handled when the run never
     reached the deletion at all."""
     with patch.object(module, "run_operation", side_effect=InternalStateError("this is our bug")), patch.object(
-        module, "require_remote", return_value="origin"
+        module.Repo, "require_remote", return_value="origin"
     ), patch.object(module, "ws_success") as ws_success:
         with pytest.raises(InternalStateError, match="this is our bug"):
             module.delete_branches(

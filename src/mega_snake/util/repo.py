@@ -1,22 +1,36 @@
 """Process-wide snapshot of the git repository the commands operate on.
 
-The snapshot (remote, main branch, relevant hashes) is resolved once per process, on the first
-instantiation of :class:`Repo` or any of its subclasses, and cached as class attributes so every
-consumer shares the same answers without re-running git or re-prompting the user.
+This module is the single place that talks to git about the repository itself. Every query about
+the remote, the main branch or HEAD lives here, so no command has to re-derive them and no two
+callers can disagree about the answer.
+
+There are deliberately **two levels** of resolution, because they cost very different things:
+
+- :meth:`Repo.resolve_remote` (and the helpers built on it) answers "which remote?" with a single
+  ``git remote``. It is cheap, it never contacts the network, and it is what light-weight commands
+  such as ``create-release`` and ``working-env`` use.
+- Instantiating :class:`Repo` resolves the **full snapshot** — main branch, its hashes, HEAD — and
+  offers to fetch and prune first. That prompt is why the full snapshot is never triggered
+  implicitly by the cheap helpers.
+
+Both levels memoize onto class attributes, so within one process git is asked once and the user is
+prompted once.
 """
 
 import re
+import subprocess
 from typing import ClassVar, Optional, Self
 
-from mega_snake.util.formatting import InternalStateError
+from mega_snake.util.formatting import InternalStateError, ws_warning
 from mega_snake.util.util import (
     LOCAL_PREFIX,
     REMOTE_PREFIX,
-    get_remote,
     get_typed_validated_input,
     get_validated_input,
     run_operation,
 )
+
+NO_REMOTE_MESSAGE = "No remote repository found. Please add a remote repository to the current repository."
 
 
 class Repo:
@@ -25,6 +39,18 @@ class Repo:
     The class attributes are populated exactly once per process (see ``__new__``); subclasses such
     as the branch models read them through normal attribute lookup. Working without a remote is
     supported: the main branch is then asked to the user and the remote-side values stay ``None``.
+
+    Attributes:
+        REMOTE: The resolved remote name, or None when the repository has none. Meaningful only
+            once ``_REMOTE_RESOLVED`` is set, since None is also a legitimate answer.
+        HEAD: The commit HEAD pointed at when the snapshot was taken.
+        BRANCH_HEAD: The checked-out branch name, or None on a detached HEAD.
+        MAIN_BRANCH: The main branch short name (e.g. ``master``).
+        MAIN_LOCAL_HASH: The local main branch tip, or "" when there is no local copy.
+        MAIN_REMOTE_HASH: The remote main branch tip, or None without a remote.
+        _REMOTE_RESOLVED: Whether the remote question has been answered (see ``REMOTE``).
+        _HEAD_RESOLVED: Whether HEAD has been read (see ``HEAD``).
+        _INITIALIZED: Whether the full snapshot has been resolved.
     """
 
     REMOTE: ClassVar[Optional[str]] = None
@@ -33,7 +59,137 @@ class Repo:
     MAIN_BRANCH: ClassVar[str] = ""
     MAIN_LOCAL_HASH: ClassVar[str] = ""
     MAIN_REMOTE_HASH: ClassVar[Optional[str]] = None
+    _REMOTE_RESOLVED: ClassVar[bool] = False
+    _HEAD_RESOLVED: ClassVar[bool] = False
     _INITIALIZED: ClassVar[bool] = False
+
+    @classmethod
+    def resolve_remote(cls) -> Optional[str]:
+        """Answer which remote the repository uses, asking git (and the user) only once.
+
+        Resolving is not free: it spawns ``git remote`` and, when the repository has several, it
+        prompts the user to pick one. The answer — including "there is none" — is therefore
+        memoized on the class, so every later caller reuses it instead of prompting again.
+
+        A failing ``git remote`` (e.g. the current directory is not a repository) is reported as a
+        warning and treated as "no remote", so callers get the same friendly handling as a
+        repository that simply has none.
+
+        This is the cheap half of the module: it never fetches and never resolves the main branch.
+
+        Parameters:
+            None
+
+        Raises:
+            None
+
+        Returns:
+            Optional[str]: The remote name, or None when there is no remote available.
+        """
+        if cls._REMOTE_RESOLVED:
+            return Repo.REMOTE
+        try:
+            result: str = run_operation("git remote", "Getting remotes").stdout.strip()
+        except subprocess.SubprocessError as error:
+            ws_warning(f"{NO_REMOTE_MESSAGE} Unable to get the remotes: {error}")
+            result = ""
+        remotes: list[str] = [line.strip() for line in result.splitlines() if line.strip()]
+        if not remotes:
+            Repo.REMOTE = None
+        elif len(remotes) == 1:
+            Repo.REMOTE = remotes[0]
+        else:
+            prompt: str = "Multiple remotes found in the current repository; Please select one of the following:\n"
+            for index, remote in enumerate(remotes):
+                prompt += f"\t{index}: {remote}\n"
+            choice = get_validated_input(prompt, [str(index) for index in range(len(remotes))])
+            Repo.REMOTE = remotes[int(choice)]
+        Repo._REMOTE_RESOLVED = True
+        return Repo.REMOTE
+
+    @classmethod
+    def require_remote(cls) -> str:
+        """Answer which remote the repository uses, failing when it has none.
+
+        This is the single entry point for commands that cannot work without a remote, so they all
+        share the same message and the same (memoized) resolution.
+
+        A repository without a remote is not a misuse of the CLI — the user broke no contract — so
+        this raises an environment error rather than a ClickException: the exit status then says
+        "the environment is not set up", which is a different thing for a script to react to than
+        "you called this wrong".
+
+        Parameters:
+            None
+
+        Raises:
+            EnvironmentError: If the repository has no remote configured.
+
+        Returns:
+            str: The remote name.
+        """
+        remote: Optional[str] = cls.resolve_remote()
+        if not remote:
+            raise EnvironmentError(NO_REMOTE_MESSAGE)
+        return remote
+
+    @classmethod
+    def get_remote_url(cls) -> Optional[str]:
+        """Return the repository's remote URL, without the trailing ``.git``.
+
+        Parameters:
+            None
+
+        Raises:
+            None
+
+        Returns:
+            Optional[str]: The remote URL, or None when the repository has no remote.
+        """
+        remote: Optional[str] = cls.resolve_remote()
+        if not remote:
+            return None
+        url: str = run_operation(f"git remote get-url {remote}", "Getting remote URL").stdout.strip()
+        return re.sub(r"\.git$", "", url)
+
+    @classmethod
+    def resolve_head(cls) -> str:
+        """Answer which commit HEAD points at, asking git only once.
+
+        This is the same two-level arrangement as :meth:`resolve_remote`: it is the cheap accessor
+        light-weight commands use (``create-release``, ``diff-tree`` with an explicit origin), and
+        the full snapshot reuses it rather than reading HEAD a second time. ``HEAD`` is its cache,
+        which is why there is no separate "current commit" helper — one implementation, one value.
+
+        The read goes through :meth:`_resolve_ref` like every other reference, so there is one
+        implementation of "resolve a ref" in the class. What this adds on top is that HEAD is
+        **required**: its callers build a diff range or a release target out of it, and an empty
+        string there would silently produce a malformed command rather than a visible failure.
+
+        The absence is detected from the empty result rather than from a non-zero exit, because a
+        repository with no commits is an ordinary state, not an operational failure: letting
+        ``run_operation`` fail on it would retry three times with a two second pause and report a
+        subprocess error instead of the plain fact that there is nothing to point at.
+
+        Parameters:
+            None
+
+        Raises:
+            LookupError: If HEAD does not resolve to a commit, i.e. the repository has no commits.
+
+        Returns:
+            str: The commit hash HEAD points at.
+        """
+        if not cls._HEAD_RESOLVED:
+            head: str = cls._resolve_ref("HEAD")
+            if not head:
+                raise LookupError(
+                    "HEAD does not resolve to any commit. The repository has no commits yet, "
+                    "so there is nothing to compare or release from."
+                )
+            Repo.HEAD = head
+            Repo._HEAD_RESOLVED = True
+        return Repo.HEAD
 
     def __new__(cls, *args, **kwargs) -> Self:
         """Resolve the repository snapshot before the first instance (of any subclass) is built.
@@ -52,7 +208,7 @@ class Repo:
             Self: The new instance.
         """
         if not Repo._INITIALIZED:
-            Repo.REMOTE = get_remote()
+            Repo.resolve_remote()
             if (
                 Repo.REMOTE
                 and get_validated_input(
@@ -154,7 +310,7 @@ class Repo:
                 ),
             )
         Repo.MAIN_BRANCH = main_branch
-        Repo.HEAD = cls._resolve_ref("HEAD")
+        cls.resolve_head()
         Repo.MAIN_LOCAL_HASH = cls._resolve_ref(f"{LOCAL_PREFIX}/{main_branch}")
         Repo.MAIN_REMOTE_HASH = cls._resolve_ref(main_ref) if main_ref else None
         if not Repo.MAIN_LOCAL_HASH and not Repo.MAIN_REMOTE_HASH:
@@ -190,7 +346,9 @@ class Repo:
 
     @classmethod
     def reset(cls) -> None:
-        """Clear the cached snapshot so the next instantiation resolves it again (used by tests).
+        """Clear every cached answer so the next call resolves it again (used by tests).
+
+        Both levels are cleared: the remote question and the full snapshot.
 
         Parameters:
             None
@@ -202,6 +360,8 @@ class Repo:
             None
         """
         Repo._INITIALIZED = False
+        Repo._REMOTE_RESOLVED = False
+        Repo._HEAD_RESOLVED = False
         Repo.REMOTE = None
         Repo.HEAD = ""
         Repo.BRANCH_HEAD = None

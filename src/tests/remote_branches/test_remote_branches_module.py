@@ -5,7 +5,7 @@ import click
 import pytest
 from click.testing import CliRunner
 from mega_snake.remote_branches import module
-from mega_snake.util.util import reset_remote_cache
+from mega_snake.util.repo import Repo
 from mega_snake.util.cli_group import ATTR_METADATA
 
 def test_main_group() -> None:
@@ -39,13 +39,13 @@ def test_wrapper_does_not_require_a_remote() -> None:
     """A repository without a remote is now supported: the Repo snapshot asks for the main branch
     instead. The wrapper must therefore neither resolve nor demand a remote, which would reject the
     repository before the command ever runs."""
-    reset_remote_cache()
-    with patch("mega_snake.util.util.run_operation") as run_operation, patch(
+    Repo.reset()
+    with patch("mega_snake.util.repo.run_operation") as run_operation, patch(
         "mega_snake.remote_branches.module.ensure_working_path"
     ), patch("mega_snake.remote_branches.module.complete_app_properties"):
         module.wrapper(None)
     run_operation.assert_not_called()
-    reset_remote_cache()
+    Repo.reset()
 
 
 def test_wrapper_fails_when_working_path_is_declined() -> None:

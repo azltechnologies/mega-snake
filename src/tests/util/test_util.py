@@ -17,15 +17,9 @@ from mega_snake.util.util import (
     get_input_or_default,
     get_validated_input,
     get_typed_validated_input,
-    get_remote,
-    get_remote_url,
-    get_current_commit,
     cli_metadata,
-    require_remote,
-    reset_remote_cache,
     wrapper_decorator,
     GIT_EXCLUDE_FILE,
-    NO_REMOTE_MESSAGE,
 )
 from mega_snake.util.formatting import (
     USER_DECLINED_ERROR_CODE,
@@ -34,14 +28,6 @@ from mega_snake.util.formatting import (
     resolve_error_code,
 )
 from mega_snake.util.cli_group import ATTR_METADATA
-
-
-@pytest.fixture(autouse=True)
-def fixture_clear_remote_cache() -> Generator[None, None, None]:
-    """Keep the memoized remote from leaking between tests."""
-    reset_remote_cache()
-    yield
-    reset_remote_cache()
 
 
 @pytest.fixture(name="mk_ws_advice")
@@ -83,13 +69,6 @@ def fixture_mk_run_operation() -> Generator[MagicMock, None, None]:
 def fixture_mk_get_validated_input() -> Generator[Callable, None, None]:
     """Fixture for get_validated_input."""
     with patch("mega_snake.util.util.get_validated_input") as mock:
-        yield mock
-
-
-@pytest.fixture(name="mk_get_remote")
-def fixture_mk_get_remote() -> Generator[Callable, None, None]:
-    """Fixture for get_remote."""
-    with patch("mega_snake.util.util.get_remote") as mock:
         yield mock
 
 
@@ -282,129 +261,6 @@ def test_get_validated_input(mk_input: MagicMock, mk_ws_warning: MagicMock) -> N
     with pytest.raises(KeyError):
         get_validated_input(prompt, valid_values)
     assert mk_ws_warning.call_count == 4
-
-
-def test_get_remote(mk_run_operation: MagicMock, mk_get_validated_input: MagicMock) -> None:
-    """Test get_remote function."""
-
-    # Test with no remotes
-    origin = "origin"
-    fork = "fork"
-    mk_run_operation.return_value.stdout = ""
-    result = get_remote()
-    assert result is None
-    mk_run_operation.assert_called_once_with("git remote", "Getting remotes")
-    mk_get_validated_input.assert_not_called()
-    mk_run_operation.reset_mock()
-    reset_remote_cache()
-
-    # Test with a single remote
-    mk_run_operation.return_value.stdout = origin
-    result = get_remote()
-    assert result == origin
-    mk_run_operation.assert_called_once_with("git remote", "Getting remotes")
-    mk_get_validated_input.assert_not_called()
-    mk_run_operation.reset_mock()
-    reset_remote_cache()
-
-    # Test with multiple remotes
-    mk_run_operation.return_value.stdout = f"{origin}\n{fork}"
-    mk_get_validated_input.return_value = 1
-    result = get_remote()
-    assert result == fork
-    mk_run_operation.assert_called_once_with("git remote", "Getting remotes")
-    mk_get_validated_input.assert_called_once()
-
-
-def test_get_remote_is_cached(mk_run_operation: MagicMock, mk_get_validated_input: MagicMock) -> None:
-    """The remote is resolved once per process: no extra `git remote`, no extra prompt."""
-    origin = "origin"
-    fork = "fork"
-    mk_run_operation.return_value.stdout = f"{origin}\n{fork}"
-    mk_get_validated_input.return_value = 1
-
-    assert get_remote() == fork
-    assert get_remote() == fork
-    assert get_remote() == fork
-    mk_run_operation.assert_called_once_with("git remote", "Getting remotes")
-    mk_get_validated_input.assert_called_once()
-
-    # A "no remote" answer is cached too, so it is not re-resolved on every call either
-    reset_remote_cache()
-    mk_run_operation.reset_mock()
-    mk_run_operation.return_value.stdout = ""
-    assert get_remote() is None
-    assert get_remote() is None
-    mk_run_operation.assert_called_once_with("git remote", "Getting remotes")
-
-
-def test_get_remote_when_command_fails(mk_run_operation: MagicMock, mk_ws_warning: MagicMock) -> None:
-    """A failing `git remote` (e.g. not a git repository) is reported with the friendly message."""
-    mk_run_operation.side_effect = subprocess.SubprocessError("git remote failed after 3 attempts")
-
-    assert get_remote() is None
-    mk_ws_warning.assert_called_once()
-    assert NO_REMOTE_MESSAGE in mk_ws_warning.call_args.args[0]
-
-    # The failure is cached as "no remote", so the retries are not repeated
-    mk_run_operation.reset_mock()
-    assert get_remote() is None
-    mk_run_operation.assert_not_called()
-
-
-def test_require_remote(mk_run_operation: MagicMock) -> None:
-    """require_remote returns the remote, or reports a missing one as an environment error.
-
-    A repository without a remote is not a misuse of the CLI, so it must not carry the
-    invocation-error status: the negative assertion is what pins that distinction, since a
-    ClickException would also make a bare ``pytest.raises(Exception)`` pass.
-    """
-    mk_run_operation.return_value.stdout = "origin"
-    assert require_remote() == "origin"
-
-    reset_remote_cache()
-    mk_run_operation.return_value.stdout = ""
-    with pytest.raises(EnvironmentError, match="No remote repository found") as excinfo:
-        require_remote()
-    assert not isinstance(excinfo.value, click.ClickException), (
-        "a missing remote must not be reported as an invocation error"
-    )
-    assert resolve_error_code(excinfo.value) == 112, (
-        f"a missing remote resolved to {resolve_error_code(excinfo.value)}, expected 112"
-    )
-
-
-def test_get_remote_url(mk_run_operation: MagicMock, mk_get_remote: MagicMock) -> None:
-    """Test get_remote_url function."""
-
-    # Test with no remote
-    mk_get_remote.return_value = None
-    result = get_remote_url()
-    assert result is None
-    mk_get_remote.assert_called_once()
-    mk_run_operation.assert_not_called()
-    mk_get_remote.reset_mock()
-
-    # Test with a remote that has a URL
-    remote_name = "origin"
-    expected_url = "git@test.com"
-    mk_get_remote.return_value = remote_name
-    mk_run_operation.return_value.stdout = expected_url
-    result = get_remote_url()
-    assert result == expected_url
-    mk_get_remote.assert_called_once()
-    mk_run_operation.assert_called_once()
-
-
-def test_get_current_commit(mk_run_operation: MagicMock) -> None:
-    """Test get_current_commit function."""
-    expected_commit = "abc123"
-    run_operation_result = SimpleNamespace(stdout=expected_commit)
-    mk_run_operation.return_value = run_operation_result
-
-    result = get_current_commit()
-    assert result == expected_commit
-    mk_run_operation.assert_called_once_with("git rev-parse HEAD", "Getting current branch")
 
 
 def test_cli_metadata() -> None:
