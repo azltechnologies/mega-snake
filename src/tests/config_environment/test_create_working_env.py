@@ -97,7 +97,7 @@ def fixture_ws_advice() -> Generator[MagicMock, None, None]:
 @pytest.fixture(name="get_command_return_code")
 def fixture_get_command_return_code() -> Generator[MagicMock, None, None]:
     """Mock get_command_return_code"""
-    with patch("mega_snake.config_environment.create_working_env.get_command_return_code") as mock:
+    with patch("mega_snake.config_environment.create_working_env.get_command_return_code", autospec=True) as mock:
         yield mock
 
 

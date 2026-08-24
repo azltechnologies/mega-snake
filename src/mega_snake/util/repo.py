@@ -216,7 +216,11 @@ class Repo:
                 )
                 == "y"
             ):
-                run_operation(f"git fetch {Repo.REMOTE} --prune", "Fetching and pruning remotes", timeout=15)
+                # The only network call here, so its budget is an order of magnitude above the
+                # 3 s the local ref reads get: a cold fetch on a large repository, a slow VPN
+                # or a credential-helper prompt all routinely take longer than that, and the
+                # user explicitly asked for this fetch and is waiting on it.
+                run_operation(f"git fetch {Repo.REMOTE} --prune", "Fetching and pruning remotes", timeout=60)
             cls.get_repo_details()
             Repo._INITIALIZED = True
         return super().__new__(cls)

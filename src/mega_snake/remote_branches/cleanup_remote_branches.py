@@ -1,10 +1,11 @@
 """Interactively deletes branches already merged into the main branch, locally and on the remote."""
 
 import click
-from mega_snake.util.formatting import ws_info, ws_success
+from mega_snake.util.formatting import ws_info, ws_success, ws_warning
 from mega_snake.util.util import run_operation
 from mega_snake.remote_branches.remote_branch import BranchLoader, GitBranch
 from mega_snake.remote_branches.parse_remote_branches import (
+    DeletionOutcome,
     Garbage,
     parsing_branches,
     delete_branches,
@@ -26,6 +27,11 @@ def remote_branches_cleanup() -> None:
     but instead of writing it to a file, feeds it directly to the interactive selection. Each
     selected branch is deleted from the sides (local / remote) where it exists, and the remote
     references are pruned afterwards when anything was deleted remotely.
+
+    The closing message reports what the run actually achieved. Announcing a blanket success was
+    wrong whenever a deletion failed: those failures are swallowed on purpose so one unreachable
+    branch cannot abort the cleanup, which left the user with a success line and no way to tell
+    that a branch had survived it.
     """
     branches: list[GitBranch] = BranchLoader.from_repository()
     if not branches:
@@ -35,7 +41,18 @@ def remote_branches_cleanup() -> None:
     if not garbage:
         ws_info("No branches were selected for deletion")
         return
-    delete_branches(garbage)
-    if any(item.remote for item in garbage):
+    outcome: DeletionOutcome = delete_branches(garbage)
+    # Pruning is driven by what was really deleted, not by what was selected: a run whose pushes all
+    # failed has nothing to prune.
+    if outcome.remote_deleted:
         run_operation("git fetch --all --prune", "Fetching all remotes and pruning deleted branches")
-    ws_success("Successfully deleted branches that have been merged into the main branch")
+    deleted: int = len(outcome.remote_deleted) + len(outcome.local_deleted)
+    if deleted:
+        ws_success(
+            f"Deleted {len(outcome.remote_deleted)} remote and {len(outcome.local_deleted)} local "
+            "branches that have been merged into the main branch"
+        )
+    if outcome.failures:
+        ws_warning(f"{len(outcome.failures)} branch side(s) could not be deleted:")
+        for failure in outcome.failures:
+            ws_warning(f"\t{failure}")

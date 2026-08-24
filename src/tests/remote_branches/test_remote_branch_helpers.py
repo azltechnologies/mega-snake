@@ -83,7 +83,11 @@ def scripted_git(
         return 0 if any(tip in command for tip in merged_hashes) else 1
 
     with patch("mega_snake.remote_branches.remote_branch.run_operation", side_effect=fake_run_operation) as run_op, (
-        patch("mega_snake.remote_branches.remote_branch.get_command_return_code", side_effect=fake_return_code)
+        patch(
+            "mega_snake.remote_branches.remote_branch.get_command_return_code",
+            autospec=True,
+            side_effect=fake_return_code,
+        )
     ) as return_code:
         yield SimpleNamespace(run_operation=run_op, get_command_return_code=return_code)
 
@@ -406,7 +410,7 @@ def test_from_repository_pairs_locals_and_remotes_and_skips_the_head_reference()
     with patch(
         "mega_snake.remote_branches.remote_branch.run_operation",
         side_effect=_loader_run_operation(local_listing, remote_listing),
-    ), patch("mega_snake.remote_branches.remote_branch.get_command_return_code", return_value=1):
+    ), patch("mega_snake.remote_branches.remote_branch.get_command_return_code", autospec=True, return_value=1):
         branches = BranchLoader.from_repository()
 
     by_name = {branch.get_any_branch().short_name: branch for branch in branches}
@@ -431,7 +435,7 @@ def test_from_repository_without_a_remote_never_enumerates_remote_references() -
     with patch(
         "mega_snake.remote_branches.remote_branch.run_operation",
         side_effect=_loader_run_operation(local_listing, ""),
-    ) as run_operation, patch("mega_snake.remote_branches.remote_branch.get_command_return_code", return_value=0):
+    ) as run_operation, patch("mega_snake.remote_branches.remote_branch.get_command_return_code", autospec=True, return_value=0):
         branches = BranchLoader.from_repository()
     assert [branch.get_any_branch().short_name for branch in branches] == ["local-only"]
     issued = [issued_call.args[0] for issued_call in run_operation.call_args_list]
@@ -455,7 +459,7 @@ def test_from_repository_rejects_a_malformed_enumeration_line(local_listing: str
     with patch(
         "mega_snake.remote_branches.remote_branch.run_operation",
         side_effect=_loader_run_operation(local_listing, remote_listing),
-    ), patch("mega_snake.remote_branches.remote_branch.get_command_return_code", return_value=1):
+    ), patch("mega_snake.remote_branches.remote_branch.get_command_return_code", autospec=True, return_value=1):
         with pytest.raises(InternalStateError, match="tab-separated fields"):
             BranchLoader.from_repository()
 
@@ -466,7 +470,7 @@ def test_from_repository_propagates_a_failing_enumeration() -> None:
     with patch(
         "mega_snake.remote_branches.remote_branch.run_operation",
         side_effect=subprocess.SubprocessError("git exploded"),
-    ), patch("mega_snake.remote_branches.remote_branch.get_command_return_code", return_value=1):
+    ), patch("mega_snake.remote_branches.remote_branch.get_command_return_code", autospec=True, return_value=1):
         with pytest.raises(subprocess.SubprocessError, match="git exploded"):
             BranchLoader.from_repository()
 
@@ -485,7 +489,7 @@ def test_from_repository_propagates_a_failure_while_describing_a_branch() -> Non
 
     with patch(
         "mega_snake.remote_branches.remote_branch.run_operation", side_effect=failing_after_enumeration
-    ), patch("mega_snake.remote_branches.remote_branch.get_command_return_code", return_value=1):
+    ), patch("mega_snake.remote_branches.remote_branch.get_command_return_code", autospec=True, return_value=1):
         with pytest.raises(subprocess.SubprocessError, match="merge-base exploded"):
             BranchLoader.from_repository()
 
@@ -509,7 +513,7 @@ def test_from_repository_propagates_a_failing_local_enumeration_specifically() -
     with patch(
         "mega_snake.remote_branches.remote_branch.run_operation", side_effect=fail_only_the_local_listing
     ) as run_operation, patch(
-        "mega_snake.remote_branches.remote_branch.get_command_return_code", return_value=1
+        "mega_snake.remote_branches.remote_branch.get_command_return_code", autospec=True, return_value=1
     ):
         with pytest.raises(subprocess.SubprocessError, match="for-each-ref exploded"):
             BranchLoader.from_repository()

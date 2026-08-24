@@ -5,7 +5,7 @@ This module contains utility functions for common operations.
 import json
 import os
 import re
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 import subprocess
 import platform
 import time
@@ -54,6 +54,28 @@ def load_json_with_comments(file_path: str) -> dict:
         return parser.loads(json_str)
 
 
+def _as_text(stream: Optional[Union[str, bytes]]) -> str:
+    """Render a captured subprocess stream as text, whatever the exception carried.
+
+    ``CalledProcessError`` carries the decoded strings ``run_operation`` asked for with ``text=True``,
+    but ``TimeoutExpired`` carries whatever had been read when the timer fired, which is ``bytes`` or
+    ``None``. Both reach the same warning, so the difference is absorbed here instead of at each
+    call site.
+
+    Parameters:
+        stream: The captured stream, already decoded, still raw, or absent.
+
+    Raises:
+        None
+
+    Returns:
+        str: The stream as text, or an empty string when there was nothing captured.
+    """
+    if stream is None:
+        return ""
+    return stream if isinstance(stream, str) else stream.decode(errors="replace")
+
+
 def run_operation(
     cwd: str, description: str, check: bool = True, timeout: Optional[float] = None
 ) -> subprocess.CompletedProcess[str]:
@@ -66,11 +88,17 @@ def run_operation(
         timeout: Maximum number of seconds to wait for the command to finish, or None to wait
             indefinitely.
 
+    A timeout is retried like any other failure. It used to propagate on the first attempt instead,
+    because ``subprocess.TimeoutExpired`` is a ``SubprocessError`` but **not** a
+    ``CalledProcessError``, so the ``except`` clause never saw it — which meant a single slow network
+    call (a cold fetch, a VPN, a credential prompt) aborted the whole command with a raw traceback,
+    and the retries that exist precisely for transient failures never ran. The two are caught
+    together and reported the same way; only the wording differs, since a timeout has no exit code
+    to show.
+
     Raises:
-        subprocess.SubprocessError: If the command still fails after 3 attempts.
-        subprocess.TimeoutExpired: If the command does not finish within ``timeout`` seconds. Unlike
-            a failed exit code, a timeout is not retried; it propagates immediately on the attempt
-            that exceeded it.
+        subprocess.SubprocessError: If the command still fails — or still times out — after 3
+            attempts.
 
     Returns:
         subprocess.CompletedProcess[str]: The result of the last (successful) attempt.
@@ -102,14 +130,19 @@ def run_operation(
             ws_advice(f"{description} successfully on attempt {attempt}!")
             ws_advice(f"stdout: {result.stdout}")
             break  # Exit the loop on successful push
-        except subprocess.CalledProcessError as error:
-            ws_warning(f"{description} failed on attempt {attempt}. Error: {error.stdout}")
-            ws_warning(f"Error details: {error.stderr}")
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+            timed_out: bool = isinstance(error, subprocess.TimeoutExpired)
+            detail: str = (
+                f"timed out after {timeout} seconds" if timed_out else f"failed. Error: {_as_text(error.stdout)}"
+            )
+            ws_warning(f"{description} {detail} on attempt {attempt}.")
+            ws_warning(f"Error details: {_as_text(error.stderr)}")
             if attempt == num_retries:
                 raise subprocess.SubprocessError(
                     (
-                        f"{description} failed after {num_retries} attempts.\n"
-                        f"Error: {error.stderr}\n"
+                        f"{description} {'timed out' if timed_out else 'failed'} after "
+                        f"{num_retries} attempts.\n"
+                        f"Error: {_as_text(error.stderr)}\n"
                         f"Commnad: {cwd}, Shell: {shell}"
                     )
                 ) from error

@@ -1,18 +1,47 @@
 """Tests for the remote-branches-cleanup command."""
 
 import subprocess
-from typing import Iterator
-from unittest.mock import patch
+from typing import Iterator, Optional
+from unittest.mock import call, patch
 
 import pytest
 
 from mega_snake.remote_branches import cleanup_remote_branches as module
-from mega_snake.remote_branches.parse_remote_branches import Garbage
+from mega_snake.remote_branches.parse_remote_branches import DeletionOutcome, Garbage
 from mega_snake.util.repo import Repo
 
-BOTH_SIDES = Garbage(branch="feature", local=True, remote=True)
-LOCAL_ONLY = Garbage(branch="merged-and-pruned", local=True, remote=False)
+BOTH_SIDES = Garbage(local_name="feature", remote_name="feature")
+LOCAL_ONLY = Garbage(local_name="merged-and-pruned", remote_name=None)
 PRUNE_COMMAND = "git fetch --all --prune"
+
+
+def outcome_of(
+    remote_deleted: Optional[list[str]] = None,
+    local_deleted: Optional[list[str]] = None,
+    failures: Optional[list[str]] = None,
+) -> DeletionOutcome:
+    """Build a deletion outcome, defaulting every side to "nothing happened".
+
+    Every test that patches ``delete_branches`` has to hand back one of these, and the interesting
+    part is always a single field; letting a MagicMock stand in instead would make ``remote_deleted``
+    truthy no matter what the run did, which is exactly the distinction these tests exist to draw.
+
+    Parameters:
+        remote_deleted: The remote names the run deleted.
+        local_deleted: The local names the run deleted.
+        failures: The failure lines the run collected.
+
+    Raises:
+        None
+
+    Returns:
+        DeletionOutcome: The outcome to return from a patched ``delete_branches``.
+    """
+    return DeletionOutcome(
+        remote_deleted=remote_deleted or [],
+        local_deleted=local_deleted or [],
+        failures=failures or [],
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -34,9 +63,9 @@ def test_cleanup_feeds_the_live_inventory_to_the_selection() -> None:
     inventory = ["branch-a", "branch-b"]
     with patch.object(module, "BranchLoader") as loader, patch.object(
         module, "parsing_branches", return_value=[BOTH_SIDES]
-    ) as parsing_branches, patch.object(module, "delete_branches"), patch.object(module, "run_operation"), patch(
-        "builtins.open"
-    ) as opened:
+    ) as parsing_branches, patch.object(
+        module, "delete_branches", return_value=outcome_of()
+    ), patch.object(module, "run_operation"), patch("builtins.open") as opened:
         loader.from_repository.return_value = inventory
         module.remote_branches_cleanup.callback()
 
@@ -50,7 +79,9 @@ def test_cleanup_deletes_the_selection_and_prunes_afterwards() -> None:
     listing of the next run does not show what was just removed."""
     with patch.object(module, "BranchLoader") as loader, patch.object(
         module, "parsing_branches", return_value=[BOTH_SIDES]
-    ), patch.object(module, "delete_branches") as delete_branches, patch.object(
+    ), patch.object(
+        module, "delete_branches", return_value=outcome_of(remote_deleted=["feature"], local_deleted=["feature"])
+    ) as delete_branches, patch.object(
         module, "run_operation"
     ) as run_operation:
         loader.from_repository.return_value = ["branch-a"]
@@ -65,7 +96,9 @@ def test_cleanup_skips_the_prune_when_nothing_was_deleted_remotely() -> None:
     do — a repository without a remote would fail on it."""
     with patch.object(module, "BranchLoader") as loader, patch.object(
         module, "parsing_branches", return_value=[LOCAL_ONLY]
-    ), patch.object(module, "delete_branches") as delete_branches, patch.object(
+    ), patch.object(
+        module, "delete_branches", return_value=outcome_of(local_deleted=["merged-and-pruned"])
+    ) as delete_branches, patch.object(
         module, "run_operation"
     ) as run_operation:
         loader.from_repository.return_value = ["branch-a"]
@@ -73,6 +106,63 @@ def test_cleanup_skips_the_prune_when_nothing_was_deleted_remotely() -> None:
 
     delete_branches.assert_called_once_with([LOCAL_ONLY])
     run_operation.assert_not_called()
+
+
+def test_cleanup_prunes_on_what_was_deleted_not_on_what_was_selected() -> None:
+    """A selection carrying a remote side whose push then failed leaves nothing to prune: the
+    decision must read the outcome, not the request. This is the only fixture that separates the two
+    — the branch *was* selected with a remote side, and the remote side *was* not deleted."""
+    with patch.object(module, "BranchLoader") as loader, patch.object(
+        module, "parsing_branches", return_value=[BOTH_SIDES]
+    ), patch.object(
+        module,
+        "delete_branches",
+        return_value=outcome_of(local_deleted=["feature"], failures=["remote 'feature' could not be deleted"]),
+    ), patch.object(
+        module, "run_operation"
+    ) as run_operation:
+        loader.from_repository.return_value = ["branch-a"]
+        module.remote_branches_cleanup.callback()
+
+    assert run_operation.call_args_list == [], "pruned despite the remote deletion having failed"
+
+
+def test_cleanup_reports_every_failure_and_never_claims_a_clean_run() -> None:
+    """A swallowed deletion failure must still reach the user: the branch survived, and the closing
+    line is the only place the run says so."""
+    failure = "Local branch 'feature' could not be deleted; it is still present"
+    with patch.object(module, "BranchLoader") as loader, patch.object(
+        module, "parsing_branches", return_value=[BOTH_SIDES]
+    ), patch.object(
+        module, "delete_branches", return_value=outcome_of(remote_deleted=["feature"], failures=[failure])
+    ), patch.object(module, "run_operation"), patch.object(module, "ws_warning") as ws_warning, patch.object(
+        module, "ws_success"
+    ) as ws_success:
+        loader.from_repository.return_value = ["branch-a"]
+        module.remote_branches_cleanup.callback()
+
+    assert ws_warning.call_args_list == [
+        call("1 branch side(s) could not be deleted:"),
+        call(f"\t{failure}"),
+    ]
+    assert ws_success.call_args_list == [call("Deleted 1 remote and 0 local branches that have been merged "
+                                             "into the main branch")]
+
+
+def test_cleanup_announces_no_success_when_every_deletion_failed() -> None:
+    """A run that deleted nothing must not print a success line at all: the counts would both be
+    zero, which reads as a clean cleanup that removed nothing on purpose."""
+    with patch.object(module, "BranchLoader") as loader, patch.object(
+        module, "parsing_branches", return_value=[BOTH_SIDES]
+    ), patch.object(
+        module, "delete_branches", return_value=outcome_of(failures=["remote failed", "local failed"])
+    ), patch.object(module, "run_operation"), patch.object(module, "ws_warning"), patch.object(
+        module, "ws_success"
+    ) as ws_success:
+        loader.from_repository.return_value = ["branch-a"]
+        module.remote_branches_cleanup.callback()
+
+    ws_success.assert_not_called()
 
 
 def test_cleanup_with_an_empty_selection_deletes_nothing() -> None:

@@ -139,13 +139,13 @@ def test_echo_and_expired_certs() -> None:
 
     valid_cert = "Alias name: a\nValid from: Mon Jan 01 00:00:00 UTC 2024 until: Mon Jan 01 00:00:00 UTC 2099"
     with patch("mega_snake.light_weight.jks_expired_certs.shutil.which", return_value="/bin/keytool"), patch(
-        "mega_snake.light_weight.jks_expired_certs.get_command_return_code", return_value=0
+        "mega_snake.light_weight.jks_expired_certs.get_command_return_code", autospec=True, return_value=0
     ), patch("mega_snake.light_weight.jks_expired_certs.run_operation") as run_operation:
         run_operation.side_effect = [SimpleNamespace(stdout="Alias name: a"), SimpleNamespace(stdout=valid_cert)]
         expired_certs.callback("/tmp/a.jks", "p", False)
 
     with patch("mega_snake.light_weight.jks_expired_certs.shutil.which", return_value="/bin/keytool"), patch(
-        "mega_snake.light_weight.jks_expired_certs.get_command_return_code", return_value=1
+        "mega_snake.light_weight.jks_expired_certs.get_command_return_code", autospec=True, return_value=1
     ):
         # keytool ran and rejected the keystore or the password: an external command failure.
         with pytest.raises(subprocess.SubprocessError, match="keytool command failed"):
@@ -153,7 +153,7 @@ def test_echo_and_expired_certs() -> None:
 
     expired_cert = "Alias name: a\nValid from: Mon Jan 01 00:00:00 UTC 2020 until: Mon Jan 01 00:00:00 UTC 2021"
     with patch("mega_snake.light_weight.jks_expired_certs.shutil.which", return_value="/bin/keytool"), patch(
-        "mega_snake.light_weight.jks_expired_certs.get_command_return_code", return_value=0
+        "mega_snake.light_weight.jks_expired_certs.get_command_return_code", autospec=True, return_value=0
     ), patch("mega_snake.light_weight.jks_expired_certs.run_operation") as run_operation:
         run_operation.side_effect = [
             SimpleNamespace(stdout="Alias name: a"),

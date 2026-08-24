@@ -132,6 +132,65 @@ def test_run_operation(mk_ws_warning: MagicMock, mk_subprocess_run: MagicMock) -
     assert mk_subprocess_run.call_count == 3
 
 
+def test_run_operation_retries_a_timeout_like_any_other_failure(
+    mk_ws_warning: MagicMock, mk_subprocess_run: MagicMock
+) -> None:
+    """A timeout is a transient failure and must go through the same retries as a bad exit code.
+
+    ``subprocess.TimeoutExpired`` is a ``SubprocessError`` but **not** a ``CalledProcessError``, so
+    the retry clause never saw it: one slow network call — a cold fetch, a VPN, a credential prompt
+    — aborted the whole command on the first attempt with a raw traceback, and the retries that
+    exist precisely for this never ran.
+    """
+    timed_out = subprocess.TimeoutExpired(cmd="git fetch", timeout=60, output=b"partial", stderr=b"slow")
+    valid_value = SimpleNamespace(stdout="fetched", stderr="", returncode=0)
+
+    mk_subprocess_run.side_effect = [timed_out, valid_value]
+    with patch("mega_snake.util.util.get_property", return_value="bash"):
+        result = run_operation("git fetch", "Fetching", timeout=60)
+
+    assert mk_subprocess_run.call_count == 2, "the timeout was not retried"
+    assert result.stdout == "fetched"
+    warnings = [issued.args[0] for issued in mk_ws_warning.call_args_list]
+    assert warnings[0] == "Fetching timed out after 60 seconds on attempt 1."
+
+
+def test_run_operation_reports_a_persistent_timeout_as_a_subprocess_error(
+    mk_ws_warning: MagicMock, mk_subprocess_run: MagicMock
+) -> None:
+    """Once the retries are spent the timeout must surface as the same ``SubprocessError`` every
+    caller already handles — and it must say it timed out, not that it failed, since there is no
+    exit code to show. Leaking the raw ``TimeoutExpired`` is what produced exit 111 and a traceback.
+    """
+    timed_out = subprocess.TimeoutExpired(cmd="git fetch", timeout=60, output=b"partial", stderr=b"slow")
+    mk_subprocess_run.side_effect = [timed_out] * 3
+
+    with patch("mega_snake.util.util.get_property", return_value="bash"):
+        with pytest.raises(subprocess.SubprocessError, match="timed out after 3 attempts") as raised:
+            run_operation("git fetch", "Fetching", timeout=60)
+
+    assert not isinstance(raised.value, subprocess.TimeoutExpired), "the raw timeout escaped unwrapped"
+    assert mk_subprocess_run.call_count == 3
+    # TimeoutExpired carries bytes, not the decoded text CalledProcessError has
+    assert "slow" in str(raised.value), "the captured stderr was lost decoding it"
+
+
+def test_run_operation_renders_a_missing_captured_stream_as_empty(
+    mk_ws_warning: MagicMock, mk_subprocess_run: MagicMock
+) -> None:
+    """A timeout that fired before anything was read carries ``None`` on both streams. The warning
+    must still render — formatting ``None`` into the message is what a bare ``error.stderr`` did."""
+    timed_out = subprocess.TimeoutExpired(cmd="git fetch", timeout=3)
+    mk_subprocess_run.side_effect = [timed_out] * 3
+
+    with patch("mega_snake.util.util.get_property", return_value="bash"):
+        with pytest.raises(subprocess.SubprocessError) as raised:
+            run_operation("git fetch", "Fetching", timeout=3)
+
+    assert "None" not in str(raised.value), "an absent stream leaked as the literal 'None'"
+    assert "Error: \n" in str(raised.value)
+
+
 def test_get_command_return_code() -> None:
     """Test get_command_return_code function."""
 
