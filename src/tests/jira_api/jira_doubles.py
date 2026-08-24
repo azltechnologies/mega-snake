@@ -60,6 +60,26 @@ class FakeSession:
         return [url.removeprefix(BASE_URL) for url, _ in self.calls]
 
 
+def sprint_listing_page(sprints: list[dict], is_last: bool = True) -> FakeResponse:
+    """Build one page of `/rest/agile/1.0/board/{id}/sprint`, the way Jira shapes it.
+
+    That endpoint is a `PageBean`: it pages with `startAt`/`maxResults` and closes the walk with
+    `isLast`. It never sends a `nextPageToken` -- building the double by hand once made a test pin a
+    shape Jira does not produce, and the truncation bug it was meant to catch went through green.
+    """
+    return FakeResponse({"values": sprints, "isLast": is_last, "maxResults": 50, "startAt": 0})
+
+
+def sprint_issues_page(keys: list[str], total: int) -> FakeResponse:
+    """Build one page of `/rest/agile/1.0/sprint/{id}/issue`, the way Jira shapes it.
+
+    That one is a `SearchResults` bean: same `startAt` paging, but the end of the walk is `total`
+    rather than `isLast`. Passing the *overall* total (not the page length) is what makes a
+    multi-page fixture behave like the real endpoint.
+    """
+    return FakeResponse({"issues": [{"key": key} for key in keys], "total": total, "maxResults": 50})
+
+
 def make_config() -> JiraConfig:
     """Build the connection settings the fakes are wired for."""
     return JiraConfig(domain=DOMAIN, email=EMAIL, token=TOKEN)

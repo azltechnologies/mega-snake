@@ -19,7 +19,13 @@ from mega_snake.jira_api.issues import (
 )
 from mega_snake.util.store import Store
 
-from tests.jira_api.jira_doubles import BOARD_ID, FakeResponse, make_client
+from tests.jira_api.jira_doubles import (
+    BOARD_ID,
+    FakeResponse,
+    make_client,
+    sprint_issues_page,
+    sprint_listing_page,
+)
 
 RESOURCES = Path(__file__).resolve().parents[1] / "resources" / "jira"
 STORY_POINTS_FIELD = "customfield_99999"
@@ -47,9 +53,9 @@ def _responses(issue_pages: list[list[dict]], sprints: list[dict], sprint_keys: 
         if index < len(issue_pages) - 1:
             payload["nextPageToken"] = f"page-{index + 1}"
         responses.append(FakeResponse(payload))
-    responses.append(FakeResponse({"values": sprints}))
+    responses.append(sprint_listing_page(sprints))
     for _ in sprints:
-        responses.append(FakeResponse({"issues": [{"key": key} for key in sprint_keys]}))
+        responses.append(sprint_issues_page(sprint_keys, len(sprint_keys)))
     return responses
 
 
@@ -119,16 +125,22 @@ def test_a_board_without_a_filter_fails_clearly(jira_workspace: Path) -> None:
 
 
 def test_every_page_of_issues_and_of_sprint_keys_is_followed(jira_workspace: Path) -> None:
-    """Both the search and the sprint issue listing page with nextPageToken."""
+    """The two endpoints page differently, and each one is walked the way Jira actually pages it.
+
+    `/rest/api/2/search/jql` sends `nextPageToken`; `/rest/agile/1.0/sprint/{id}/issue` is an Agile
+    bean that pages with `startAt`/`total` and never sends a token. This test used to serve a token
+    for the sprint endpoint too, so it pinned the behaviour of the double instead of Jira's, and
+    stayed green while the second page of sprint keys was never requested.
+    """
     _prime(Store.get_instance())
     client, session = make_client(
         [
             CONFIGURATION_RESPONSE,
             FakeResponse({"issues": [RAW_ISSUES[0]], "nextPageToken": "p1"}),
             FakeResponse({"issues": [RAW_ISSUES[1]]}),
-            FakeResponse({"values": [SPRINT_ONE]}),
-            FakeResponse({"issues": [{"key": "TAROTAPP-1"}], "nextPageToken": "s1"}),
-            FakeResponse({"issues": [{"key": "TAROTAPP-0"}]}),
+            sprint_listing_page([SPRINT_ONE]),
+            sprint_issues_page(["TAROTAPP-1"], total=2),
+            sprint_issues_page(["TAROTAPP-0"], total=2),
         ]
     )
     output = jira_workspace / "issues.json"
@@ -139,6 +151,32 @@ def test_every_page_of_issues_and_of_sprint_keys_is_followed(jira_workspace: Pat
     assert [issue["key"] for issue in issues] == ["TAROTAPP-1", "TAROTAPP-0"]
     assert all(issue["activeSprint"] for issue in issues)
     assert len(session.calls) == 6
+
+
+def test_a_sprint_key_on_the_second_page_is_still_flagged(jira_workspace: Path) -> None:
+    """The regression test for reading an Agile endpoint with the token paginator.
+
+    `TAROTAPP-1` lives on the *second* page of the sprint's issue listing. With a paginator that
+    waits for a `nextPageToken` the endpoint never sends, page two is never requested and the issue
+    is written out as `activeSprint: false` -- wrong data, no warning, exit code 0.
+    """
+    _prime(Store.get_instance())
+    client, session = make_client(
+        [
+            CONFIGURATION_RESPONSE,
+            FakeResponse({"issues": RAW_ISSUES}),
+            sprint_listing_page([SPRINT_ONE]),
+            sprint_issues_page(["TAROTAPP-9"], total=2),
+            sprint_issues_page(["TAROTAPP-1"], total=2),
+        ]
+    )
+    output = jira_workspace / "issues.json"
+
+    download_board_issues(output=str(output), client=client)
+    issues = json.loads(output.read_text(encoding="utf-8"))
+
+    assert {issue["key"] for issue in issues if issue["activeSprint"]} == {"TAROTAPP-1"}
+    assert [params["startAt"] for _, params in session.calls[-2:]] == ["0", "1"]
 
 
 def test_output_file_is_written_atomically(jira_workspace: Path) -> None:
@@ -213,6 +251,54 @@ def test_command_defaults_the_output_to_the_working_path(jira_workspace: Path) -
     # The command resolves the default path itself and passes it down, so download_board_issues()
     # never has to fall back to ensure_working_path() a second time for the same run.
     ensure_working_path_mock.assert_called_once()
+
+
+def test_explicit_output_never_touches_the_working_path(jira_workspace: Path) -> None:
+    """With -o naming the destination, `workspace_temp` is none of this run's business.
+
+    `ensure_working_path` warns, prompts, and raises `UserDeclinedError` (exit 114) when the user
+    says no -- for a folder the run was never going to write to. Asserted by equality against zero
+    calls, and by the folder still not existing afterwards.
+    """
+    _prime(Store.get_instance())
+    client, _ = make_client(_responses([RAW_ISSUES], [], []))
+    output = jira_workspace / "elsewhere.json"
+
+    with (
+        patch("mega_snake.jira_api.issues.ensure_working_path") as ensure_working_path_mock,
+        patch("mega_snake.jira_api.issues.complete_app_properties") as complete_mock,
+        patch("mega_snake.jira_api.issues.get_property", return_value=str(jira_workspace / "workspace_temp")),
+        patch("mega_snake.jira_api.issues.JiraClient", return_value=client),
+    ):
+        result = CliRunner().invoke(jira_issues, ["-o", str(output)])
+
+    assert result.exit_code == 0
+    assert output.is_file()
+    assert ensure_working_path_mock.call_count == 0
+    # No working path means no log file to configure, so the deferred initialization is skipped
+    # rather than left to raise FileNotFoundError.
+    assert complete_mock.call_count == 0
+    assert not (jira_workspace / "workspace_temp").exists()
+
+
+def test_explicit_output_still_completes_logging_when_the_folder_exists(jira_workspace: Path) -> None:
+    """The negative of the previous test: an existing folder means --log-level keeps working."""
+    _prime(Store.get_instance())
+    client, _ = make_client(_responses([RAW_ISSUES], [], []))
+    working_path = jira_workspace / "workspace_temp"
+    working_path.mkdir()
+
+    with (
+        patch("mega_snake.jira_api.issues.ensure_working_path") as ensure_working_path_mock,
+        patch("mega_snake.jira_api.issues.complete_app_properties") as complete_mock,
+        patch("mega_snake.jira_api.issues.get_property", return_value=str(working_path)),
+        patch("mega_snake.jira_api.issues.JiraClient", return_value=client),
+    ):
+        result = CliRunner().invoke(jira_issues, ["-o", str(jira_workspace / "elsewhere.json")])
+
+    assert result.exit_code == 0
+    assert ensure_working_path_mock.call_count == 0
+    assert complete_mock.call_count == 1
 
 
 def test_download_falls_back_to_the_working_path_when_called_without_a_command(jira_workspace: Path) -> None:

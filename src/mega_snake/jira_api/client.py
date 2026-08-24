@@ -45,6 +45,9 @@ RETRY_METHODS: frozenset[str] = frozenset({"GET"})
 ACCEPT_HEADER: str = "application/json"
 NEXT_PAGE_TOKEN: str = "nextPageToken"
 MAX_RESULTS: str = "maxResults"
+START_AT: str = "startAt"
+IS_LAST: str = "isLast"
+TOTAL: str = "total"
 
 # Keyed by status so every handled failure has one message the tests can assert by equality.
 STATUS_MESSAGES: dict[int, str] = {
@@ -52,10 +55,7 @@ STATUS_MESSAGES: dict[int, str] = {
         "Jira rejected the credentials (401). The API token is invalid or expired, or it does not "
         "match the configured email. Check JIRA_API_TOKEN and 'mgsnake config get jira.email'."
     ),
-    403: (
-        "Jira refused the request (403). The account is authenticated but lacks permission for "
-        "this resource."
-    ),
+    403: ("Jira refused the request (403). The account is authenticated but lacks permission for this resource."),
     404: (
         "Jira could not find the requested resource (404) at {path}. Check the project key, the "
         "board id, and that the account can see them."
@@ -190,9 +190,7 @@ class JiraClient:
         if status in STATUS_MESSAGES:
             raise click.ClickException(STATUS_MESSAGES[status].format(path=path))
         if status >= 400:
-            raise click.ClickException(
-                UNEXPECTED_STATUS_MESSAGE.format(status=status, path=path, body=response.text)
-            )
+            raise click.ClickException(UNEXPECTED_STATUS_MESSAGE.format(status=status, path=path, body=response.text))
         try:
             return response.json()
         except ValueError as error:
@@ -203,10 +201,15 @@ class JiraClient:
     ) -> Iterator[dict]:
         """Yield every item of a token-paginated endpoint, one page at a time.
 
-        The endpoints used here page with ``nextPageToken`` (not ``startAt``) and only send that
-        token while more pages remain. Yielding as the pages arrive keeps the accumulation linear:
-        the shell version rewrote its whole accumulator file once per page, which is quadratic in
-        I/O.
+        **Only ``/rest/api/{2,3}/search/jql`` pages this way.** That endpoint sends
+        ``nextPageToken`` while more pages remain and omits it on the last one. The Agile API
+        (``/rest/agile/1.0/*``) is a different scheme entirely -- ``startAt`` / ``maxResults`` /
+        ``total`` / ``isLast``, and never a token -- so pointing this method at an Agile path reads
+        the first page, finds no token, and stops: the caller silently gets a truncated result with
+        a successful exit. Use ``paginate_start_at`` there.
+
+        Yielding as the pages arrive keeps the accumulation linear: the shell version rewrote its
+        whole accumulator file once per page, which is quadratic in I/O.
 
         Parameters:
             path: The absolute API path.
@@ -228,3 +231,44 @@ class JiraClient:
             if not token:
                 return
             query[NEXT_PAGE_TOKEN] = token
+
+    def paginate_start_at(
+        self, path: str, params: Optional[dict[str, str]] = None, items_key: str = "issues"
+    ) -> Iterator[dict]:
+        """Yield every item of an offset-paginated endpoint, one page at a time.
+
+        This is how the whole Agile API (``/rest/agile/1.0/*``) pages: the request carries
+        ``startAt``, and the response reports where the walk stands with ``isLast`` (the board
+        endpoints) or ``total`` (the search-shaped ones). Neither of them ever sends a
+        ``nextPageToken``.
+
+        The offset advances by how many items *came back*, never by the requested page size: Jira
+        caps ``maxResults`` server side, so asking for 100 and being served 50 is normal and adding
+        100 would skip half of the results. For the same reason a short page cannot be used as the
+        end-of-walk signal; the walk ends on ``isLast``, on reaching ``total``, or on an empty page.
+
+        Parameters:
+            path: The absolute API path.
+            params: The query parameters shared by every page.
+            items_key: The response key holding the page's items (``values`` on the board endpoints).
+
+        Raises:
+            click.ClickException: If any page fails, as described in ``get``.
+
+        Returns:
+            Iterator[dict]: Every item across every page, in order.
+        """
+        query: dict[str, str] = dict(params or {})
+        query.setdefault(MAX_RESULTS, str(DEFAULT_PAGE_SIZE))
+        start_at: int = 0
+        while True:
+            query[START_AT] = str(start_at)
+            payload: dict = self.get(path, query)
+            items: list = payload.get(items_key) or []
+            yield from items
+            if payload.get(IS_LAST) is True or not items:
+                return
+            start_at += len(items)
+            total: Any = payload.get(TOTAL)
+            if isinstance(total, int) and start_at >= total:
+                return

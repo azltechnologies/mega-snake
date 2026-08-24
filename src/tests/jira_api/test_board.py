@@ -8,7 +8,7 @@ import click
 import pytest
 
 from mega_snake.constants import JIRA_BOARD_ID_KEY, JIRA_PROJECT_KEY_KEY
-from mega_snake.jira_api.board import jira_board, resolve_board
+from mega_snake.jira_api.board import INVALID_CACHE_MESSAGE, jira_board, resolve_board
 from mega_snake.util.store import SCOPE_REPO, Store
 
 from tests.jira_api.jira_doubles import BOARD_ID, DOMAIN, PROJECT_ID, PROJECT_KEY, FakeResponse, make_client
@@ -119,13 +119,20 @@ def test_cache_is_ignored_for_a_different_project(jira_workspace: Path) -> None:
 def test_corrupt_cached_board_id_is_ignored_and_reported_on_stderr(
     jira_workspace: Path, capsys: pytest.CaptureFixture
 ) -> None:
-    """A hand-edited state file must not turn every run into a ValueError."""
+    """A hand-edited state file must not turn every run into a ValueError.
+
+    Both halves are asserted: the message is on stderr, and stdout stays empty. Checking only the
+    empty stdout would keep passing if the warning stopped being emitted at all, which is the whole
+    thing the name promises.
+    """
     assert jira_workspace.exists()
     Store.get_instance().set(JIRA_BOARD_ID_KEY, "not-a-number")
     client, _ = make_client(_board_responses({"id": BOARD_ID}))
 
     assert resolve_board(client=client).id == BOARD_ID
-    assert capsys.readouterr().out == ""
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert INVALID_CACHE_MESSAGE.format(value="not-a-number") in captured.err
 
 
 def test_missing_project_key_names_the_command_that_sets_it(jira_workspace: Path) -> None:

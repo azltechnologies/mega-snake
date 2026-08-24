@@ -28,3 +28,8 @@ exits 0. That is an answer, not a failure.
 
 Boards are per project, so this always resolves the board first; with a warm cache that costs no
 extra request.
+
+The sprint listing is paged through to the end. Jira's Agile API pages with `startAt`/`isLast` and
+never sends a continuation token, so a board with a long sprint history cannot hide an active sprint
+on page two — which would otherwise show up in `jira-issues` as every one of that sprint's issues
+being flagged `activeSprint: false`.

@@ -682,8 +682,14 @@ The `config` command group (`get` / `set` / `unset` / `list` / `export`) is the 
 - **The whole group is `no_init`, not `no_init` + `skip` per subcommand.** A group carries a single set of
   initialization flags for everything under it, and `config get` / `config export` must answer before the
   environment exists (they are read with `$(...)` and `eval`). That costs nothing because the store is
-  deliberately independent of `AppProperties`. Consequence: **no `ws_*` output in `get` or `export`** — every
-  helper in `formatting.py` prints to stdout and would end up parsed as a value.
+  deliberately independent of `AppProperties`. Consequence: **only `click.echo` may write in `get` and
+  `export`**, and only the value. The `ws_*` helpers are safe next to them nowadays (they all write to stderr,
+  §4.1) and `list` uses `ws_info` for its empty case, but the payload of these two is the whole of their stdout.
+- **`config export` defaults to `--scope global`, and that is a correctness decision, not a preference.** It is
+  documented as something to `eval` from a shell profile, which runs in whatever directory the terminal opened
+  in. An exported variable is the *top* layer of the precedence chain, so exporting the `repo` scope from there
+  pins one clone's `jira.project_key`/`jira.board_id` onto the whole session and every other clone then resolves
+  them from the environment — `jira-issues` in repo B downloading repo A's board, exit 0, no warning.
 
 ### 3.9 Jira Integration (`src/mega_snake/jira_api/`)
 
@@ -715,9 +721,22 @@ deprecated fallback and warns **on stderr**). `jira.board_id`, `jira.field.story
 are caches written by the commands themselves — the board cache is only trusted when the resolved project key
 matches the stored one, so an explicit key can never be answered with another project's board.
 
+**The two endpoint families page differently, and mixing them up is silent.** `/rest/api/2/search/jql` sends
+`nextPageToken` and omits it on the last page → `paginate_tokens`. The whole Agile API (`/rest/agile/1.0/*`)
+pages with `startAt`/`maxResults` and closes the walk with `isLast` or `total`, and **never** sends a token →
+`paginate_start_at`. Reading an Agile path with the token paginator reads page one, finds no token, and returns:
+the caller gets a truncated result with exit code 0, which in `jira-issues` means every sprint issue past the
+first page is written out as `activeSprint: false`. `paginate_start_at` advances the offset by how many items
+*came back*, never by the requested page size, because Jira caps `maxResults` server side — which is also why a
+short page cannot be used as the end signal. The doubles in `jira_doubles.py` (`sprint_listing_page`,
+`sprint_issues_page`) exist so a test cannot accidentally pin a shape Jira does not produce; that is exactly how
+this defect once passed review with a green test.
+
 **Custom field ids are resolved by name.** `customfield_10016`/`customfield_10020` are per-instance, so the
 hardcoded ids silently projected `null` on any other tenant. They survive only as a last-resort fallback, with a
-warning.
+warning — and **a fallback is never cached.** Storing one would make the next run take the cache branch, skip
+the field endpoint and use the wrong id *without warning*, with no flag to undo it: the same defect, relocated
+inside the cache. Only a real match is written to the store, one field at a time.
 
 **`_pick` must keep `jq`'s null semantics.** `null | {id, key}` yields `{"id": null, "key": null}`, not `null`.
 The documented recipes find orphan stories with `.fields.parent.key == null`, which throws the moment `parent`
@@ -728,10 +747,14 @@ itself becomes null. A test pins it with the negative assertion.
 `working_path`). A module wrapper runs for *every* command in the module, so the pre-flight that `jira-issues`
 needs — `ensure_working_path()` + `complete_app_properties()` — lives in its own command body instead. Per-command
 flags win because `wrapper_decorator.update_flags` merges the module wrapper first and the callback second.
+That pre-flight is also **conditional on `--output` being absent**: with an explicit destination the run never
+touches the working path, so prompting to create `workspace_temp` (and exiting 114 when the user declines) would
+be a question about a folder it will not write to.
 
 **Rule for the `no_init` commands:** `click.echo` with the JSON, and nothing else, ever. Errors are
-`click.ClickException`, which Click writes to stderr with exit code 1. Warnings from `auth.py` go through
-`click.echo(..., err=True)` for the same reason.
+`click.ClickException`, which Click writes to stderr with exit code 1. Warnings use the ordinary `ws_*` helpers,
+which write to stderr (§4.1) — this module briefly carried its own `click.echo(..., err=True)` wrapper from back
+when they printed to stdout; do not reintroduce one.
 
 ---
 

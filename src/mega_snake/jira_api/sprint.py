@@ -19,6 +19,7 @@ from mega_snake.util.util import cli_metadata
 
 SPRINT_PATH_TEMPLATE: str = "/rest/agile/1.0/board/{board_id}/sprint"
 ACTIVE_STATE: str = "active"
+SPRINT_ITEMS_KEY: str = "values"
 
 
 def get_active_sprints(board_id: int, cloud_domain: str, client: Optional[JiraClient] = None) -> list[Sprint]:
@@ -36,8 +37,14 @@ def get_active_sprints(board_id: int, cloud_domain: str, client: Optional[JiraCl
         list[Sprint]: The active sprints, empty when the board has none.
     """
     api: JiraClient = client or JiraClient()
-    payload: dict = api.get(SPRINT_PATH_TEMPLATE.format(board_id=board_id), {"state": ACTIVE_STATE})
-    return [Sprint.from_payload(entry, cloud_domain, board_id) for entry in payload.get("values") or []]
+    # An Agile endpoint, so it pages with startAt/isLast and never with a token. `state=active`
+    # keeps the result set small in practice, but "in practice" is not a reason to read one page
+    # and call it the answer: a sprint missing from this list is an issue silently flagged
+    # activeSprint=false further down in `jira-issues`.
+    entries = api.paginate_start_at(
+        SPRINT_PATH_TEMPLATE.format(board_id=board_id), {"state": ACTIVE_STATE}, items_key=SPRINT_ITEMS_KEY
+    )
+    return [Sprint.from_payload(entry, cloud_domain, board_id) for entry in entries]
 
 
 @click.command(

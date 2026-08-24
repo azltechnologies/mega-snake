@@ -17,6 +17,7 @@ in a different script, which fails with "command not found" whenever this one is
 sourced; and it rewrote its whole accumulator file once per page.
 """
 
+import os
 from pathlib import Path
 from typing import Callable, Iterator, Optional
 
@@ -28,7 +29,7 @@ from mega_snake.jira_api.models import Board, Sprint
 from mega_snake.jira_api.projection import ACTIVE_SPRINT_KEY, FieldIds, project_issue
 from mega_snake.jira_api.sprint import get_active_sprints
 from mega_snake.util.formatting import ws_info, ws_success
-from mega_snake.util.props import complete_app_properties
+from mega_snake.util.props import complete_app_properties, get_property
 from mega_snake.util.util import cli_metadata, ensure_working_path, write_json_atomically
 
 BOARD_CONFIGURATION_TEMPLATE: str = "/rest/agile/1.0/board/{board_id}/configuration"
@@ -36,6 +37,7 @@ SEARCH_PATH: str = "/rest/api/2/search/jql"
 SPRINT_ISSUES_TEMPLATE: str = "/rest/agile/1.0/sprint/{sprint_id}/issue"
 
 DEFAULT_OUTPUT_FILE: str = "jira_board_issues.json"
+WORKING_PATH_PROPERTY: str = "working_path"
 ALL_FIELDS: str = "*all"
 SEARCH_EXPAND: str = "changelog,names,renderedFields"
 KEY_FIELD: str = "key"
@@ -118,7 +120,10 @@ def get_active_sprint_keys(client: JiraClient, board: Board, report: Callable[[s
     keys: set[str] = set()
     for sprint in sprints:
         report(f"Active sprint: {sprint.id} - {sprint.name}")
-        for issue in client.paginate_tokens(
+        # An Agile endpoint: it pages with startAt/total, never with nextPageToken. Reading it with
+        # the token paginator would stop after the first page, and every sprint issue past it would
+        # be written out as activeSprint=false with a successful exit.
+        for issue in client.paginate_start_at(
             SPRINT_ISSUES_TEMPLATE.format(sprint_id=sprint.id), {"fields": KEY_FIELD}
         ):
             issue_key: Optional[str] = issue.get("key")
@@ -218,13 +223,16 @@ def jira_issues(project_key: Optional[str], output: Optional[str], refresh_board
         None
     """
     # The only "skip" command of this module, so the pre-flight lives here rather than in the module
-    # wrapper: the other two are "no_init" and must never touch the working path. Securing the
-    # folder first is what lets complete_app_properties finish the deferred initialization, so the
-    # run logs to file and honours --log-level.
-    working_path: str = ensure_working_path()
-    complete_app_properties()
-    # Resolved here, once, and passed down explicitly: download_board_issues() would otherwise call
-    # ensure_working_path() a second time for the default-output case, printing the "working path
-    # found" message twice for the same run.
-    resolved_output: str = output or str(Path(working_path) / DEFAULT_OUTPUT_FILE)
+    # wrapper: the other two are "no_init" and must never touch the working path.
+    #
+    # It only runs when the working path is where the output goes. With -o naming the destination,
+    # offering to create `workspace_temp` -- and exiting 114 when the user declines -- would be a
+    # prompt about a folder this run never touches. The deferred initialization is still completed
+    # whenever the folder happens to exist already, so --log-level keeps working; when it does not,
+    # only the log file is lost, and the console output never depended on it.
+    resolved_output: str = output or str(Path(ensure_working_path()) / DEFAULT_OUTPUT_FILE)
+    if output is None or os.path.isdir(get_property(WORKING_PATH_PROPERTY)):
+        # Securing the folder first is what lets complete_app_properties finish where __init__
+        # stopped; called with the folder still missing it would raise FileNotFoundError.
+        complete_app_properties()
     download_board_issues(project_key, resolved_output, refresh_board, quiet)

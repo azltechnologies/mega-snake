@@ -240,8 +240,10 @@ def config_list(scope: str) -> None:
     short_help="Prints the stored settings as shell export statements.",
     help="Prints the stored settings as export statements for the given shell, so the store can be "
     "the single source of truth and the shell environment merely a cache of it. Meant to be "
-    "evaluated from the shell profile, next to the `mgsnake_reload` helper that `config_setup.sh` "
-    "already defines. Only the statements are written to stdout.",
+    "evaluated from the shell profile, next to the `mgsnake reload-config` command. Only the "
+    "user-wide scope is exported by default: an environment variable outranks every scope, so "
+    "exporting a per-clone setting from the profile would answer for the wrong repository. Only "
+    "the statements are written to stdout.",
 )
 @click.option(
     "--shell",
@@ -252,10 +254,11 @@ def config_list(scope: str) -> None:
 @click.option(
     "--scope",
     type=click.Choice(LIST_SCOPES),
-    default=SCOPE_ALL,
+    default=SCOPE_GLOBAL,
     show_default=True,
-    help="Which scope to export: 'repo', 'global', or 'all' for both merged with the repository "
-    "scope taking precedence.",
+    help="Which scope to export: 'global' for the user-wide settings, 'repo' for the current "
+    "clone's, or 'all' for both merged with the repository scope taking precedence. Exporting "
+    "anything but 'global' from a shell profile pins one clone's settings onto the whole session.",
 )
 def config_export(shell: Optional[str], scope: str) -> None:
     """Print the stored settings as shell export statements.

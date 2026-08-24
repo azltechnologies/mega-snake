@@ -133,6 +133,82 @@ def test_paginate_tolerates_a_page_without_the_items_key() -> None:
     assert list(client.paginate_tokens(SEARCH_PATH)) == []
 
 
+def test_start_at_pagination_walks_until_is_last() -> None:
+    """The Agile board endpoints close the walk with `isLast`, never with a missing token."""
+    client, session = make_client(
+        [
+            FakeResponse({"values": [{"id": 1}], "isLast": False}),
+            FakeResponse({"values": [{"id": 2}], "isLast": True}),
+        ]
+    )
+
+    values = list(client.paginate_start_at("/rest/agile/1.0/board/17/sprint", items_key="values"))
+
+    assert values == [{"id": 1}, {"id": 2}]
+    assert [params["startAt"] for _, params in session.calls] == ["0", "1"]
+
+
+def test_start_at_pagination_walks_until_total_is_reached() -> None:
+    """The search-shaped Agile beans report `total` instead of `isLast`, and it ends the walk."""
+    client, session = make_client(
+        [
+            FakeResponse({"issues": [{"key": "A-1"}, {"key": "A-2"}], "total": 3}),
+            FakeResponse({"issues": [{"key": "A-3"}], "total": 3}),
+        ]
+    )
+
+    issues = list(client.paginate_start_at("/rest/agile/1.0/sprint/42/issue"))
+
+    assert issues == [{"key": "A-1"}, {"key": "A-2"}, {"key": "A-3"}]
+    assert [params["startAt"] for _, params in session.calls] == ["0", "2"]
+
+
+def test_start_at_advances_by_what_came_back_not_by_the_requested_page_size() -> None:
+    """Jira caps `maxResults` server side, so a page shorter than the request is normal.
+
+    Advancing by the requested size would skip everything the server withheld, and treating a short
+    page as the end of the walk would truncate at the first capped page. The offset must follow the
+    number of items actually served.
+    """
+    client, session = make_client(
+        [
+            FakeResponse({"issues": [{"key": "A-1"}], "maxResults": 1, "total": 2}),
+            FakeResponse({"issues": [{"key": "A-2"}], "maxResults": 1, "total": 2}),
+        ]
+    )
+
+    issues = list(client.paginate_start_at("/rest/agile/1.0/sprint/42/issue", {"maxResults": "100"}))
+
+    assert issues == [{"key": "A-1"}, {"key": "A-2"}]
+    assert [params["startAt"] for _, params in session.calls] == ["0", "1"]
+
+
+def test_start_at_pagination_stops_on_an_empty_page() -> None:
+    """The backstop: a response carrying neither `isLast` nor `total` cannot loop forever."""
+    client, session = make_client([FakeResponse({"issues": [{"key": "A-1"}]}), FakeResponse({"issues": []})])
+
+    assert list(client.paginate_start_at("/rest/agile/1.0/sprint/42/issue")) == [{"key": "A-1"}]
+    assert len(session.calls) == 2
+
+
+def test_start_at_pagination_never_sends_a_next_page_token() -> None:
+    """The negative: the Agile API does not understand `nextPageToken`, so none is ever sent."""
+    client, session = make_client([FakeResponse({"values": [], "isLast": True})])
+
+    list(client.paginate_start_at("/rest/agile/1.0/board/17/sprint", items_key="values"))
+
+    assert [params.get("nextPageToken") for _, params in session.calls] == [None]
+
+
+def test_token_pagination_never_sends_start_at() -> None:
+    """The mirror negative: the JQL search pages by token, so no offset is ever sent."""
+    client, session = make_client([FakeResponse({"issues": []})])
+
+    list(client.paginate_tokens(SEARCH_PATH))
+
+    assert [params.get("startAt") for _, params in session.calls] == [None]
+
+
 def test_session_is_reused_across_paginated_requests(mocker) -> None:
     """One pooled session for the whole walk: the TCP connection and the TLS handshake are reused.
 

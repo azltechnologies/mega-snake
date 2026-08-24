@@ -217,7 +217,7 @@ Subcommands:
 | `set KEY VALUE [--global]` | Stores the setting, atomically. |
 | `unset KEY [--global]` | Removes it from that one scope only. |
 | `list [--scope repo\|global\|all]` | Prints `key=value` lines of what is on disk. |
-| `export [--shell] [--scope]` | Prints export statements, meant to be evaluated from the shell profile. |
+| `export [--shell] [--scope]` | Prints export statements for the `global` scope, meant to be evaluated from the shell profile. |
 
 #### Output
 
@@ -241,6 +241,7 @@ mgsnake config set jira.project_key TAROTAPP
 
 mgsnake jira-board            # no arguments needed any more
 
+# In the shell profile: the user-wide settings only, which is what `export` defaults to.
 eval "$(mgsnake config export --shell bash)"
 ```
 
@@ -265,6 +266,14 @@ exist: reads fall back to the global one, and writes say so and suggest `--globa
 Settings the Jira commands read: `jira.domain`, `jira.email`, `jira.project_key`, `jira.board_id`,
 `jira.field.story_points` and `jira.field.sprint`. The last three are written by the commands
 themselves as a cache; removing them just forces a fresh resolution.
+
+`export` covers the `global` scope by default, and that default is load-bearing. An environment
+variable outranks every scope, and a shell profile runs in whatever directory the terminal happened
+to open in — so exporting the `repo` scope from there would pin one clone's `jira.project_key` and
+`jira.board_id` onto the whole session, and every *other* clone would then resolve them from the
+environment. `mgsnake jira-issues` in a second repository would download the first one's board, with
+no warning and exit code 0. `--scope repo` and `--scope all` are still there for anyone who wants
+exactly that, per shell rather than per profile.
 
 ## Dependency Audit
 
@@ -702,9 +711,15 @@ The story points and sprint custom fields are looked up by name (`Story Points`,
 `Story point estimate` on team-managed projects, and `Sprint`) and cached per clone. Their ids are
 allocated per Jira instance, so the hardcoded `customfield_10016`/`customfield_10020` of the shell
 version projected `null` on any other tenant without saying anything. If the names cannot be found
-at all, those ids are used as a last resort and a warning says so.
+at all, those ids are used as a last resort and a warning says so — and that last-resort id is
+deliberately *not* cached, so the warning keeps appearing on every run instead of being silenced by
+a cache entry that looks exactly like a resolved one.
 
 If the values you get differ from the old script's, the new ones are the correct ones.
+
+With `--output` the working path is left alone entirely: nothing is created, nothing is prompted for
+and nothing is excluded from git. Without it, the default destination lives inside the working path,
+so the command offers to create the folder when it is missing.
 
 The download reads the board's own filter, so "every issue of the board" means exactly what Jira
 means by it — including issues that live outside the project when the filter says so.
@@ -766,6 +781,11 @@ exits 0. That is an answer, not a failure.
 
 Boards are per project, so this always resolves the board first; with a warm cache that costs no
 extra request.
+
+The sprint listing is paged through to the end. Jira's Agile API pages with `startAt`/`isLast` and
+never sends a continuation token, so a board with a long sprint history cannot hide an active sprint
+on page two — which would otherwise show up in `jira-issues` as every one of that sprint's issues
+being flagged `activeSprint: false`.
 
 ## Light Weight
 

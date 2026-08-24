@@ -58,8 +58,13 @@ class FieldIds:
     sprint: str
 
     @staticmethod
-    def _match(fields: list[dict], candidate_names: tuple[str, ...], fallback: str) -> str:
+    def _match(fields: list[dict], candidate_names: tuple[str, ...], fallback: str) -> tuple[str, bool]:
         """Find the id of the first field matching one of the candidate names.
+
+        Whether the id was actually found is returned alongside it, because the caller must not
+        cache a guess: a fallback stored as if it were a resolved id would silence the warning from
+        the second run onwards and project ``null`` forever, which is the very defect the by-name
+        resolution exists to fix, only moved inside the cache.
 
         Parameters:
             fields: The entries returned by the field endpoint.
@@ -70,17 +75,15 @@ class FieldIds:
             None
 
         Returns:
-            str: The resolved field id, or the fallback.
+            tuple[str, bool]: The field id, and True only when it came from a real match.
         """
-        by_name: dict[str, str] = {
-            str(field.get("name", "")).casefold(): str(field.get("id", "")) for field in fields
-        }
+        by_name: dict[str, str] = {str(field.get("name", "")).casefold(): str(field.get("id", "")) for field in fields}
         for name in candidate_names:
             field_id: Optional[str] = by_name.get(name.casefold())
             if field_id:
-                return field_id
+                return field_id, True
         ws_warning(UNRESOLVED_FIELD_MESSAGE.format(names=", ".join(candidate_names), fallback=fallback))
-        return fallback
+        return fallback, False
 
     @staticmethod
     def resolve(client: JiraClient, refresh: bool = False) -> "FieldIds":
@@ -103,14 +106,20 @@ class FieldIds:
             if cached_story_points and cached_sprint:
                 return FieldIds(story_points=cached_story_points, sprint=cached_sprint)
         fields: list[dict] = client.get_list(FIELD_PATH)
-        resolved = FieldIds(
-            story_points=FieldIds._match(fields, STORY_POINTS_FIELD_NAMES, HISTORIC_STORY_POINTS_FIELD),
-            sprint=FieldIds._match(fields, SPRINT_FIELD_NAMES, HISTORIC_SPRINT_FIELD),
+        story_points, story_points_matched = FieldIds._match(
+            fields, STORY_POINTS_FIELD_NAMES, HISTORIC_STORY_POINTS_FIELD
         )
+        sprint, sprint_matched = FieldIds._match(fields, SPRINT_FIELD_NAMES, HISTORIC_SPRINT_FIELD)
+        # Only a real match is cached. Persisting a fallback would make the next run take the cache
+        # branch above, skip the field endpoint, and use the wrong id *without warning* -- and there
+        # is no flag to undo that, so recovering would mean unsetting a key the user has no reason
+        # to suspect, precisely because the warning stopped.
         if store.has_scope(SCOPE_REPO):
-            store.set(JIRA_STORY_POINTS_FIELD_KEY, resolved.story_points, SCOPE_REPO)
-            store.set(JIRA_SPRINT_FIELD_KEY, resolved.sprint, SCOPE_REPO)
-        return resolved
+            if story_points_matched:
+                store.set(JIRA_STORY_POINTS_FIELD_KEY, story_points, SCOPE_REPO)
+            if sprint_matched:
+                store.set(JIRA_SPRINT_FIELD_KEY, sprint, SCOPE_REPO)
+        return FieldIds(story_points=story_points, sprint=sprint)
 
 
 def _pick(source: Optional[dict], *keys: str) -> dict:

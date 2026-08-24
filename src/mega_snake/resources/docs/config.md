@@ -13,7 +13,7 @@ Subcommands:
 | `set KEY VALUE [--global]` | Stores the setting, atomically. |
 | `unset KEY [--global]` | Removes it from that one scope only. |
 | `list [--scope repo\|global\|all]` | Prints `key=value` lines of what is on disk. |
-| `export [--shell] [--scope]` | Prints export statements, meant to be evaluated from the shell profile. |
+| `export [--shell] [--scope]` | Prints export statements for the `global` scope, meant to be evaluated from the shell profile. |
 
 ## Output
 
@@ -37,6 +37,7 @@ mgsnake config set jira.project_key TAROTAPP
 
 mgsnake jira-board            # no arguments needed any more
 
+# In the shell profile: the user-wide settings only, which is what `export` defaults to.
 eval "$(mgsnake config export --shell bash)"
 ```
 
@@ -61,3 +62,11 @@ exist: reads fall back to the global one, and writes say so and suggest `--globa
 Settings the Jira commands read: `jira.domain`, `jira.email`, `jira.project_key`, `jira.board_id`,
 `jira.field.story_points` and `jira.field.sprint`. The last three are written by the commands
 themselves as a cache; removing them just forces a fresh resolution.
+
+`export` covers the `global` scope by default, and that default is load-bearing. An environment
+variable outranks every scope, and a shell profile runs in whatever directory the terminal happened
+to open in — so exporting the `repo` scope from there would pin one clone's `jira.project_key` and
+`jira.board_id` onto the whole session, and every *other* clone would then resolve them from the
+environment. `mgsnake jira-issues` in a second repository would download the first one's board, with
+no warning and exit code 0. `--scope repo` and `--scope all` are still there for anyone who wants
+exactly that, per shell rather than per profile.

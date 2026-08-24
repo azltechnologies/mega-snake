@@ -15,6 +15,7 @@ import click
 from mega_snake.constants import JIRA_BOARD_ID_KEY, JIRA_DOMAIN_KEY, JIRA_PROJECT_KEY_KEY
 from mega_snake.jira_api.client import JiraClient
 from mega_snake.jira_api.models import Board
+from mega_snake.util.formatting import ws_warning
 from mega_snake.util.store import SCOPE_REPO, Store
 from mega_snake.util.util import cli_metadata
 
@@ -22,16 +23,12 @@ PROJECT_PATH_TEMPLATE: str = "/rest/api/2/project/{project_key}"
 BOARD_PATH: str = "/rest/agile/1.0/board"
 
 UNKNOWN_PROJECT_MESSAGE: str = (
-    "Jira returned no id for project '{project_key}'. Check the project key and that your account "
-    "can see it."
+    "Jira returned no id for project '{project_key}'. Check the project key and that your account can see it."
 )
 NO_BOARD_MESSAGE: str = (
-    "Project '{project_key}' has no Agile board. Create one in Jira, or point "
-    "'{key}' at a project that has one."
+    "Project '{project_key}' has no Agile board. Create one in Jira, or point '{key}' at a project that has one."
 )
-INVALID_CACHE_MESSAGE: str = (
-    "Ignoring the cached board id '{value}': it is not a number. Resolving it again from Jira."
-)
+INVALID_CACHE_MESSAGE: str = "Ignoring the cached board id '{value}': it is not a number. Resolving it again from Jira."
 
 
 def _cached_board_id(store: Store, project_key: str) -> Optional[int]:
@@ -59,7 +56,9 @@ def _cached_board_id(store: Store, project_key: str) -> Optional[int]:
     try:
         return int(raw)
     except ValueError:
-        click.echo(INVALID_CACHE_MESSAGE.format(value=raw), err=True)
+        # `ws_warning` writes to stderr, so it is safe even here, inside a `no_init` command whose
+        # stdout is captured with $(...).
+        ws_warning(INVALID_CACHE_MESSAGE.format(value=raw))
         return None
 
 

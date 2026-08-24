@@ -13,6 +13,7 @@ from mega_snake.util.store import SCOPE_GLOBAL, SCOPE_REPO, STORE_FILE_NAME, Sto
 APP_DIR_NAME = "mgsnake"
 DOMAIN_KEY = "jira.domain"
 PROJECT_KEY = "jira.project_key"
+BOARD_ID_KEY = "jira.board_id"
 
 
 @pytest.fixture(name="workspace")
@@ -22,7 +23,7 @@ def workspace_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (repo / ".git").mkdir(parents=True)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "home" / ".config"))
     monkeypatch.setenv("APPDATA", str(tmp_path / "home" / "AppData"))
-    for key in (DOMAIN_KEY, PROJECT_KEY):
+    for key in (DOMAIN_KEY, PROJECT_KEY, BOARD_ID_KEY):
         monkeypatch.delenv(env_var_name(key), raising=False)
     monkeypatch.chdir(repo)
     Store.reset_instance()
@@ -169,8 +170,8 @@ def test_export_emits_evaluable_statements(workspace: Path) -> None:
     """`config export` is read with eval, so its stdout is statements and nothing else."""
     assert workspace.exists()
     store = Store.get_instance()
-    store.set(PROJECT_KEY, "TAROTAPP")
-    store.set(DOMAIN_KEY, "azltech.atlassian.net")
+    store.set(PROJECT_KEY, "TAROTAPP", SCOPE_GLOBAL)
+    store.set(DOMAIN_KEY, "azltech.atlassian.net", SCOPE_GLOBAL)
 
     result = CliRunner().invoke(config, ["export", "--shell", "bash"])
 
@@ -178,6 +179,31 @@ def test_export_emits_evaluable_statements(workspace: Path) -> None:
     assert result.stdout == (
         "export JIRA_DOMAIN='azltech.atlassian.net'\nexport JIRA_PROJECT_KEY='TAROTAPP'\n"
     )
+
+
+def test_export_leaves_the_repository_scope_out_by_default(workspace: Path) -> None:
+    """An exported variable outranks every scope, so a per-clone setting must not reach the profile.
+
+    `config export` is documented as something to `eval` from the shell profile, which runs in
+    whatever directory the terminal opened in. Promoting this clone's `jira.board_id` and
+    `jira.project_key` into the environment would make *every other* clone resolve them from here:
+    `mgsnake jira-issues` in repo B would silently download repo A's board.
+    """
+    assert workspace.exists()
+    store = Store.get_instance()
+    store.set(DOMAIN_KEY, "azltech.atlassian.net", SCOPE_GLOBAL)
+    store.set(BOARD_ID_KEY, "17")
+    store.set(PROJECT_KEY, "TAROTAPP")
+
+    default_scope = CliRunner().invoke(config, ["export", "--shell", "bash"])
+    every_scope = CliRunner().invoke(config, ["export", "--shell", "bash", "--scope", "all"])
+
+    assert default_scope.stdout == "export JIRA_DOMAIN='azltech.atlassian.net'\n"
+    assert "JIRA_BOARD_ID" not in default_scope.stdout
+    assert "JIRA_PROJECT_KEY" not in default_scope.stdout
+    # --scope all is still reachable for anyone who wants exactly that; it is only the default that
+    # changed, because the default is the one a profile ends up using.
+    assert "export JIRA_BOARD_ID='17'" in every_scope.stdout
 
 
 @pytest.mark.parametrize(
@@ -198,7 +224,7 @@ def test_format_export_quotes_per_shell(shell: str, value: str, expected: str) -
 def test_export_defaults_to_the_active_shell(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Without --shell the syntax follows MEGA_SNAKE_SHELL, which the setup script exports."""
     assert workspace.exists()
-    Store.get_instance().set(PROJECT_KEY, "TAROTAPP")
+    Store.get_instance().set(PROJECT_KEY, "TAROTAPP", SCOPE_GLOBAL)
     monkeypatch.setenv("MEGA_SNAKE_SHELL", "pwsh")
 
     result = CliRunner().invoke(config, ["export"])

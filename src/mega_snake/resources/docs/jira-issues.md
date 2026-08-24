@@ -68,9 +68,15 @@ The story points and sprint custom fields are looked up by name (`Story Points`,
 `Story point estimate` on team-managed projects, and `Sprint`) and cached per clone. Their ids are
 allocated per Jira instance, so the hardcoded `customfield_10016`/`customfield_10020` of the shell
 version projected `null` on any other tenant without saying anything. If the names cannot be found
-at all, those ids are used as a last resort and a warning says so.
+at all, those ids are used as a last resort and a warning says so — and that last-resort id is
+deliberately *not* cached, so the warning keeps appearing on every run instead of being silenced by
+a cache entry that looks exactly like a resolved one.
 
 If the values you get differ from the old script's, the new ones are the correct ones.
+
+With `--output` the working path is left alone entirely: nothing is created, nothing is prompted for
+and nothing is excluded from git. Without it, the default destination lives inside the working path,
+so the command offers to create the folder when it is missing.
 
 The download reads the board's own filter, so "every issue of the board" means exactly what Jira
 means by it — including issues that live outside the project when the filter says so.

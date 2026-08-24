@@ -63,8 +63,7 @@ SECRET_KEY_MESSAGE: str = (
     "variables only, never in a plaintext state file. Export it from your shell instead."
 )
 INVALID_KEY_MESSAGE: str = (
-    "Invalid setting name '{key}'. Names must be lowercase and dotted, e.g. 'jira.project_key' "
-    "(pattern: {pattern})."
+    "Invalid setting name '{key}'. Names must be lowercase and dotted, e.g. 'jira.project_key' (pattern: {pattern})."
 )
 UNKNOWN_SCOPE_MESSAGE: str = "Unknown scope '{scope}'. Expected one of: {scopes}."
 NO_REPO_SCOPE_MESSAGE: str = (
@@ -75,12 +74,10 @@ CORRUPT_STORE_MESSAGE: str = (
     "The {scope} state file at {path} is not valid JSON ({error}). Delete it to start over: {path}"
 )
 NOT_AN_OBJECT_MESSAGE: str = (
-    "The {scope} state file at {path} does not contain a JSON object (found {type}). Delete it to "
-    "start over: {path}"
+    "The {scope} state file at {path} does not contain a JSON object (found {type}). Delete it to start over: {path}"
 )
 MISSING_SETTING_MESSAGE: str = (
-    "Missing required setting '{key}'. Set it with: {app} config set {key} <value> "
-    "(or export {env_var})."
+    "Missing required setting '{key}'. Set it with: {app} config set {key} <value> (or export {env_var})."
 )
 
 
@@ -315,9 +312,7 @@ class Store:
             try:
                 decoded: object = json.loads(path.read_text(encoding="utf-8") or "{}")
             except json.JSONDecodeError as error:
-                raise click.ClickException(
-                    CORRUPT_STORE_MESSAGE.format(scope=scope, path=path, error=error)
-                ) from error
+                raise click.ClickException(CORRUPT_STORE_MESSAGE.format(scope=scope, path=path, error=error)) from error
             if not isinstance(decoded, dict):
                 raise click.ClickException(
                     NOT_AN_OBJECT_MESSAGE.format(scope=scope, path=path, type=type(decoded).__name__)

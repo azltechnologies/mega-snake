@@ -24,6 +24,7 @@ from mega_snake.constants import (
     JIRA_EMAIL_KEY,
     JIRA_TOKEN_ENV,
 )
+from mega_snake.util.formatting import ws_warning
 from mega_snake.util.store import Store
 
 APP_ATLASSIAN: str = "atlassian"
@@ -42,25 +43,6 @@ DEPRECATED_TOKEN_MESSAGE: str = (
     f"{JIRA_DEPRECATED_TOKEN_ENV} is deprecated and will be removed in the next minor release. "
     f"Export {JIRA_TOKEN_ENV} instead."
 )
-
-
-def _warn(message: str) -> None:
-    """Emit a warning on stderr, keeping stdout usable for command substitution.
-
-    Every ``ws_*`` helper writes to stdout, and the commands that consume this module are read with
-    ``$(mgsnake jira-board KEY)``. A warning on stdout would end up parsed as JSON, so warnings from
-    this module go to stderr through Click instead.
-
-    Parameters:
-        message: The warning text.
-
-    Raises:
-        None
-
-    Returns:
-        None
-    """
-    click.echo(message, err=True)
 
 
 def get_atlassian_token() -> str:
@@ -83,7 +65,10 @@ def get_atlassian_token() -> str:
         return token
     deprecated_token: Optional[str] = os.environ.get(JIRA_DEPRECATED_TOKEN_ENV)
     if deprecated_token:
-        _warn(DEPRECATED_TOKEN_MESSAGE)
+        # `ws_warning`, like every `ws_*` helper, writes to stderr, so it cannot contaminate the
+        # stdout that `$(mgsnake jira-board KEY)` captures. This module used to route around them
+        # with a private click.echo helper, from back when they printed to stdout.
+        ws_warning(DEPRECATED_TOKEN_MESSAGE)
         return deprecated_token
     raise click.ClickException(MISSING_TOKEN_MESSAGE.format(env_var=JIRA_TOKEN_ENV))
 

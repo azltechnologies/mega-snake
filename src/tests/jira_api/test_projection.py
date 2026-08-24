@@ -155,14 +155,65 @@ def test_field_ids_accept_the_alternative_story_points_name(jira_workspace: Path
     assert FieldIds.resolve(client).story_points == "customfield_777"
 
 
-def test_field_ids_fall_back_to_the_historic_ids_with_a_warning(jira_workspace: Path) -> None:
-    """When neither name exists, the historic ids keep the command working and say so."""
+def test_field_ids_fall_back_to_the_historic_ids_with_a_warning(
+    jira_workspace: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """When neither name exists, the historic ids keep the command working and say so.
+
+    The warning is asserted, not just implied by the name: it is the only thing telling the user
+    that `storyPoints` and `sprint` are about to come out null on this tenant.
+    """
     assert jira_workspace.exists()
     client, _ = make_client([FakeResponse([{"id": "customfield_1", "name": "Flagged"}])])
+    capsys.readouterr()
 
     assert FieldIds.resolve(client) == FieldIds(
         story_points=HISTORIC_STORY_POINTS_FIELD, sprint=HISTORIC_SPRINT_FIELD
     )
+    warnings = capsys.readouterr().err
+    assert HISTORIC_STORY_POINTS_FIELD in warnings
+    assert HISTORIC_SPRINT_FIELD in warnings
+
+
+def test_a_fallback_field_id_is_never_cached(jira_workspace: Path, capsys: pytest.CaptureFixture) -> None:
+    """Caching a guess would silence the warning from the second run on, and never be undone.
+
+    The fallback ids are the very defect the by-name resolution exists to fix. Persisting one as if
+    it had been resolved makes the next run take the cache branch, skip the field endpoint, and
+    project null *without saying anything* -- and there is no CLI flag that refreshes them, so the
+    only way out is unsetting a key the user has no reason to suspect, precisely because the warning
+    stopped. So: nothing is stored, and the second run warns again.
+    """
+    assert jira_workspace.exists()
+    client, session = make_client(
+        [
+            FakeResponse([{"id": "customfield_1", "name": "Flagged"}]),
+            FakeResponse([{"id": "customfield_1", "name": "Flagged"}]),
+        ]
+    )
+
+    FieldIds.resolve(client)
+    stored = Store.get_instance().items(SCOPE_REPO)
+    capsys.readouterr()
+    second = FieldIds.resolve(client)
+
+    assert JIRA_STORY_POINTS_FIELD_KEY not in stored
+    assert JIRA_SPRINT_FIELD_KEY not in stored
+    assert second == FieldIds(story_points=HISTORIC_STORY_POINTS_FIELD, sprint=HISTORIC_SPRINT_FIELD)
+    assert len(session.calls) == 2, "a fallback must not be answered from the cache"
+    assert HISTORIC_STORY_POINTS_FIELD in capsys.readouterr().err, "the warning must keep firing"
+
+
+def test_the_field_that_did_resolve_is_still_cached(jira_workspace: Path) -> None:
+    """The half that matched is real, so it is cached; only the guess is withheld."""
+    assert jira_workspace.exists()
+    client, _ = make_client([FakeResponse([{"id": SPRINT_FIELD, "name": "Sprint"}])])
+
+    FieldIds.resolve(client)
+    stored = Store.get_instance().items(SCOPE_REPO)
+
+    assert stored[JIRA_SPRINT_FIELD_KEY] == SPRINT_FIELD
+    assert JIRA_STORY_POINTS_FIELD_KEY not in stored
 
 
 def test_field_ids_are_cached_in_the_repository_scope(jira_workspace: Path) -> None:
