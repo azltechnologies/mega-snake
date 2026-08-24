@@ -67,7 +67,8 @@ def execute(filter_by: str) -> None:
         filter_by: str - (A)ll [default], fully (M)erged or (U)nmerged against the main branch
 
     Raises:
-        ValueError: If the filter is not one of the allowed values, or the repository has no branches.
+        ValueError: If the filter is not one of the allowed values.
+        LookupError: If the repository has no branches to describe.
     """
     if filter_by not in REMOTE_BRANCHES_OPT:
         raise ValueError(
@@ -75,7 +76,10 @@ def execute(filter_by: str) -> None:
         )
     branches: list[GitBranch] = BranchLoader.from_repository()
     if not branches:
-        raise ValueError("No branches found in the current repository")
+        # Not an invalid value: nothing was passed in. The enumeration simply found nothing, which is
+        # the same kind of answer the main-branch lookups in Repo report, and it gets the same status
+        # so a script can tell "your repository is empty" apart from "you passed a bad filter".
+        raise LookupError("No branches found in the current repository")
     ws_info(f"Main branch: {Repo.MAIN_BRANCH}; Found {len(branches)} branches to describe")
     if filter_by == "M":
         branches = [branch for branch in branches if branch.fully_merged]

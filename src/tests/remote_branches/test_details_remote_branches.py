@@ -10,6 +10,7 @@ import pytest
 
 from mega_snake.remote_branches import details_remote_branches as module
 from mega_snake.remote_branches.remote_branch import GitBranch
+from mega_snake.util.formatting import resolve_error_code
 from mega_snake.util.repo import Repo
 
 LOCAL_MAIN_HASH = "localmain111"
@@ -86,12 +87,27 @@ def test_execute_rejects_an_unknown_filter_before_touching_the_repository(bad_fi
 
 def test_execute_without_branches_fails_instead_of_writing_an_empty_report() -> None:
     """A repository with no branches at all has nothing to describe; writing an empty file would
-    hand the user a report that looks valid."""
+    hand the user a report that looks valid.
+
+    It is reported as a failed lookup, not as an invalid value: nothing was passed in, the
+    enumeration simply found nothing. The distinct status is what lets a script tell an empty
+    repository apart from a bad `--filter-by`, which is the other failure of this same function.
+    """
     with patch.object(module, "BranchLoader") as loader, patch("builtins.open", mock_open()) as opened:
         loader.from_repository.return_value = []
-        with pytest.raises(ValueError, match="No branches found"):
+        with pytest.raises(LookupError, match="No branches found") as excinfo:
             module.execute("A")
     opened.assert_not_called()
+
+    assert not isinstance(excinfo.value, ValueError), "an empty repository is not a bad input value"
+    assert resolve_error_code(excinfo.value) == 107, (
+        f"an empty repository resolved to {resolve_error_code(excinfo.value)}, expected 107"
+    )
+    # the other failure of this function keeps its own, different status
+    with patch.object(module, "BranchLoader"):
+        with pytest.raises(ValueError) as bad_filter:
+            module.execute("X")
+    assert resolve_error_code(bad_filter.value) == 103
 
 
 @pytest.mark.parametrize(
