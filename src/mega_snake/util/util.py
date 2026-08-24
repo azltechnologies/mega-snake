@@ -5,12 +5,12 @@ This module contains utility functions for common operations.
 import json
 import os
 import re
-from typing import ClassVar, Optional, Tuple
+from typing import Optional, Tuple
 import subprocess
 import platform
 import time
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 import inspect
 import click
 from colorama import init, Fore, Back, Style
@@ -37,8 +37,8 @@ LOCAL_PREFIX = "refs/heads"
 # Caches the resolved remote for the lifetime of the process. Resolving it is not free: it spawns a
 # `git remote` subprocess and, when the repository has more than one remote, it prompts the user to
 # pick one. Several call sites need the remote during a single command run (pre-flight wrappers, the
-# commands themselves, get_main_branch), so without this cache the user would be prompted repeatedly
-# for the very same answer.
+# commands themselves, the Repo snapshot), so without this cache the user would be prompted
+# repeatedly for the very same answer.
 _remote_cache: dict[str, Optional[str]] = {}
 
 # Initialize colopiprama
@@ -140,43 +140,32 @@ def get_command_return_code(command: str, description: str, timeout: Optional[fl
     return result.returncode
 
 
-def ref_exists(ref: str) -> bool:
-    """Check whether the given fully qualified git reference exists in the repository.
+def get_typed_validated_input(p_prompt: str, warn: str, valid_values: list[str], fail_msg: Optional[str] = None) -> str:
+    """Ask the user for one of the given values, comparing the answer verbatim.
 
-    A missing reference is an ordinary, expected answer here, not a failure, so the check goes
-    through ``get_command_return_code`` rather than ``run_operation``: the latter reports every
-    attempt as successful whenever ``check=False`` and retries three times with a two second pause
-    in between, which would turn a plain "no" into a slow, misleading success message.
+    The answer is matched **case-sensitively**, unlike ``get_validated_input``. The two exist for
+    different kinds of value: that one offers single-letter choices the tool itself defines
+    (``y``/``n``, ``M``/``U``/``A``), where accepting either case is a convenience; this one offers
+    identifiers that come from the system and whose case is meaningful — git branch names, which
+    git itself treats as distinct. Lowercasing the answer here made every branch carrying an
+    uppercase letter impossible to select, while the warning text told the user the opposite.
 
     Parameters:
-        ref: The fully qualified reference to look for, e.g. ``refs/heads/feature`` or
-            ``refs/remotes/origin/feature``.
+        p_prompt: The question shown to the user.
+        warn: Message shown after a rejected answer, explaining what is expected.
+        valid_values: The accepted answers, matched exactly as given.
+        fail_msg: Extra guidance appended to the error once the attempts run out.
 
     Raises:
-        None
+        KeyError: If the user fails to give an accepted value within the allowed attempts.
 
     Returns:
-        bool: True when the reference exists, False otherwise.
-    """
-    return (
-        get_command_return_code(f'git show-ref --verify --quiet "{ref}"', description=f"Checking if ref '{ref}' exists")
-        == 0
-    )
-
-
-def get_typed_validated_input(p_prompt: str, warn: str, valid_values: list[str], fail_msg: Optional[str] = None) -> str:
-    """
-    Get user input and validate against allowed values
-
-    Args:
-        prompt: str
-        valid_values: set[str]
+        str: The accepted value, exactly as the user typed it.
     """
     tries: int = 0
     prompt = p_prompt
     while True:
-        user_input = input(f"\n{prompt}\n").lower()
-        # convert to lowercase all the values in valid_values
+        user_input = input(f"\n{prompt}\n")
         if user_input in valid_values:
             return user_input
         prompt = (

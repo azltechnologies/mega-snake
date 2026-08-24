@@ -69,7 +69,7 @@ def create_working_env() -> None:  # previously untrackGradleProps
             ws_warning("Git is required to configure the workspace. Exiting...")
             return
     else:
-        if get_command_return_code("git rev-parse --is-inside-work-tree") != 0:
+        if get_command_return_code("git rev-parse --is-inside-work-tree", "checking if inside a git repository") != 0:
             git_repo = False
             if (
                 get_validated_input(

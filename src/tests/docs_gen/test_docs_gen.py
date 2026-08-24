@@ -283,9 +283,9 @@ def test_option_table_rows_stay_on_a_single_line() -> None:
     assert table_rows
     assert all(row.endswith(" |") for row in table_rows), "a table row lost its closing pipe"
     # The choice lists of these two options are the multi-line worst case in the repo.
-    assert "'M' - merged branches" in markdown
+    assert "'M' - fully merged branches (every existing side is merged)" in markdown
     assert "<br>" in markdown
-    assert "\n'M' - merged branches" not in markdown
+    assert "\n'M' - fully merged branches" not in markdown
 
 
 @pytest.mark.parametrize(
