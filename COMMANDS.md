@@ -263,6 +263,26 @@ The whole group runs before any initialization, so it works outside a configured
 even before `MEGA_SNAKE_SHELL` exists. Outside a git repository the `repo` scope simply does not
 exist: reads fall back to the global one, and writes say so and suggest `--global`.
 
+An unusable state file (invalid JSON, or valid JSON that is not an object) is never silently
+discarded, and it is never grounds for a hang either — the two failure modes this mechanism is built
+to avoid. Four different behaviors apply, depending on the subcommand:
+
+- **`set`, `unset` and `list` on one explicit scope** (`--scope repo` or `--scope global`) ask about
+  that exact file, so from an interactive terminal they offer to back the broken file up next to
+  itself (renamed, never deleted) and start a fresh empty one. Declining, or running
+  non-interactively (a script, CI, a closed stdin), fails loudly instead, naming the broken file for
+  manual repair.
+- **`get` and `export` never prompt, on any terminal.** Both are meant to be consumed by a shell —
+  `$(mgsnake config get ...)`, and `export` specifically `eval`'d from a shell profile on every new
+  terminal — so a prompt on a corrupt file would hang a script's stdout capture, or a terminal's
+  startup, instead of failing it in milliseconds.
+- **`get` and `list --scope all` / `export --scope all`** merge both scopes, so a single broken one
+  degrades instead of blocking a setting that only lives in the healthy scope — a warning naming the
+  broken file is still printed once per run, but nothing is offered to fix it from there.
+- **`export` on one explicit scope** (`--scope repo` or `--scope global`) still fails loudly on a
+  broken file, same as `set`/`unset`/`list` — it is only the *prompt* that `export` never gets,
+  never the failure itself.
+
 Settings the Jira commands read: `jira.domain`, `jira.email`, `jira.project_key`, `jira.board_id`,
 `jira.field.story_points` and `jira.field.sprint`. The last three are written by the commands
 themselves as a cache; removing them just forces a fresh resolution.

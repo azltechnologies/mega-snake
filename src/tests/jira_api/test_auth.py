@@ -1,4 +1,4 @@
-"""Tests for the Jira/GitHub Authorization header builder."""
+"""Tests for the Atlassian Authorization header builder."""
 
 import base64
 from pathlib import Path
@@ -6,16 +6,10 @@ from pathlib import Path
 import click
 import pytest
 
-from mega_snake.constants import GITHUB_TOKEN_ENV, JIRA_DEPRECATED_TOKEN_ENV, JIRA_TOKEN_ENV
-from mega_snake.jira_api.auth import (
-    APP_ATLASSIAN,
-    APP_GITHUB,
-    AUTHORIZATION_HEADER,
-    SUPPORTED_APPS,
-    build_basic_header,
-    get_atlassian_token,
-    get_auth_header,
-)
+from mega_snake.constants import JIRA_DEPRECATED_TOKEN_ENV, JIRA_EMAIL_KEY, JIRA_TOKEN_ENV
+from mega_snake.jira_api.auth import AUTHORIZATION_HEADER, build_basic_header, get_atlassian_token
+from mega_snake.jira_api.models import JiraConfig
+from mega_snake.util.store import Store
 
 from tests.jira_api.jira_doubles import EMAIL, TOKEN
 
@@ -29,7 +23,11 @@ def test_atlassian_header_is_exact_basic_base64(jira_workspace: Path) -> None:
     assert jira_workspace.exists()
     expected = base64.b64encode(f"{EMAIL}:{TOKEN}".encode("utf-8")).decode("ascii")
 
-    assert get_auth_header(APP_ATLASSIAN) == {AUTHORIZATION_HEADER: f"Basic {expected}"}
+    # Composed through `JiraConfig.resolve()`, which is what `client._build_session` actually calls:
+    # hand-composing the email/token pair here would let the two drift apart without a test noticing.
+    config = JiraConfig.resolve()
+
+    assert build_basic_header(config.email, config.token) == {AUTHORIZATION_HEADER: f"Basic {expected}"}
 
 
 def test_atlassian_header_has_no_trailing_newline(jira_workspace: Path) -> None:
@@ -58,7 +56,7 @@ def test_missing_token_raises_click_exception_and_prints_nothing_to_stdout(
     monkeypatch.delenv(JIRA_DEPRECATED_TOKEN_ENV, raising=False)
 
     with pytest.raises(click.ClickException):
-        get_auth_header(APP_ATLASSIAN)
+        get_atlassian_token()
 
     assert capsys.readouterr().out == ""
 
@@ -90,44 +88,12 @@ def test_current_token_wins_over_the_deprecated_one(
     assert capsys.readouterr().err == ""
 
 
-def test_github_header_is_a_bearer_token(jira_workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The GitHub branch is unchanged from the shell version, minus the stdout bug."""
-    assert jira_workspace.exists()
-    monkeypatch.setenv(GITHUB_TOKEN_ENV, "gh-token")
-
-    assert get_auth_header(APP_GITHUB) == {AUTHORIZATION_HEADER: "Bearer gh-token"}
-
-
-def test_missing_github_token_raises(jira_workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A missing GitHub token fails instead of building a header that says "Bearer"."""
-    assert jira_workspace.exists()
-    monkeypatch.delenv(GITHUB_TOKEN_ENV, raising=False)
-
-    with pytest.raises(click.ClickException) as error:
-        get_auth_header(APP_GITHUB)
-
-    assert GITHUB_TOKEN_ENV in str(error.value)
-
-
-def test_unsupported_app_lists_the_supported_ones(jira_workspace: Path) -> None:
-    """A typo has to say what the valid answers are."""
-    assert jira_workspace.exists()
-
-    with pytest.raises(click.ClickException) as error:
-        get_auth_header("bitbucket")
-
-    for app in SUPPORTED_APPS:
-        assert app in str(error.value)
-
-
 def test_missing_email_names_the_command_that_sets_it(jira_workspace: Path) -> None:
-    """The email now comes from the store, so its error must point at `config set`."""
+    """The email comes from the store, so its error must point at `config set`."""
     assert jira_workspace.exists()
-    from mega_snake.util.store import Store  # local import keeps the module list above tidy
-
-    Store.get_instance().unset("jira.email")
+    Store.get_instance().unset(JIRA_EMAIL_KEY)
 
     with pytest.raises(click.ClickException) as error:
-        get_auth_header(APP_ATLASSIAN)
+        Store.get_instance().require(JIRA_EMAIL_KEY)
 
     assert "config set jira.email" in str(error.value)

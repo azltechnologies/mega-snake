@@ -112,7 +112,11 @@ def config_get(key: str) -> None:
         key: The dotted setting name.
 
     Raises:
-        click.ClickException: If the setting is defined nowhere.
+        click.ClickException: If the setting is defined nowhere, or an explicit-scope call elsewhere
+            in the process already reported a scope's state file as unusable. This command itself
+            never prompts to recover one, even from an interactive terminal: its stdout is a data
+            channel (`$(mgsnake config get ...)`), and a broken scope is skipped with a warning on
+            stderr instead -- see ``Store.get``.
 
     Returns:
         None
@@ -150,8 +154,9 @@ def config_set(key: str, value: str, global_scope: bool) -> None:
         global_scope: Whether to write to the user-wide scope instead of the current clone.
 
     Raises:
-        click.ClickException: If the key looks like a credential, is malformed, or the repo scope is
-            requested outside a repository.
+        click.ClickException: If the key looks like a credential, is malformed, the repo scope is
+            requested outside a repository, or the target scope's state file is unusable and could
+            not be recovered -- an interactive terminal is offered a backup-and-reset prompt first.
 
     Returns:
         None
@@ -187,8 +192,9 @@ def config_unset(key: str, global_scope: bool) -> None:
         global_scope: Whether to remove from the user-wide scope instead of the current clone.
 
     Raises:
-        click.ClickException: If the key is malformed, or the repo scope is requested outside a
-            repository.
+        click.ClickException: If the key is malformed, the repo scope is requested outside a
+            repository, or the target scope's state file is unusable and could not be recovered --
+            an interactive terminal is offered a backup-and-reset prompt first.
 
     Returns:
         None
@@ -221,13 +227,16 @@ def config_list(scope: str) -> None:
         scope: One of ``repo``, ``global`` or ``all``.
 
     Raises:
-        click.ClickException: If a state file exists but is corrupt.
+        click.ClickException: If a single scope (``repo`` or ``global``) is requested explicitly and
+            its state file is unusable -- an interactive terminal is offered a backup-and-reset
+            prompt first. ``all`` merges both scopes and degrades a broken one instead of failing --
+            see ``Store._load_gracefully``.
 
     Returns:
         None
     """
     store: Store = Store.get_instance()
-    values: dict[str, str] = store.items(None if scope == SCOPE_ALL else scope)
+    values: dict[str, str] = store.items(None if scope == SCOPE_ALL else scope, interactive=True)
     if not values:
         ws_info(f"No settings stored in the {scope} scope.")
         return
@@ -268,7 +277,11 @@ def config_export(shell: Optional[str], scope: str) -> None:
         scope: One of ``repo``, ``global`` or ``all``.
 
     Raises:
-        click.ClickException: If a state file exists but is corrupt.
+        click.ClickException: If a single scope (``repo`` or ``global``) is requested explicitly and
+            its state file is unusable. This never prompts, even from an interactive terminal:
+            ``export`` is meant to be ``eval``'d from a shell profile, where a prompt would hang the
+            terminal's startup instead of failing it in milliseconds. ``all`` merges both scopes and
+            degrades a broken one instead of failing -- see ``Store._load_gracefully``.
 
     Returns:
         None

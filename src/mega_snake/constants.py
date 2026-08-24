@@ -61,7 +61,6 @@ JIRA_TOKEN_ENV: str = "JIRA_API_TOKEN"
 # Only the auth header used to read JIRA_MCP_TOKEN while the other three scripts read
 # JIRA_API_TOKEN. The two are unified on JIRA_API_TOKEN; this one stays as a deprecated fallback.
 JIRA_DEPRECATED_TOKEN_ENV: str = "JIRA_MCP_TOKEN"
-GITHUB_TOKEN_ENV: str = "GITHUB_TOKEN"
 
 LOGGING_NAME_TO_LEVEL = {
     "ERROR": ERROR,

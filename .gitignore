@@ -17,3 +17,4 @@ assets/
 src/tests/util/test_props.py
 workspace_temp
 *.code-workspace
+workspace_error_file.log

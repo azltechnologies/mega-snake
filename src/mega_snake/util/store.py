@@ -34,13 +34,16 @@ import json
 import os
 import platform
 import re
+import sys
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import ClassVar, Optional
 
 import click
 
 from mega_snake.constants import APP_NAME
+from mega_snake.util.formatting import UserDeclinedError, ValidationError, ws_success, ws_warning
 from mega_snake.util.util import write_json_atomically
 
 SCOPE_GLOBAL: str = "global"
@@ -70,12 +73,15 @@ NO_REPO_SCOPE_MESSAGE: str = (
     "The 'repo' scope needs a git repository, and none was found from the current directory. "
     "Run the command inside a clone, or use --global."
 )
-CORRUPT_STORE_MESSAGE: str = (
-    "The {scope} state file at {path} is not valid JSON ({error}). Delete it to start over: {path}"
+UNREADABLE_STORE_MESSAGE: str = (
+    "The {scope} state file at {path} could not be read ({error}). Check its permissions; its contents "
+    "may well be intact, so nothing is offered to reset it."
 )
-NOT_AN_OBJECT_MESSAGE: str = (
-    "The {scope} state file at {path} does not contain a JSON object (found {type}). Delete it to start over: {path}"
-)
+CORRUPT_STORE_MESSAGE: str = "The {scope} state file at {path} is not valid JSON ({error})."
+NOT_AN_OBJECT_MESSAGE: str = "The {scope} state file at {path} does not contain a JSON object (found {type})."
+RECOVERY_PROMPT: str = "{reason} Back it up and start a new empty {scope} state file now?"
+RECOVERY_SUCCESS_MESSAGE: str = "Backed up the corrupt {scope} state file to {backup} and started a new one at {path}."
+BROKEN_SCOPE_WARNING: str = "Ignoring the {scope} settings for the rest of this run: {reason}"
 MISSING_SETTING_MESSAGE: str = (
     "Missing required setting '{key}'. Set it with: {app} config set {key} <value> (or export {env_var})."
 )
@@ -202,6 +208,7 @@ class Store:
 
     _paths: dict[str, Optional[Path]] = field(default_factory=dict)
     _values: dict[str, dict[str, str]] = field(default_factory=dict)
+    _broken_scopes: set[str] = field(default_factory=set)
 
     @staticmethod
     def get_instance() -> "Store":
@@ -292,14 +299,21 @@ class Store:
             raise click.ClickException(NO_REPO_SCOPE_MESSAGE)
         return path
 
-    def _load(self, scope: str) -> dict[str, str]:
+    def _load(self, scope: str, interactive: bool = False) -> dict[str, str]:
         """Read (and memoize) the contents of one scope.
 
         Parameters:
             scope: One of ``SCOPES``.
+            interactive: Whether the caller may be offered a backup-and-reset prompt when the state
+                file is unusable. Only ``set``/``unset``/an explicit ``list --scope`` pass ``True``;
+                ``get`` and ``export`` never do -- see ``_recover_from_corruption``.
 
         Raises:
-            click.ClickException: If the state file exists but does not contain valid JSON.
+            ValidationError: If the state file cannot be read at all (permissions, an I/O error), or
+                if it is unusable (invalid JSON, or not a JSON object) and could not be recovered
+                automatically: not ``interactive``, no interactive terminal, a closed stdin, or the
+                backup-and-reset itself failed.
+            UserDeclinedError: If ``interactive`` and the user declined the offered backup-and-reset.
 
         Returns:
             dict[str, str]: The stored values, empty when the scope has no file yet.
@@ -310,16 +324,153 @@ class Store:
         values: dict[str, str] = {}
         if path is not None and path.is_file():
             try:
-                decoded: object = json.loads(path.read_text(encoding="utf-8") or "{}")
+                content: str = path.read_text(encoding="utf-8")
+            except OSError as error:
+                # Deliberately *not* routed through `_recover_from_corruption`: an unreadable file is
+                # not a corrupt one. Its contents are very likely fine and only the permissions are
+                # wrong, so offering to rename it aside and start over would destroy recoverable
+                # state to fix a problem `chmod` solves. Raising `ValidationError` still lets
+                # `_load_gracefully` degrade a multi-scope read, which is the half that matters:
+                # before this, an unreadable `global` file killed `config export` outright, and that
+                # command is `eval`'d from the shell profile on every new terminal.
+                raise ValidationError(
+                    UNREADABLE_STORE_MESSAGE.format(scope=scope, path=path, error=error)
+                ) from error
+            try:
+                decoded: object = json.loads(content or "{}")
             except json.JSONDecodeError as error:
-                raise click.ClickException(CORRUPT_STORE_MESSAGE.format(scope=scope, path=path, error=error)) from error
-            if not isinstance(decoded, dict):
-                raise click.ClickException(
-                    NOT_AN_OBJECT_MESSAGE.format(scope=scope, path=path, type=type(decoded).__name__)
+                values = self._recover_from_corruption(
+                    scope, path, CORRUPT_STORE_MESSAGE.format(scope=scope, path=path, error=error), interactive
                 )
-            values = decoded
+            else:
+                if isinstance(decoded, dict):
+                    values = decoded
+                else:
+                    values = self._recover_from_corruption(
+                        scope,
+                        path,
+                        NOT_AN_OBJECT_MESSAGE.format(scope=scope, path=path, type=type(decoded).__name__),
+                        interactive,
+                    )
         self._values[scope] = values
         return values
+
+    def _recover_from_corruption(self, scope: str, path: Path, reason: str, interactive: bool) -> dict[str, str]:
+        """Offer to back up an unusable state file and start over, or fail with an actionable message.
+
+        An interactive terminal gets a choice **only when the caller says it may be asked**:
+        confirming backs up the broken file (never deletes it outright) and replaces it with a fresh,
+        empty one, so the run continues instead of dying on state nobody corrupted on purpose. A
+        declined confirmation, a non-interactive context (a script, CI, a closed stdin), and a caller
+        that did not opt in, all leave the file untouched and fail loudly instead -- silently
+        discarding state nobody agreed to lose would be worse than stopping, and matches how the rest
+        of the store treats this class of decision (compare ``ensure_working_path``'s offer to create
+        the missing working path).
+
+        ``interactive`` exists because ``sys.stdin.isatty()`` alone answers "is a human at the other
+        end of this process", not "is this command's stdout a data channel a script depends on".
+        ``config get``/``config export`` are read from an interactive shell profile on every new
+        terminal (``eval "$(mgsnake config export ...)"``) -- a prompt there would hang the shell
+        startup on a corrupt file, which is exactly the situation this whole mechanism exists to
+        avoid. Only ``config set``/``unset``/an explicit-scope ``list`` opt in.
+
+        Parameters:
+            scope: One of ``SCOPES``. Only used for the prompt and the messages.
+            path: The unusable state file.
+            reason: Human-readable description of what is wrong with the file, already naming
+                ``path``.
+            interactive: Whether this call site is allowed to prompt at all.
+
+        Raises:
+            UserDeclinedError: If asked and the user declines the backup-and-reset.
+            ValidationError: If the file cannot be recovered automatically: not ``interactive``, no
+                interactive terminal, a closed stdin (``click.confirm`` raises
+                ``click.exceptions.Abort`` on EOF), or the backup-and-reset failed.
+
+        Returns:
+            dict[str, str]: An empty mapping, once the file has been backed up and reset.
+        """
+        if interactive and sys.stdin.isatty():
+            try:
+                if not click.confirm(RECOVERY_PROMPT.format(reason=reason, scope=scope), err=True):
+                    raise UserDeclinedError(reason)
+            except click.exceptions.Abort:
+                pass
+            else:
+                return self._backup_and_reset(scope, path)
+        raise ValidationError(reason)
+
+    def _backup_and_reset(self, scope: str, path: Path) -> dict[str, str]:
+        """Replace an unusable state file with a fresh empty one, without ever losing the original.
+
+        The fresh, empty content is written to a temporary sibling first, and only once that write
+        succeeds is the broken original renamed aside (never deleted) and the temporary file swapped
+        into place. That ordering keeps the on-disk state always resolvable to exactly one of two
+        places -- untouched at ``path``, or moved intact to ``backup`` -- there is no intermediate
+        step where a filesystem failure could leave the user's data nowhere at all.
+
+        Parameters:
+            scope: One of ``SCOPES``. Only used for the success message.
+            path: The unusable state file to replace.
+
+        Raises:
+            ValidationError: If any filesystem operation fails, naming wherever the original content
+                actually ended up.
+
+        Returns:
+            dict[str, str]: An empty mapping, once ``path`` holds a fresh, empty state file.
+        """
+        stamp: str = f"{datetime.now():%Y%m%dT%H%M%S%f}"
+        backup: Path = path.with_name(f"{path.name}.corrupted-{stamp}")
+        fresh: Path = path.with_name(f"{path.name}.new-{stamp}")
+        try:
+            write_json_atomically(fresh, {})
+            path.replace(backup)
+            fresh.replace(path)
+        except OSError as error:
+            try:
+                fresh.unlink(missing_ok=True)
+            except OSError:
+                pass
+            safe_at: Path = backup if backup.exists() else path
+            raise ValidationError(
+                f"Could not reset the {scope} state file at {path}: {error}. "
+                f"Your original content is safe at {safe_at}."
+            ) from error
+        ws_success(RECOVERY_SUCCESS_MESSAGE.format(scope=scope, backup=backup, path=path))
+        return {}
+
+    def _load_gracefully(self, scope: str) -> dict[str, str]:
+        """Load a scope for a multi-scope read, degrading instead of failing when it is unusable.
+
+        Used by ``get`` and the scope-merging branch of ``items``: both read across the two scopes
+        looking for an answer, so one broken scope should not block whatever the other scope can
+        still provide -- a corrupt ``repo`` file must not stop a setting that only ever lived in
+        ``global`` from resolving. ``set``, ``unset`` and a single-scope ``items`` call are explicit
+        about the one scope they operate on and must keep failing loudly instead; they call
+        ``_load`` directly.
+
+        The failure (and any interactive prompt ``_load`` triggers) happens at most once per scope
+        per process: once a scope is marked broken, later calls skip straight to the empty mapping
+        instead of re-reading the file or asking again.
+
+        Parameters:
+            scope: One of ``SCOPES``.
+
+        Raises:
+            None
+
+        Returns:
+            dict[str, str]: The scope's stored values, or an empty mapping when the scope is broken.
+        """
+        if scope in self._broken_scopes:
+            return {}
+        try:
+            return self._load(scope)
+        except (ValidationError, UserDeclinedError) as error:
+            self._broken_scopes.add(scope)
+            ws_warning(BROKEN_SCOPE_WARNING.format(scope=scope, reason=error.message))
+            return {}
 
     def get(self, key: str, default: Optional[str] = None) -> Optional[str]:
         """Read a setting through the precedence chain.
@@ -329,16 +480,18 @@ class Store:
             default: Value returned when nothing defines the setting.
 
         Raises:
-            click.ClickException: If a state file exists but is corrupt.
+            None
 
         Returns:
-            Optional[str]: The resolved value, or ``default``.
+            Optional[str]: The resolved value, or ``default``. A scope whose state file is unusable
+                is skipped (with a warning on stderr) rather than failing the whole lookup -- see
+                ``_load_gracefully``.
         """
         environment_value: Optional[str] = os.environ.get(env_var_name(key))
         if environment_value:
             return environment_value
         for scope in (SCOPE_REPO, SCOPE_GLOBAL):
-            values: dict[str, str] = self._load(scope)
+            values: dict[str, str] = self._load_gracefully(scope)
             if key in values:
                 return values[key]
         return default
@@ -380,7 +533,7 @@ class Store:
         """
         _validate_key(key)
         path: Path = self._require_scope_path(scope)
-        values: dict[str, str] = dict(self._load(scope))
+        values: dict[str, str] = dict(self._load(scope, interactive=True))
         values[key] = value
         write_json_atomically(path, values, sort_keys=True)
         self._values[scope] = values
@@ -405,7 +558,7 @@ class Store:
         """
         _validate_key_format(key)
         path: Path = self._require_scope_path(scope)
-        values: dict[str, str] = dict(self._load(scope))
+        values: dict[str, str] = dict(self._load(scope, interactive=True))
         if key not in values:
             return False
         del values[key]
@@ -413,21 +566,27 @@ class Store:
         self._values[scope] = values
         return True
 
-    def items(self, scope: Optional[str] = None) -> dict[str, str]:
+    def items(self, scope: Optional[str] = None, interactive: bool = False) -> dict[str, str]:
         """Return the stored settings, without applying the environment override.
 
         Parameters:
             scope: One of ``SCOPES`` to read a single scope, or None to merge them with ``repo``
                 taking precedence.
+            interactive: Whether a single-scope call may be offered a backup-and-reset prompt when
+                that scope's state file is unusable (``config list`` opts in; ``config export`` never
+                does). Ignored when ``scope`` is None: merging both scopes always degrades instead,
+                regardless of this flag -- see ``_load_gracefully``.
 
         Raises:
-            click.ClickException: If the scope name is unknown, or a state file is corrupt.
+            click.ClickException: If the scope name is unknown, or -- only when a single ``scope``
+                was requested explicitly -- its state file is unusable. Merging both scopes (the
+                default) degrades a broken one instead of failing; see ``_load_gracefully``.
 
         Returns:
             dict[str, str]: The stored settings.
         """
         if scope is not None:
-            return dict(self._load(scope))
-        merged: dict[str, str] = dict(self._load(SCOPE_GLOBAL))
-        merged.update(self._load(SCOPE_REPO))
+            return dict(self._load(scope, interactive=interactive))
+        merged: dict[str, str] = dict(self._load_gracefully(SCOPE_GLOBAL))
+        merged.update(self._load_gracefully(SCOPE_REPO))
         return merged
