@@ -27,8 +27,8 @@ SAMPLE_MARKDOWN = "# Available Commands\n\n## Documentation\n\n### generate-skil
 
 @pytest.fixture(name="mk_render")
 def fixture_mk_render() -> Generator[MagicMock, None, None]:
-    """Patch _render_command_reference so tests don't need a full CLI build."""
-    with patch("mega_snake.docs_gen.generate_skill._render_command_reference") as mock:
+    """Patch render_command_reference so tests don't need a full CLI build."""
+    with patch("mega_snake.docs_gen.generate_skill.render_command_reference") as mock:
         mock.return_value = SAMPLE_MARKDOWN
         yield mock
 

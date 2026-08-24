@@ -511,6 +511,35 @@ def test_add_to_gitignore_is_idempotent(
     mk_util_ws_success.assert_not_called()
 
 
+def test_add_to_gitignore_separates_an_unterminated_last_line(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_util_ws_success: MagicMock,
+    mk_ws_advice: MagicMock,
+) -> None:
+    """A .gitignore whose last line has no newline keeps that line intact, entry on its own line.
+
+    This is the realistic shape of a hand-edited file, and the only one that distinguishes appending
+    from concatenating: with a trailing newline both behave identically.
+    """
+    from mega_snake.util.util import GITIGNORE_FILE, add_to_gitignore
+
+    monkeypatch.chdir(tmp_path)
+    gitignore = tmp_path / GITIGNORE_FILE
+    (tmp_path / ".git").mkdir()
+    gitignore.write_text("build/", encoding="utf-8")  # No trailing newline, on purpose.
+
+    add_to_gitignore(GITIGNORE_ENTRIES)
+
+    lines = gitignore.read_text(encoding="utf-8").splitlines()
+    assert lines == ["build/", ".github/skills/mgsnake/", ".claude/skills/mgsnake/"], (
+        f"the pre-existing last line must survive untouched, got {lines}"
+    )
+    assert "build/.github/skills/mgsnake/" not in lines, "the entry was concatenated onto the last line"
+    assert mk_util_ws_success.call_count == 2
+    mk_ws_advice.assert_not_called()
+
+
 def test_add_to_gitignore_outside_a_git_repository(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

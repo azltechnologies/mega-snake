@@ -10,8 +10,13 @@ from mega_snake.docs_gen.markdown_writer import render_markdown, write_or_check_
 from mega_snake.util.util import cli_metadata
 
 
-def _render_command_reference() -> str:
+def render_command_reference() -> str:
     """Build the Markdown command reference from the live CLI metadata.
+
+    This is the single composition of "walk the CLI" and "render it", shared by every command that
+    publishes the reference (``generate-docs``, ``generate-skill``). It is public precisely because
+    it crosses module boundaries: two documents rendered by two different pipelines would drift, and
+    the whole point of the generated reference is that it cannot.
 
     The root group is imported lazily: it is the object being documented, and it imports this
     module to register the command, so a module-level import would be circular.
@@ -63,7 +68,7 @@ def generate_docs(output: Path, check: bool) -> None:
     Returns:
         None
     """
-    markdown: str = _render_command_reference()
+    markdown: str = render_command_reference()
     write_or_check_document(output, markdown, check)
     if not check:
         click.echo(f"Generated {output}")

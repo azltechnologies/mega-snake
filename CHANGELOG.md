@@ -18,6 +18,15 @@ lives in the GitHub Release body (`gh release create --generate-notes`); this fi
 
 ## [Unreleased]
 
+### Added
+
+- **`generate-skill`.** Writes the command reference as `SKILL.md` into an AI assistant's skill directory —
+  `.github/skills/mgsnake/` for GitHub Copilot, `.claude/skills/mgsnake/` for Claude, or both — so the
+  assistant can answer about `mgsnake` from the real command metadata instead of guessing. It then asks how
+  those files should be tracked: excluded machine-locally, added to `.gitignore`, or committed. The content
+  comes from the same renderer as `COMMANDS.md`, so the two cannot drift. `--check` validates the skill files
+  already on disk without writing anything.
+
 ## [0.1.6] - 2026-08-24
 
 ### Added

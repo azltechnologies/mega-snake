@@ -4,7 +4,7 @@ from pathlib import Path
 
 import click
 
-from mega_snake.docs_gen.generate_docs import _render_command_reference
+from mega_snake.docs_gen.generate_docs import render_command_reference
 from mega_snake.docs_gen.markdown_writer import write_or_check_document
 from mega_snake.util.formatting import ws_success
 from mega_snake.util.util import add_to_gitignore, cli_metadata, exclude_from_git, get_validated_input
@@ -65,9 +65,9 @@ def _apply_tracking(skill_dirs: tuple[Path, ...], tracking: str) -> None:
         ws_success("Skill files left versioned — they will be committed to the repository.")
         return
 
-    entries: list[tuple[str, str]] = [
-        (str(skill_dir) + "/", f"{skill_dir}/") for skill_dir in skill_dirs
-    ]
+    # TODO (copilot-instructions §8.2, items 2 and 3): str(Path) yields backslashes on Windows, which
+    # git reads as escapes, and the description repeats the path instead of naming it.
+    entries: list[tuple[str, str]] = [(str(skill_dir) + "/", f"{skill_dir}/") for skill_dir in skill_dirs]
     if tracking == "e":
         exclude_from_git(entries)
     elif tracking == "g":
@@ -189,12 +189,15 @@ def generate_skill(check: bool) -> None:
     Returns:
         None
     """
-    markdown: str = _render_command_reference()
+    markdown: str = render_command_reference()
 
     if check:
         _check_all_existing_skill_files(markdown)
         return
 
+    # TODO (copilot-instructions §8.2, items 1 and 4): the document still lacks the YAML frontmatter
+    # an agent runtime needs to register it as a skill, and writing before the second prompt leaves
+    # files behind when that prompt fails.
     skill_dirs: tuple[Path, ...] = _prompt_target()
     _write_skill_files(skill_dirs, markdown)
     tracking: str = _prompt_tracking()
