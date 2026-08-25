@@ -1,5 +1,6 @@
 """Test cases for util.py"""
 
+import inspect
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch, mock_open
@@ -8,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 import click
 from click.testing import CliRunner
+from mega_snake.util.cli_group import CliGroup
 from mega_snake.util.util import (
     load_json_with_comments,
     run_operation,
@@ -603,3 +605,56 @@ def test_ensure_working_path_invalid_property(
     mk_get_property.return_value = str(tmp_path.parent / "somewhere_else")
     with pytest.raises(InternalStateError, match="not in the current directory"):
         ensure_working_path()
+
+
+def test_wrapper_decorator_preserves_every_group_only_constructor_argument() -> None:
+    """The sibling of the test above, generalised: `commands` was never the only casualty.
+
+    Fixing `commands` by name left `invoke_without_command`, `chain`, `subcommand_metavar` and
+    `result_callback` behind, and each fails the same silent way -- nothing raises, the group simply
+    stops behaving as declared until someone happens to invoke it the right way. The parameter set is
+    now derived from the class, so this test walks `Group.__init__`'s own signature rather than a
+    list someone has to remember to extend.
+
+    `CliGroup` is the class under test on purpose: its `__init__` is `(*args, **kwargs)`, so reading
+    one signature yields nothing at all and the rebuild produces an empty group. Only a walk of the
+    MRO answers, and using a plain `click.Group` here would hide that.
+    """
+
+    def wrapper(_ctx: click.Context, *_args, **_kwargs) -> None:
+        """No-op pre-flight."""
+
+    parent = CliGroup(
+        name="parent",
+        invoke_without_command=True,
+        chain=False,
+        subcommand_metavar="<THING>",
+        help="Parent group.",
+    )
+
+    @parent.command(name="child")
+    def child() -> None:
+        """Child command."""
+        click.echo("child ran")
+
+    @parent.result_callback()
+    def collect(result: object, **_kwargs: object) -> str:
+        """Mark the result so a dropped callback is visible."""
+        return f"collected:{result}"
+
+    wrapped = wrapper_decorator(wrapper)(parent)
+
+    group_only = {
+        name
+        for name, parameter in inspect.signature(click.Group.__init__).parameters.items()
+        if name != "self" and parameter.kind not in (parameter.VAR_KEYWORD, parameter.VAR_POSITIONAL)
+    }
+    dropped = [name for name in group_only if not hasattr(wrapped, name)]
+    assert dropped == [], f"the rebuild dropped {dropped}"
+    assert wrapped.invoke_without_command is True, "a group declared to run bare must still run bare"
+    assert wrapped.subcommand_metavar == "<THING>"
+    assert wrapped.chain is False
+    # `result_callback` is the decorator, so the registered callback lives on the private attribute;
+    # reading the public one would compare two bound methods and pass regardless.
+    assert wrapped._result_callback is collect  # pylint: disable=protected-access
+    assert set(wrapped.commands) == {"child"}

@@ -394,15 +394,91 @@ def cli_metadata(**metadata) -> Callable:
     return decorator
 
 
+# `Group.result_callback` is the *decorator* that registers one; the registered callback itself is
+# stored under this name. Reading the public attribute would pass a bound method as the callback.
+_CONSTRUCTOR_ATTRIBUTE_OVERRIDES: dict[str, str] = {"result_callback": "_result_callback"}
+
+
+def _constructor_parameters(command_class: type) -> set[str]:
+    """Return every named constructor parameter a command class accepts, across its whole MRO.
+
+    The walk is the point. ``CliGroup.__init__`` is ``(*args, **kwargs)`` forwarding to its base, so
+    reading that one signature yields nothing at all and the rebuild silently produces a group with
+    no subcommands -- the exact failure this function exists to prevent, reintroduced one level up.
+    ``**kwargs`` and ``*args`` are excluded for the same reason they are useless here: they are the
+    funnel, not settings, and passing one by name would raise.
+
+    Parameters:
+        command_class: The class whose constructors to read.
+
+    Raises:
+        None
+
+    Returns:
+        set[str]: The parameter names that can be passed by keyword.
+    """
+    variadic = (inspect.Parameter.VAR_KEYWORD, inspect.Parameter.VAR_POSITIONAL)
+    names: set[str] = set()
+    for ancestor in command_class.__mro__:
+        if not (isinstance(ancestor, type) and issubclass(ancestor, click.Command)):
+            continue
+        names |= {
+            name
+            for name, parameter in inspect.signature(ancestor.__init__).parameters.items()
+            if name != "self" and parameter.kind not in variadic
+        }
+    return names
+
+
+def _constructor_argument(command: click.Command, name: str) -> Any:
+    """Read the value a rebuilt command should receive for one constructor parameter.
+
+    Parameters:
+        command: The command being copied.
+        name: The constructor parameter name.
+
+    Raises:
+        None
+
+    Returns:
+        Any: The stored value, read from the private attribute when the public one is not it.
+    """
+    return getattr(command, _CONSTRUCTOR_ATTRIBUTE_OVERRIDES.get(name, name))
+
+
+def _has_argument(command: click.Command, name: str) -> bool:
+    """Report whether a command carries a value for one constructor parameter.
+
+    Parameters:
+        command: The command being copied.
+        name: The constructor parameter name.
+
+    Raises:
+        None
+
+    Returns:
+        bool: True when the attribute the rebuild would read exists.
+    """
+    return hasattr(command, _CONSTRUCTOR_ATTRIBUTE_OVERRIDES.get(name, name))
+
+
 def _rebuild_command(command: click.Command) -> click.Command:
     """Rebuild a command as the same class, so wrapping it cannot change what it is.
 
     Wrapping copies the command through ``click.Command.__init__``'s signature, which is the reason
     §2.3 of the contributor guide insists custom attributes be re-applied by hand afterwards. A
-    ``click.Group`` carries one more thing that signature does not mention: its ``commands``. Copying
-    a group through the plain ``Command`` constructor would silently return a leaf command with no
-    subcommands, so ``mgsnake config get`` would stop resolving the moment the group is registered
-    through a module wrapper like every other command.
+    subclass constructor accepts more than that signature mentions, and everything it adds is
+    dropped unless it is copied too: a ``click.Group`` rebuilt through the plain ``Command``
+    constructor comes out a leaf command with no subcommands, so ``mgsnake config get`` stops
+    resolving the moment the group is registered through a module wrapper like every other command.
+
+    The parameter set is therefore taken from **the command's own class** as well as from
+    ``click.Command``, rather than naming the extras one by one. Enumerating them fixed ``commands``
+    and left ``invoke_without_command``, ``chain``, ``result_callback`` and ``subcommand_metavar``
+    behind, each of which fails the same silent way -- a group declared
+    ``@click.group(invoke_without_command=True)`` would simply stop running its own body, with
+    nothing to see until someone invoked it bare. Deriving the set means the next subclass, or the
+    next click release, is covered without anyone remembering to come back here.
 
     Parameters:
         command: The command (or group) to copy.
@@ -413,12 +489,10 @@ def _rebuild_command(command: click.Command) -> click.Command:
     Returns:
         click.Command: A fresh instance of the same class carrying the same constructor arguments.
     """
-    attribute_names: set[str] = {
-        name for name in inspect.signature(click.Command.__init__).parameters if name != "self"
-    }
-    if isinstance(command, click.Group):
-        attribute_names.add("commands")
-    return type(command)(**{name: getattr(command, name) for name in attribute_names if hasattr(command, name)})
+    attribute_names: set[str] = _constructor_parameters(click.Command) | _constructor_parameters(type(command))
+    return type(command)(
+        **{name: _constructor_argument(command, name) for name in attribute_names if _has_argument(command, name)}
+    )
 
 
 def wrapper_decorator(sub_wrapper: Callable) -> Callable:

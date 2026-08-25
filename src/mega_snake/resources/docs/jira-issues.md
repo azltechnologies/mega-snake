@@ -80,17 +80,44 @@ that order says* — the order ranks how likely a name is to be the right field,
 the answer is, and a certainty beats a coin flip. Only when every candidate name is ambiguous does
 the first declaration win, with a warning naming every candidate and nothing cached, because then
 either id is a guess. To settle it, pin the id yourself:
-`mgsnake config set jira.field.sprint customfield_10020`, which the warning spells out for you. A
-pinned id survives an ordinary run that cannot confirm it, precisely so it stays pinned.
+`mgsnake config set jira.field.sprint customfield_10020`, which the warning spells out for you.
+
+A pin and a cache entry live in **different keys**, and that separation is what makes pinning work
+at all:
+
+| Key | Written by | Read |
+| --- | --- | --- |
+| `jira.field.sprint` | you, with `config set` | always, and it wins |
+| `jira.field.sprint.cached` | the command itself | only when there is no pin, and not under `--refresh` |
+
+Sharing one key looked tidy and quietly broke all three ways a pin can be used: the resolver wrote
+the id it worked out on top of the pin as soon as a lookup succeeded, `--refresh` deleted the pin it
+could not confirm, and — worst of the three — a pin was only *read* if the other field happened to
+be cached too, so pinning the ambiguous field left the value sitting in the state file, unread,
+while the guess kept being used. Nothing writes the bare key now except you. To undo a pin, remove
+it: `mgsnake config unset jira.field.sprint`.
+
+If you ran an earlier version of this command, the bare key may still hold what it wrote back then
+as a cache, not a pin. The first run after upgrading moves it onto `.cached` automatically — reported
+with an info message naming both keys — so it keeps behaving as a cache (re-resolved on `--refresh`)
+instead of silently freezing on the value it happened to hold.
+
+**A pin you create yourself is never moved.** The move is decided by a version marker the state file
+carries, not by how the keys look: a legacy cache and a fresh pin are the same key holding the same
+kind of value, so there is nothing in their shape to tell apart. Writing any setting stamps the
+marker, so a pin made with `config set` is already stamped before the migration ever looks, and the
+migration runs at most once per clone.
 
 `--refresh` (`-r`) is the escape hatch for the opposite case: an id that *did* resolve, was cached,
 and later changed on the Jira side — a board recreated, a custom field re-created by a migration. A
 stale cached id is the one failure here that says nothing at all — `storyPoints` and `sprint` come
 out `null` on every issue with a successful exit — so if the projection looks empty and no warning
 explains it, re-run with `--refresh`. It re-resolves the board id *and* both field ids, and it is
-symmetric: an id the refresh cannot confirm is dropped from the cache rather than left behind, so
-the next run resolves it again instead of quietly answering with the entry you just asked it to
-distrust.
+symmetric: a cached id the refresh cannot confirm is dropped rather than left behind, so the next
+run resolves it again instead of quietly answering with the entry you just asked it to distrust.
+Pins are untouched — `--refresh` distrusts what the tool worked out, never what you decided — so if
+a run keeps returning the same id despite the flag, check for a pin with
+`mgsnake config list | grep jira.field`.
 
 If the values you get differ from the old script's, the new ones are the correct ones.
 

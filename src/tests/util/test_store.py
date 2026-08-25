@@ -9,8 +9,10 @@ import pytest
 
 from mega_snake.util.formatting import UserDeclinedError, ValidationError
 from mega_snake.util.store import (
+    CURRENT_STATE_VERSION,
     SCOPE_GLOBAL,
     SCOPE_REPO,
+    STATE_VERSION_KEY,
     STORE_FILE_NAME,
     Store,
     env_var_name,
@@ -663,6 +665,8 @@ def test_items_merges_the_scopes_with_the_repository_winning(workspace: Path) ->
     store.set(PROJECT_KEY, "TAROTAPP", SCOPE_REPO)
     store.set(DOMAIN_KEY, "repo.atlassian.net", SCOPE_REPO)
 
+    # `items` is the *settings* view, so the internal marker is absent from it even though every
+    # write puts it in the file -- see `test_the_version_marker_is_in_the_file_but_not_in_items`.
     assert store.items() == {DOMAIN_KEY: "repo.atlassian.net", PROJECT_KEY: "TAROTAPP"}
     assert store.items(SCOPE_GLOBAL) == {DOMAIN_KEY: "global.atlassian.net"}
 
@@ -687,6 +691,7 @@ def test_stored_file_is_plain_sorted_json(workspace: Path) -> None:
     assert json.loads(path.read_text(encoding="utf-8")) == {
         DOMAIN_KEY: "repo.atlassian.net",
         PROJECT_KEY: "TAROTAPP",
+        STATE_VERSION_KEY: CURRENT_STATE_VERSION,
     }
     assert path.read_text(encoding="utf-8").index(f'"{DOMAIN_KEY}"') < path.read_text(encoding="utf-8").index(
         f'"{PROJECT_KEY}"'
@@ -717,3 +722,227 @@ def test_get_instance_is_a_singleton(workspace: Path) -> None:
     assert workspace.exists()
 
     assert Store.get_instance() is Store.get_instance()
+
+
+@pytest.mark.parametrize(
+    "key",
+    ["jira.domain\n", "jira.domain\r\n", "\njira.domain", "jira.domain\n\n"],
+    ids=["trailing-lf", "trailing-crlf", "leading-lf", "two-lf"],
+)
+def test_a_key_carrying_a_newline_is_refused(workspace: Path, key: str) -> None:
+    """`$` matches before a trailing newline, so `re.match` accepted a key no shell can survive.
+
+    A key reaches the CLI from `$(cat keyfile)` or a here-doc often enough for this to be real, and
+    the damage lands somewhere else entirely: `config export` renders the stored name verbatim, so
+    `jira.domain\\n` becomes `export JIRA_DOMAIN` on one line and `='value'` on the next. Evaluated
+    from a shell profile that is a syntax error on every new terminal, from a key that was accepted
+    without complaint days earlier.
+
+    Only the trailing-LF case actually discriminates -- verified by reverting both halves of the fix
+    and watching exactly that id go red. `$` matches before the *last* newline only, and `re.match`
+    anchors the start, so `\r\n`, a leading `\n` and a doubled `\n` were already rejected. They stay
+    as regression guards for the anchors, not as evidence that the bug is caught four times over.
+
+    The fix is deliberately doubled (`\Z` in the pattern *and* `re.fullmatch`), so neither half alone
+    shows up as a surviving mutant. That is defence in depth rather than a weak test: either half
+    reverted on its own still rejects the key, and both reverted together do not.
+    """
+    assert workspace.exists()
+
+    with pytest.raises(click.ClickException) as error:
+        Store.get_instance().set(key, "d.example.com")
+
+    assert repr(key) in repr(error.value.message) or key.strip() in error.value.message
+    assert (workspace / ".git" / APP_DIR_NAME / STORE_FILE_NAME).exists() is False, "nothing was written"
+
+
+def test_a_well_formed_key_still_passes(workspace: Path) -> None:
+    """The positive half: tightening the anchors must not start rejecting legitimate names."""
+    assert workspace.exists()
+    store = Store.get_instance()
+
+    store.set("jira.field.story_points.cached", "customfield_1")
+
+    assert store.get("jira.field.story_points.cached") == "customfield_1"
+
+
+@pytest.mark.parametrize(
+    "value, type_name",
+    [(123, "int"), (None, "NoneType"), (["a"], "list"), ({"a": "b"}, "dict"), (True, "bool")],
+    ids=["int", "null", "list", "object", "bool"],
+)
+def test_a_non_string_value_is_reported_instead_of_crashing(workspace: Path, value: object, type_name: str) -> None:
+    """The container was validated and the values were not, so a hand-edit reached `str` methods.
+
+    `{"jira.board_id": 123}` is the natural thing to type when editing the file by hand -- the value
+    *is* a number. It then reached `value.replace(...)` in `config export` and raised
+    `AttributeError`, which no entry in `ERROR_CODES` maps, so the user got exit **100 with a
+    traceback** telling them `mgsnake` is defective, from the one command documented as `eval`'d in a
+    shell profile.
+
+    The assertions pin the diagnosis, not merely that something was raised: the offending key, its
+    actual type and the file path all have to be in the message for the user to fix the file.
+    """
+    assert workspace.exists()
+    state_file = workspace / ".git" / APP_DIR_NAME / STORE_FILE_NAME
+    state_file.parent.mkdir(parents=True, exist_ok=True)
+    state_file.write_text(json.dumps({"jira.board_id": value}), encoding="utf-8")
+    Store.reset_instance()
+
+    with pytest.raises(ValidationError) as error:
+        Store.get_instance().items(SCOPE_REPO)
+
+    message = error.value.message
+    assert "jira.board_id" in message, "the offending key must be named"
+    assert type_name in message, f"the message must say it found a {type_name}"
+    assert str(state_file) in message, "the file to edit must be named"
+    assert not isinstance(error.value, AttributeError)
+
+
+def test_a_string_value_is_still_accepted(workspace: Path) -> None:
+    """The negative of the test above: the validator must not reject a legitimate file."""
+    assert workspace.exists()
+    state_file = workspace / ".git" / APP_DIR_NAME / STORE_FILE_NAME
+    state_file.parent.mkdir(parents=True, exist_ok=True)
+    state_file.write_text(json.dumps({"jira.board_id": "17"}), encoding="utf-8")
+    Store.reset_instance()
+
+    assert Store.get_instance().items(SCOPE_REPO) == {"jira.board_id": "17"}
+
+
+def test_a_non_string_value_no_longer_locks_set_and_unset_out_of_the_scope(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """CR fix: a single non-string value must not be a dead end for the write path.
+
+    Reproduces the reported symptom verbatim: `.git/mgsnake/state.json` holds
+    `{"jira.board_id": 17, "jira.domain": "d.example.com"}`, and `unset("jira.board_id", ...)` --
+    the very call that would remove the offending value -- used to raise `ValidationError` straight
+    out of `_validate_values`, before `_recover_from_corruption` ever got a say. Confirming the
+    prompt here must back up the broken file and let `unset` complete, exactly like the sibling
+    corrupt-JSON recovery path already does.
+    """
+    state_file = workspace / ".git" / APP_DIR_NAME / STORE_FILE_NAME
+    state_file.parent.mkdir(parents=True, exist_ok=True)
+    state_file.write_text(json.dumps({"jira.board_id": 17, "jira.domain": "d.example.com"}), encoding="utf-8")
+    monkeypatch.setattr("mega_snake.util.store.sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("mega_snake.util.store.click.confirm", lambda *_a, **_k: True)
+    Store.reset_instance()
+
+    removed = Store.get_instance().unset("jira.board_id", SCOPE_REPO)
+
+    assert removed is False, "the fresh, reset scope never held the key to begin with"
+    assert "Backed up" in capsys.readouterr().err
+    backups = [entry for entry in state_file.parent.iterdir() if entry.name.startswith(f"{STORE_FILE_NAME}.corrupted-")]
+    assert len(backups) == 1
+    assert json.loads(backups[0].read_text(encoding="utf-8")) == {"jira.board_id": 17, "jira.domain": "d.example.com"}
+    # The scope is genuinely usable again, not merely non-crashing.
+    Store.get_instance().set(DOMAIN_KEY, "recovered.atlassian.net", SCOPE_REPO)
+    assert Store.get_instance().get(DOMAIN_KEY) == "recovered.atlassian.net"
+
+
+def test_a_non_string_value_still_fails_loudly_without_confirmation(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Declining, or a non-interactive run, must still fail -- the file is untouched either way.
+
+    This is what stops the fix from silently discarding hand-edited state: only an explicit
+    confirmation on an interactive terminal may reset the file.
+    """
+    state_file = workspace / ".git" / APP_DIR_NAME / STORE_FILE_NAME
+    state_file.parent.mkdir(parents=True, exist_ok=True)
+    original = json.dumps({"jira.board_id": 17})
+    state_file.write_text(original, encoding="utf-8")
+    monkeypatch.setattr("mega_snake.util.store.sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("mega_snake.util.store.click.confirm", lambda *_a, **_k: False)
+    Store.reset_instance()
+
+    with pytest.raises(UserDeclinedError):
+        Store.get_instance().unset("jira.board_id", SCOPE_REPO)
+
+    assert state_file.read_text(encoding="utf-8") == original
+    assert sorted(entry.name for entry in state_file.parent.iterdir()) == [STORE_FILE_NAME]
+
+
+def test_a_non_string_value_degrades_a_multi_scope_read_instead_of_killing_it(
+    workspace: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """`ValidationError` is the type `_load_gracefully` degrades, which is why it was chosen.
+
+    A broken `repo` file must not stop a setting that only ever lived in `global` from resolving --
+    otherwise one bad hand-edit takes down `config export` on every new terminal, which is precisely
+    the outcome the whole recovery mechanism exists to avoid. So: the good scope still answers, the
+    bad one is skipped, and the reason reaches stderr rather than stdout.
+    """
+    assert workspace.exists()
+    store = Store.get_instance()
+    store.set(DOMAIN_KEY, "global.example.com", SCOPE_GLOBAL)
+    repo_file = workspace / ".git" / APP_DIR_NAME / STORE_FILE_NAME
+    repo_file.parent.mkdir(parents=True, exist_ok=True)
+    repo_file.write_text(json.dumps({"jira.board_id": 17}), encoding="utf-8")
+    Store.reset_instance()
+    capsys.readouterr()
+
+    resolved = Store.get_instance().get(DOMAIN_KEY)
+
+    captured = capsys.readouterr()
+    assert resolved == "global.example.com", "the intact scope still answers"
+    assert "jira.board_id" in captured.err
+    assert captured.out == "", "the diagnosis never touches the data channel"
+
+
+def test_the_version_marker_is_in_the_file_but_not_in_items(workspace: Path) -> None:
+    """The marker is file metadata, not a setting, and the split is deliberate on both sides.
+
+    In the file, because that is where a one-time migration has to read it from and because a user
+    reading their own state by hand should see everything that is there. Out of `items`, because
+    `items` is what `config list` prints and what `config export` turns into shell statements --
+    exporting it would push `MGSNAKE_STATE_VERSION` into every shell the profile starts, noise no
+    user wrote and none can act on.
+
+    Both halves are asserted together: hiding it from the file, or leaking it into `items`, each
+    breaks a different one of those two reasons.
+    """
+    store = Store.get_instance()
+    store.set(PROJECT_KEY, "TAROTAPP")
+    on_disk = json.loads((workspace / ".git" / APP_DIR_NAME / STORE_FILE_NAME).read_text(encoding="utf-8"))
+
+    assert on_disk[STATE_VERSION_KEY] == CURRENT_STATE_VERSION, "the marker must be in the file"
+    assert STATE_VERSION_KEY not in store.items(SCOPE_REPO), "and absent from the settings view"
+    assert STATE_VERSION_KEY not in store.items(), "including the merged one config export reads"
+    assert store.is_current_layout(SCOPE_REPO) is True, "and still readable by the migration check"
+
+
+def test_a_scope_written_before_the_marker_existed_is_not_current(workspace: Path) -> None:
+    """The negative half: an unmarked file is exactly what a legacy clone has.
+
+    Without this, `is_current_layout` returning True unconditionally would pass every other test in
+    this file while silently disabling every migration keyed on it.
+    """
+    state_file = workspace / ".git" / APP_DIR_NAME / STORE_FILE_NAME
+    state_file.parent.mkdir(parents=True, exist_ok=True)
+    state_file.write_text(json.dumps({"jira.field.sprint": "customfield_10020"}), encoding="utf-8")
+    Store.reset_instance()
+
+    assert Store.get_instance().is_current_layout(SCOPE_REPO) is False
+
+
+def test_the_marker_is_not_walked_backwards_by_a_later_write(workspace: Path) -> None:
+    """`setdefault`, not assignment: a future version recorded here must survive today's writes.
+
+    A migration that stamps version 2 and then makes any ordinary `set` would otherwise find itself
+    demoted to 1 on the next write, and would run again on the next start -- against data it had
+    already migrated.
+    """
+    store = Store.get_instance()
+    state_file = workspace / ".git" / APP_DIR_NAME / STORE_FILE_NAME
+    state_file.parent.mkdir(parents=True, exist_ok=True)
+    state_file.write_text(json.dumps({STATE_VERSION_KEY: "2"}), encoding="utf-8")
+    Store.reset_instance()
+
+    Store.get_instance().set(PROJECT_KEY, "TAROTAPP")
+
+    on_disk = json.loads(state_file.read_text(encoding="utf-8"))
+    assert on_disk[STATE_VERSION_KEY] == "2", "a newer version must not be overwritten"
+    assert on_disk[STATE_VERSION_KEY] != CURRENT_STATE_VERSION
+    assert store.items(SCOPE_REPO)[PROJECT_KEY] == "TAROTAPP", "the actual write still happened"

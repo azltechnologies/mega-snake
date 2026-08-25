@@ -5,7 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from mega_snake.constants import JIRA_SPRINT_FIELD_KEY, JIRA_STORY_POINTS_FIELD_KEY
+from mega_snake.constants import (
+    JIRA_SPRINT_FIELD_CACHE_KEY,
+    JIRA_SPRINT_FIELD_KEY,
+    JIRA_STORY_POINTS_FIELD_CACHE_KEY,
+    JIRA_STORY_POINTS_FIELD_KEY,
+)
 from mega_snake.jira_api.projection import (
     HISTORIC_SPRINT_FIELD,
     HISTORIC_STORY_POINTS_FIELD,
@@ -20,6 +25,14 @@ from tests.jira_api.jira_doubles import FakeResponse, make_client
 RESOURCES = Path(__file__).resolve().parents[1] / "resources" / "jira"
 STORY_POINTS_FIELD = "customfield_99999"
 SPRINT_FIELD = "customfield_88888"
+# Distinct from every id any fixture below declares and from both historic fallbacks, so a pin can
+# only be returned by code that actually read the pin key.
+PINNED_FIELD = "customfield_77777"
+AMBIGUOUS_SPRINT_FIELDS = [
+    {"id": "cf_A", "name": "Sprint"},
+    {"id": "cf_B", "name": "sprint"},
+    {"id": STORY_POINTS_FIELD, "name": "Story Points"},
+]
 FIELD_IDS = FieldIds(story_points=STORY_POINTS_FIELD, sprint=SPRINT_FIELD)
 
 EXPECTED_FIELD_KEYS = {
@@ -199,8 +212,8 @@ def test_a_fallback_field_id_is_never_cached(jira_workspace: Path, capsys: pytes
     capsys.readouterr()
     second = FieldIds.resolve(client)
 
-    assert JIRA_STORY_POINTS_FIELD_KEY not in stored
-    assert JIRA_SPRINT_FIELD_KEY not in stored
+    assert JIRA_STORY_POINTS_FIELD_CACHE_KEY not in stored
+    assert JIRA_SPRINT_FIELD_CACHE_KEY not in stored
     assert second == FieldIds(story_points=HISTORIC_STORY_POINTS_FIELD, sprint=HISTORIC_SPRINT_FIELD)
     assert len(session.calls) == 2, "a fallback must not be answered from the cache"
     assert HISTORIC_STORY_POINTS_FIELD in capsys.readouterr().err, "the warning must keep firing"
@@ -240,8 +253,8 @@ def test_a_duplicated_field_name_resolves_to_the_first_and_is_never_cached(
     assert first.sprint == SPRINT_FIELD, "the first declaration must win, not the last"
     assert first.sprint != "customfield_11500"
     assert first.sprint != HISTORIC_SPRINT_FIELD, "an ambiguous match is still a match, not a fallback"
-    assert JIRA_SPRINT_FIELD_KEY not in stored, "a guess between two fields must not be cached"
-    assert stored[JIRA_STORY_POINTS_FIELD_KEY] == STORY_POINTS_FIELD, "the unambiguous half is cached"
+    assert JIRA_SPRINT_FIELD_CACHE_KEY not in stored, "a guess between two fields must not be cached"
+    assert stored[JIRA_STORY_POINTS_FIELD_CACHE_KEY] == STORY_POINTS_FIELD, "the unambiguous half is cached"
     assert "customfield_11500" in warning and SPRINT_FIELD in warning, "the warning must name both candidates"
     assert JIRA_SPRINT_FIELD_KEY in warning, "the warning must name the key that pins the right id"
     assert second == first
@@ -257,8 +270,8 @@ def test_the_field_that_did_resolve_is_still_cached(jira_workspace: Path) -> Non
     FieldIds.resolve(client)
     stored = Store.get_instance().items(SCOPE_REPO)
 
-    assert stored[JIRA_SPRINT_FIELD_KEY] == SPRINT_FIELD
-    assert JIRA_STORY_POINTS_FIELD_KEY not in stored
+    assert stored[JIRA_SPRINT_FIELD_CACHE_KEY] == SPRINT_FIELD
+    assert JIRA_STORY_POINTS_FIELD_CACHE_KEY not in stored
 
 
 def test_field_ids_are_cached_in_the_repository_scope(jira_workspace: Path) -> None:
@@ -272,8 +285,8 @@ def test_field_ids_are_cached_in_the_repository_scope(jira_workspace: Path) -> N
     stored = Store.get_instance().items(SCOPE_REPO)
     second = FieldIds.resolve(client)
 
-    assert stored[JIRA_STORY_POINTS_FIELD_KEY] == STORY_POINTS_FIELD
-    assert stored[JIRA_SPRINT_FIELD_KEY] == SPRINT_FIELD
+    assert stored[JIRA_STORY_POINTS_FIELD_CACHE_KEY] == STORY_POINTS_FIELD
+    assert stored[JIRA_SPRINT_FIELD_CACHE_KEY] == SPRINT_FIELD
     assert second == FieldIds(story_points=STORY_POINTS_FIELD, sprint=SPRINT_FIELD)
     assert len(session.calls) == 1
 
@@ -324,7 +337,7 @@ def test_an_unambiguous_alternative_name_beats_an_ambiguous_preferred_one(
     assert resolved.story_points == STORY_POINTS_FIELD, "the unambiguous name must win"
     assert resolved.story_points != "customfield_20001", "the first duplicate must not be guessed at"
     assert resolved.story_points != HISTORIC_STORY_POINTS_FIELD, "an alternative name is a match, not a fallback"
-    assert Store.get_instance().items(SCOPE_REPO)[JIRA_STORY_POINTS_FIELD_KEY] == STORY_POINTS_FIELD
+    assert Store.get_instance().items(SCOPE_REPO)[JIRA_STORY_POINTS_FIELD_CACHE_KEY] == STORY_POINTS_FIELD
     assert warning == "", "a certainty was available, so there is nothing to warn about"
 
 
@@ -343,17 +356,17 @@ def test_a_refresh_that_resolves_nothing_drops_the_stale_cached_id(
     """
     assert jira_workspace.exists()
     store = Store.get_instance()
-    store.set(JIRA_STORY_POINTS_FIELD_KEY, "customfield_30001")
-    store.set(JIRA_SPRINT_FIELD_KEY, "customfield_30002")
+    store.set(JIRA_STORY_POINTS_FIELD_CACHE_KEY, "customfield_30001")
+    store.set(JIRA_SPRINT_FIELD_CACHE_KEY, "customfield_30002")
     client, _ = make_client([FakeResponse([{"id": SPRINT_FIELD, "name": "Sprint"}])])
 
     resolved = FieldIds.resolve(client, refresh=True)
 
     stored = Store.get_instance().items(SCOPE_REPO)
     assert resolved.story_points == HISTORIC_STORY_POINTS_FIELD, "nothing matched, so the fallback answers"
-    assert JIRA_STORY_POINTS_FIELD_KEY not in stored, "the id the refresh could not confirm must be gone"
-    assert stored[JIRA_SPRINT_FIELD_KEY] == SPRINT_FIELD, "the half that did resolve is written, not dropped"
-    assert stored[JIRA_SPRINT_FIELD_KEY] != "customfield_30002"
+    assert JIRA_STORY_POINTS_FIELD_CACHE_KEY not in stored, "the id the refresh could not confirm must be gone"
+    assert stored[JIRA_SPRINT_FIELD_CACHE_KEY] == SPRINT_FIELD, "the half that did resolve is written, not dropped"
+    assert stored[JIRA_SPRINT_FIELD_CACHE_KEY] != "customfield_30002"
     assert HISTORIC_STORY_POINTS_FIELD in capsys.readouterr().err
 
 
@@ -367,11 +380,344 @@ def test_a_run_without_refresh_leaves_an_unconfirmed_cached_id_alone(jira_worksp
     """
     assert jira_workspace.exists()
     store = Store.get_instance()
-    store.set(JIRA_STORY_POINTS_FIELD_KEY, "customfield_30001")
+    store.set(JIRA_STORY_POINTS_FIELD_CACHE_KEY, "customfield_30001")
     client, _ = make_client([FakeResponse([{"id": SPRINT_FIELD, "name": "Sprint"}])])
 
     FieldIds.resolve(client)
 
     stored = Store.get_instance().items(SCOPE_REPO)
-    assert stored[JIRA_STORY_POINTS_FIELD_KEY] == "customfield_30001", "a pinned id must survive a normal run"
-    assert stored[JIRA_SPRINT_FIELD_KEY] == SPRINT_FIELD
+    assert stored[JIRA_STORY_POINTS_FIELD_CACHE_KEY] == "customfield_30001", "a pinned id must survive a normal run"
+    assert stored[JIRA_SPRINT_FIELD_CACHE_KEY] == SPRINT_FIELD
+
+
+def test_a_pin_is_honoured_even_when_the_other_field_forces_a_lookup(
+    jira_workspace: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """The regression test for the pin that sat on disk unread.
+
+    The ambiguity warning tells the user to run `mgsnake config set jira.field.sprint <id>`. While
+    both ids were answered together (`if cached_story_points and cached_sprint`), doing exactly that
+    changed nothing: story points were not cached yet, so the all-or-nothing branch was skipped, the
+    field endpoint was queried, and `_match` guessed at the ambiguous name again -- with the pin
+    sitting in the state file, never read. The documented remedy was inert.
+
+    `cf_A` is what the guess would return and it is asserted absent, so a resolver that reaches
+    `_match` for a pinned field cannot pass. The warning is asserted empty for the same reason: a pin
+    settles the question, so there is nothing left to warn about.
+    """
+    assert jira_workspace.exists()
+    store = Store.get_instance()
+    store.set(JIRA_SPRINT_FIELD_KEY, PINNED_FIELD)
+    client, _ = make_client([FakeResponse(AMBIGUOUS_SPRINT_FIELDS)])
+
+    resolved = FieldIds.resolve(client)
+
+    assert resolved.sprint == PINNED_FIELD, "the pin must answer, not the guess"
+    assert resolved.sprint != "cf_A", "cf_A is what _match would have guessed"
+    assert resolved.story_points == STORY_POINTS_FIELD, "the unpinned field still resolves normally"
+    assert capsys.readouterr().err == "", "a pinned field is settled, so nothing is ambiguous"
+
+
+def test_a_pin_is_never_overwritten_by_a_clean_match(jira_workspace: Path) -> None:
+    """Nothing in the codebase writes the pin key, so a clean resolution cannot silently replace it.
+
+    Before the split, `store.set` wrote the resolved id straight onto the key the user had pinned, so
+    a pin lasted exactly until the next run whose lookup happened to succeed -- and it disappeared
+    without a message, since overwriting a cache entry is not worth reporting and the code could not
+    tell the two apart. The cache entry below is asserted to exist *separately*, which is the whole
+    point: both facts are recorded, and neither destroys the other.
+    """
+    assert jira_workspace.exists()
+    store = Store.get_instance()
+    store.set(JIRA_SPRINT_FIELD_KEY, PINNED_FIELD)
+    client, _ = make_client([FakeResponse([{"id": "cf_9001", "name": "Sprint"}])])
+
+    resolved = FieldIds.resolve(client)
+
+    stored = store.items(SCOPE_REPO)
+    assert resolved.sprint == PINNED_FIELD
+    assert stored[JIRA_SPRINT_FIELD_KEY] == PINNED_FIELD, "the pin survives untouched"
+    assert stored[JIRA_SPRINT_FIELD_KEY] != "cf_9001"
+    assert JIRA_SPRINT_FIELD_CACHE_KEY not in stored, "a pinned field is never looked up, so nothing is cached"
+
+
+def test_refresh_honours_a_pin_and_only_drops_the_cache(jira_workspace: Path) -> None:
+    """`--refresh` distrusts what the tool worked out, never what the user decided.
+
+    A pin is not a stale guess to be revisited: the user wrote it precisely because the automatic
+    resolution was wrong, so a flag that deleted it would make the documented remedy last exactly one
+    run. The cached entry beside it is dropped in the same call, which is the behaviour `--refresh`
+    exists for -- both halves are asserted here so neither can regress into the other.
+    """
+    assert jira_workspace.exists()
+    store = Store.get_instance()
+    store.set(JIRA_SPRINT_FIELD_KEY, PINNED_FIELD)
+    store.set(JIRA_STORY_POINTS_FIELD_CACHE_KEY, "cf_STALE")
+    client, _ = make_client([FakeResponse([{"id": "cf_only", "name": "Flagged"}])])
+
+    resolved = FieldIds.resolve(client, refresh=True)
+
+    stored = store.items(SCOPE_REPO)
+    assert resolved.sprint == PINNED_FIELD, "the pin answers even under --refresh"
+    assert stored[JIRA_SPRINT_FIELD_KEY] == PINNED_FIELD, "the pin is still on disk"
+    assert JIRA_STORY_POINTS_FIELD_CACHE_KEY not in stored, "the unconfirmed cache entry is dropped"
+    assert resolved.story_points == HISTORIC_STORY_POINTS_FIELD, "nothing matched, so the fallback answers"
+
+
+def test_refresh_drops_a_pinned_fields_own_stale_cache_without_any_http_call(jira_workspace: Path) -> None:
+    """Regression test: a pinned field's `.cached` sibling used to survive `--refresh` untouched.
+
+    `_cache` is only reached from the branch that actually looks a field up, and a pinned field short
+    -circuits before that with `continue` -- so with *both* fields pinned, `--refresh` never queried
+    the field endpoint and never dropped anything, contradicting both `_cache`'s own docstring ("The
+    drop is the other half of what `--refresh` promises") and the fragment's documented behaviour. The
+    stale entry would then resurface the moment the pin was removed, answering with exactly the guess
+    `--refresh` was asked to distrust.
+
+    All three consequences are asserted together, as the CR comment asks: the pins survive untouched,
+    both stale `.cached` entries are gone, and not a single HTTP call was made -- a pinned field must
+    never reach the field endpoint, refresh or not.
+    """
+    assert jira_workspace.exists()
+    store = Store.get_instance()
+    store.set(JIRA_SPRINT_FIELD_KEY, PINNED_FIELD)
+    store.set(JIRA_SPRINT_FIELD_CACHE_KEY, "cf_STALE_SPRINT")
+    store.set(JIRA_STORY_POINTS_FIELD_KEY, STORY_POINTS_FIELD)
+    store.set(JIRA_STORY_POINTS_FIELD_CACHE_KEY, "cf_STALE_STORY_POINTS")
+    client, session = make_client([])
+
+    resolved = FieldIds.resolve(client, refresh=True)
+
+    stored = store.items(SCOPE_REPO)
+    assert resolved == FieldIds(story_points=STORY_POINTS_FIELD, sprint=PINNED_FIELD)
+    assert stored[JIRA_SPRINT_FIELD_KEY] == PINNED_FIELD, "the pin is still on disk"
+    assert stored[JIRA_STORY_POINTS_FIELD_KEY] == STORY_POINTS_FIELD, "the other pin is still on disk"
+    assert JIRA_SPRINT_FIELD_CACHE_KEY not in stored, "the stale cache behind the sprint pin is dropped"
+    assert JIRA_STORY_POINTS_FIELD_CACHE_KEY not in stored, "the stale cache behind the other pin is dropped"
+    assert session.calls == [], "a pinned field must never reach the field endpoint, even under --refresh"
+
+
+def test_refresh_drops_a_pinned_fields_stale_cache_while_the_other_field_is_still_looked_up(
+    jira_workspace: Path,
+) -> None:
+    """The mixed case from the CR comment's own repro: only `sprint` is pinned.
+
+    Story points still has to be looked up (one HTTP call), and that lookup must not be the thing
+    that happens to drop the sprint's stale cache -- it is a different key entirely. This pins the
+    call count at exactly one, so a fix that accidentally makes the pinned field reach the endpoint
+    too (instead of being dropped directly in `resolve`) would be caught here.
+    """
+    assert jira_workspace.exists()
+    store = Store.get_instance()
+    store.set(JIRA_SPRINT_FIELD_KEY, PINNED_FIELD)
+    store.set(JIRA_SPRINT_FIELD_CACHE_KEY, "cf_STALE_SPRINT")
+    client, session = make_client([FakeResponse([{"id": STORY_POINTS_FIELD, "name": "Story Points"}])])
+
+    resolved = FieldIds.resolve(client, refresh=True)
+
+    stored = store.items(SCOPE_REPO)
+    assert resolved == FieldIds(story_points=STORY_POINTS_FIELD, sprint=PINNED_FIELD)
+    assert stored[JIRA_SPRINT_FIELD_KEY] == PINNED_FIELD, "the pin is still on disk"
+    assert JIRA_SPRINT_FIELD_CACHE_KEY not in stored, "the stale cache behind the pin is dropped"
+    assert stored[JIRA_STORY_POINTS_FIELD_CACHE_KEY] == STORY_POINTS_FIELD, "the looked-up field is still cached"
+    assert len(session.calls) == 1, "only the unpinned field may reach the endpoint"
+
+
+def _write_legacy_state(repo: Path, values: dict) -> None:
+    """Write a repo state file the way the pre-pin code left it: no version marker.
+
+    Deliberately not built with `store.set`, which stamps the marker on its first write -- doing so
+    would produce a *current* file and quietly make every migration test assert nothing. The whole
+    point of a legacy fixture is the absence of that marker.
+    """
+    state_file = repo / ".git" / "mgsnake" / "state.json"
+    state_file.parent.mkdir(parents=True, exist_ok=True)
+    state_file.write_text(json.dumps(values), encoding="utf-8")
+    Store.reset_instance()
+
+
+def test_a_legacy_bare_cache_is_migrated_to_the_cache_key(
+    jira_workspace: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """Regression test for the migration `_migrate_legacy_cache` performs.
+
+    Before the pin/cache split, `resolve` wrote the id it worked out onto the bare key itself, which
+    is what a clone that ran an earlier commit of this branch still has on disk -- an unmarked file,
+    since the marker did not exist then. Reading that leftover as a pin would freeze
+    `jira-issues --refresh` on the stale id forever, in silence, so the first `resolve()` must
+    relocate it onto the `.cached` key where a fresh lookup or `--refresh` can still reach it.
+    """
+    _write_legacy_state(jira_workspace, {JIRA_SPRINT_FIELD_KEY: SPRINT_FIELD})
+    client, _ = make_client([FakeResponse([{"id": STORY_POINTS_FIELD, "name": "Story Points"}])])
+
+    resolved = FieldIds.resolve(client)
+
+    stored = Store.get_instance().items(SCOPE_REPO)
+    assert resolved.sprint == SPRINT_FIELD, "the migrated value still answers the same run"
+    assert resolved.story_points == STORY_POINTS_FIELD
+    assert JIRA_SPRINT_FIELD_KEY not in stored, "the bare key must not survive as a fake pin"
+    assert stored[JIRA_SPRINT_FIELD_CACHE_KEY] == SPRINT_FIELD, "the value is preserved, only relocated"
+    assert "Moved" in capsys.readouterr().err
+
+
+def test_a_pin_written_by_config_set_is_never_migrated(
+    jira_workspace: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """The regression that a shape-based migration could not avoid, and the reason for the marker.
+
+    An ambiguous field is never cached, by design -- so the pin the ambiguity warning tells the user
+    to create is a bare key with **no** `.cached` sibling, which is byte-for-byte the shape a legacy
+    cache has. A migration keyed on that shape relocated the pin on the very next run and
+    `--refresh` then discarded it, leaving the user back on the historic fallback: the original
+    defect, rebuilt inside its own fix.
+
+    `Store.set` stamps the version marker, so a pin made the documented way is stamped before the
+    migration ever looks. Asserted on the store *and* on the resolved value, and with the info
+    message asserted absent -- a migration that ran and happened to leave the value reachable would
+    still be a bug.
+    """
+    assert jira_workspace.exists()
+    store = Store.get_instance()
+    store.set(JIRA_SPRINT_FIELD_KEY, PINNED_FIELD)
+    capsys.readouterr()
+    client, _ = make_client([FakeResponse(AMBIGUOUS_SPRINT_FIELDS)])
+
+    resolved = FieldIds.resolve(client)
+
+    stored = store.items(SCOPE_REPO)
+    assert stored[JIRA_SPRINT_FIELD_KEY] == PINNED_FIELD, "the pin must stay a pin"
+    assert JIRA_SPRINT_FIELD_CACHE_KEY not in stored, "the pin must not be relocated to the cache key"
+    assert resolved.sprint == PINNED_FIELD
+    assert resolved.sprint != "cf_A", "cf_A is what the ambiguous guess would have returned"
+    assert "Moved" not in capsys.readouterr().err, "nothing was migrated, so nothing is reported"
+
+
+def test_a_legacy_file_is_migrated_only_once(jira_workspace: Path, capsys: pytest.CaptureFixture) -> None:
+    """After the first run the scope is marked, so a pin created later is safe.
+
+    This is the half that makes the marker worth its cost: without it the migration has no memory,
+    so every run re-evaluates the same shape and a pin written between two runs is indistinguishable
+    from the leftover the first run just moved.
+    """
+    _write_legacy_state(jira_workspace, {JIRA_SPRINT_FIELD_KEY: SPRINT_FIELD})
+    client, _ = make_client([FakeResponse([{"id": STORY_POINTS_FIELD, "name": "Story Points"}])])
+    FieldIds.resolve(client)
+    capsys.readouterr()
+
+    store = Store.get_instance()
+    store.unset(JIRA_SPRINT_FIELD_CACHE_KEY, SCOPE_REPO)
+    store.set(JIRA_SPRINT_FIELD_KEY, PINNED_FIELD)
+    client, _ = make_client([])
+
+    resolved = FieldIds.resolve(client)
+
+    stored = store.items(SCOPE_REPO)
+    assert stored[JIRA_SPRINT_FIELD_KEY] == PINNED_FIELD, "the later pin survives the second run"
+    assert JIRA_SPRINT_FIELD_CACHE_KEY not in stored
+    assert resolved.sprint == PINNED_FIELD
+    assert "Moved" not in capsys.readouterr().err, "the migration must not run a second time"
+
+
+def test_a_bare_key_is_left_alone_when_a_cache_key_already_exists(
+    jira_workspace: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """The second guard: both keys set cannot be a legacy leftover, so it is never touched.
+
+    The older code wrote only the bare key, so a file carrying both -- even an unmarked one -- was
+    edited by hand or by a newer run. This guard is redundant with the marker for any clone that
+    reached the current code, and is kept for the file a user assembles themselves.
+    """
+    _write_legacy_state(
+        jira_workspace, {JIRA_SPRINT_FIELD_KEY: PINNED_FIELD, JIRA_SPRINT_FIELD_CACHE_KEY: "cf_STALE_CACHE"}
+    )
+    client, _ = make_client([FakeResponse([{"id": STORY_POINTS_FIELD, "name": "Story Points"}])])
+
+    resolved = FieldIds.resolve(client)
+
+    stored = Store.get_instance().items(SCOPE_REPO)
+    assert resolved.sprint == PINNED_FIELD, "the pin still answers, untouched"
+    assert stored[JIRA_SPRINT_FIELD_KEY] == PINNED_FIELD
+    assert stored[JIRA_SPRINT_FIELD_CACHE_KEY] == "cf_STALE_CACHE", "the cache entry is left exactly as it was"
+    assert "Moved" not in capsys.readouterr().err
+
+
+def test_a_pinned_field_costs_no_http_call_when_both_are_settled(jira_workspace: Path) -> None:
+    """A pin is as good as a cache entry for skipping the lookup, asserted by equality against zero.
+
+    Otherwise pinning one field would mean paying for the field endpoint on every single run, which
+    is the cost the cache exists to avoid -- and the user would have no way to stop paying it.
+    """
+    assert jira_workspace.exists()
+    store = Store.get_instance()
+    store.set(JIRA_SPRINT_FIELD_KEY, PINNED_FIELD)
+    store.set(JIRA_STORY_POINTS_FIELD_CACHE_KEY, STORY_POINTS_FIELD)
+    client, session = make_client([])
+
+    resolved = FieldIds.resolve(client)
+
+    assert resolved == FieldIds(story_points=STORY_POINTS_FIELD, sprint=PINNED_FIELD)
+    assert len(session.calls) == 0
+
+
+def test_outside_a_repository_nothing_is_cached_and_the_ids_still_resolve(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The repo scope needs a `.git`, and `jira-issues --output` does not.
+
+    With `-o` naming a destination the command never touches the working path, so it runs perfectly
+    well from a directory that is not a clone -- and then there is nowhere to write a per-clone cache.
+    Resolution must still work (the ids come from the instance, not from the store), and the write
+    must be skipped rather than raising: `Store.set(..., SCOPE_REPO)` outside a repository is a
+    `ClickException`, which would turn a legitimate invocation into an error about a scope the user
+    never asked for.
+
+    Asserted with a second run that queries the endpoint again — a cache that did not happen has to
+    be visible as a cache miss, not merely as the absence of a file nobody looked for.
+    """
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "home" / ".config"))
+    monkeypatch.setenv("APPDATA", str(tmp_path / "home" / "AppData"))
+    monkeypatch.chdir(tmp_path)
+    Store.reset_instance()
+    fields = [{"id": STORY_POINTS_FIELD, "name": "Story Points"}, {"id": SPRINT_FIELD, "name": "Sprint"}]
+    client, session = make_client([FakeResponse(fields), FakeResponse(fields)])
+
+    first = FieldIds.resolve(client)
+    second = FieldIds.resolve(client)
+
+    assert first == FieldIds(story_points=STORY_POINTS_FIELD, sprint=SPRINT_FIELD), "resolution still works"
+    assert second == first
+    assert len(session.calls) == 2, "nothing was cached, so the second run queries again"
+    assert Store.get_instance().has_scope(SCOPE_REPO) is False
+    Store.reset_instance()
+
+
+def test_an_unusable_repo_store_does_not_make_the_migration_the_thing_that_fails(
+    jira_workspace: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """The migration reads the repo scope strictly, so it has to degrade like every other reader.
+
+    `is_current_layout` and `items(SCOPE_REPO)` both go through `_load` directly rather than
+    `_load_gracefully`, because a single named scope must fail loudly for `set`/`unset`. Running one
+    of them unguarded at the top of `resolve` would convert a corrupt state file -- which the store
+    is built to degrade around, warning on stderr and carrying on -- into a hard failure of
+    `jira-issues`, and from a code path the user never asked to run.
+
+    So: nothing is migrated, the endpoint is still queried, the ids still resolve, and the only thing
+    on stderr is the store's own warning plus the ordinary fallback notice. The field names below
+    match nothing on purpose, so `_cache` writes nothing and the run completes -- isolating the
+    migration's own behaviour from the separate question of writing to a broken scope.
+    """
+    state_file = jira_workspace / ".git" / "mgsnake" / "state.json"
+    state_file.parent.mkdir(parents=True, exist_ok=True)
+    state_file.write_text("{not json at all", encoding="utf-8")
+    Store.reset_instance()
+    client, session = make_client([FakeResponse([{"id": "cf_unrelated", "name": "Flagged"}])])
+
+    resolved = FieldIds.resolve(client)
+
+    errors = capsys.readouterr().err
+    assert resolved == FieldIds(story_points=HISTORIC_STORY_POINTS_FIELD, sprint=HISTORIC_SPRINT_FIELD)
+    assert len(session.calls) == 1, "the lookup still happened"
+    assert "Ignoring the repo settings" in errors, "the store reported the broken scope itself"
+    assert "Moved" not in errors, "nothing can be migrated out of a file that cannot be read"
+    assert state_file.read_text(encoding="utf-8") == "{not json at all", "the broken file is left untouched"

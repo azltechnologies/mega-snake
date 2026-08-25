@@ -255,3 +255,68 @@ def test_export_defaults_to_the_active_shell(workspace: Path, monkeypatch: pytes
     result = CliRunner().invoke(config, ["export"])
 
     assert result.stdout == "$env:JIRA_PROJECT_KEY = 'TAROTAPP'\n"
+
+
+@pytest.mark.parametrize(
+    "key",
+    ["jira.api_token", "jira.secret", "github.password", "app.credential", "jira.apikey"],
+    ids=["token", "secret", "password", "credential", "apikey"],
+)
+def test_get_refuses_a_credential_shaped_key(workspace: Path, monkeypatch: pytest.MonkeyPatch, key: str) -> None:
+    """The guard was on the half that never held a secret; the read path is the one that discloses.
+
+    `config set jira.api_token` was refused from the start, so the store genuinely never holds a
+    credential -- but `config get`'s *first* precedence layer is the environment, and it validated
+    nothing. `mgsnake config get jira.api_token` therefore printed the live token to stdout, where a
+    command substitution, a CI log or a screen share picks it up, from a command that reads like
+    harmless introspection.
+
+    The token is injected here deliberately, so the test fails if the value is echoed rather than
+    passing merely because nothing was set.
+    """
+    assert workspace.exists()
+    monkeypatch.setenv(env_var_name(key), "SUPER-SECRET-VALUE")
+
+    result = CliRunner().invoke(config, ["get", key])
+
+    assert result.exit_code == 1
+    assert result.stdout == "", "nothing reaches the data channel"
+    assert "SUPER-SECRET-VALUE" not in result.output, "the value must not appear anywhere, stderr included"
+
+
+@pytest.mark.parametrize("key", ["path", "home", "UPPER.CASE", "jira..domain", "jira.domain "])
+def test_get_refuses_a_key_that_is_not_a_setting_name(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch, key: str
+) -> None:
+    """`config get path` echoed `$PATH`, because any word maps to a variable name.
+
+    A bare word is not a dotted setting name, so the format check the write path always ran is what
+    stops the read path from being a general-purpose environment dumper. `PATH` is injected with a
+    recognisable value for the same reason as above: an empty environment would make this pass for
+    the wrong reason.
+    """
+    assert workspace.exists()
+    monkeypatch.setenv(env_var_name(key.strip()) or "PATH", "/marker/bin")
+
+    result = CliRunner().invoke(config, ["get", key])
+
+    assert result.exit_code == 1
+    assert result.stdout == ""
+    assert "/marker/bin" not in result.output
+
+
+def test_get_still_answers_a_well_formed_setting_from_the_environment(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The negative of the two tests above: the guards must not break the command's actual job.
+
+    `config get` exists to be read with `$(...)`, and the environment is a legitimate source -- so a
+    well-formed, non-credential key must still resolve from it, with the value alone on stdout.
+    """
+    assert workspace.exists()
+    monkeypatch.setenv(env_var_name(PROJECT_KEY), "FROM-ENV")
+
+    result = CliRunner().invoke(config, ["get", PROJECT_KEY])
+
+    assert result.exit_code == 0
+    assert result.stdout == "FROM-ENV\n"

@@ -59,11 +59,28 @@ GIT_FILE_PREFIX: str = "gitdir:"
 # Any key matching this is refused outright: the store is for identifiers, not credentials.
 SECRET_KEY_PATTERN: str = r"(?i)(token|secret|password|passwd|credential|api[_.-]?key)"
 # Dotted namespace, lowercase: keeps the file from degenerating into a junk drawer of flat keys.
-KEY_PATTERN: str = r"^[a-z0-9]+(\.[a-z0-9_]+)+$"
+# Anchored with `\Z` and matched with `re.fullmatch`, not `$` with `re.match`: `$` also matches
+# *before* a trailing newline, so `"jira.domain\n"` was a storable key -- and `config export` then
+# emitted `export JIRA_DOMAIN\n='...'`, which is a syntax error in the shell profile that evaluates
+# it, on every new terminal. A key arrives from `$(cat file)` often enough for that to be reachable.
+KEY_PATTERN: str = r"[a-z0-9]+(\.[a-z0-9_]+)+\Z"
+
+# Records that a scope has already been written by the current state layout. It exists because a
+# one-time migration cannot be decided from the *shape* of the data: the pre-pin `jira.field.sprint`
+# cache and a pin the user writes today are the same key holding the same kind of value, so a
+# migration keyed on shape ate the pin it was meant to protect. The marker is the missing signal --
+# anything written after it appeared is by definition not a leftover from the older code.
+STATE_VERSION_KEY: str = "mgsnake.state_version"
+CURRENT_STATE_VERSION: str = "1"
 
 SECRET_KEY_MESSAGE: str = (
     "Refusing to store '{key}': it looks like a credential. Secrets belong in environment "
     "variables only, never in a plaintext state file. Export it from your shell instead."
+)
+SECRET_READ_MESSAGE: str = (
+    "Refusing to read '{key}': it looks like a credential, and this command writes to stdout, which "
+    "ends up in shell history, CI logs and screenshots. The store never holds secrets, so the only "
+    "thing this could echo is the environment variable you already have -- read that directly."
 )
 INVALID_KEY_MESSAGE: str = (
     "Invalid setting name '{key}'. Names must be lowercase and dotted, e.g. 'jira.project_key' (pattern: {pattern})."
@@ -79,6 +96,10 @@ UNREADABLE_STORE_MESSAGE: str = (
 )
 CORRUPT_STORE_MESSAGE: str = "The {scope} state file at {path} is not valid JSON ({error})."
 NOT_AN_OBJECT_MESSAGE: str = "The {scope} state file at {path} does not contain a JSON object (found {type})."
+NOT_A_STRING_MESSAGE: str = (
+    "The {scope} state file at {path} holds a non-text value for '{key}' (found {type}). Settings are stored as "
+    "strings; quote the value directly in the file, or back it up and start a new empty file when offered."
+)
 RECOVERY_PROMPT: str = "{reason} Back it up and start a new empty {scope} state file now?"
 RECOVERY_SUCCESS_MESSAGE: str = "Backed up the corrupt {scope} state file to {backup} and started a new one at {path}."
 BROKEN_SCOPE_WARNING: str = "Ignoring the {scope} settings for the rest of this run: {reason}"
@@ -162,7 +183,7 @@ def _validate_key_format(key: str) -> None:
     Returns:
         None
     """
-    if not re.match(KEY_PATTERN, key):
+    if not re.fullmatch(KEY_PATTERN, key):
         raise click.ClickException(INVALID_KEY_MESSAGE.format(key=key, pattern=KEY_PATTERN))
 
 
@@ -183,6 +204,48 @@ def _validate_key(key: str) -> None:
     """
     if re.search(SECRET_KEY_PATTERN, key):
         raise click.ClickException(SECRET_KEY_MESSAGE.format(key=key))
+    _validate_key_format(key)
+
+
+def _without_marker(values: dict[str, str]) -> dict[str, str]:
+    """Copy a scope's contents without the internal state-version marker.
+
+    Parameters:
+        values: The raw contents of one scope, or the merge of both.
+
+    Raises:
+        None
+
+    Returns:
+        dict[str, str]: The same mapping minus ``STATE_VERSION_KEY``.
+    """
+    return {key: value for key, value in values.items() if key != STATE_VERSION_KEY}
+
+
+def validate_readable_key(key: str) -> None:
+    """Reject credential-shaped and malformed names on the *read* path of the CLI.
+
+    ``set`` refused to write a credential-shaped key from the start, but ``config get`` validated
+    nothing at all -- and its first precedence layer is ``os.environ[env_var_name(key)]``. So the
+    guarded half was the half that never held a secret, while the unguarded half printed
+    ``$JIRA_API_TOKEN`` to stdout on request, and ``mgsnake config get path`` echoed ``$PATH``. The
+    format check is what stops the latter: a bare word is not a dotted setting name.
+
+    Deliberately not applied to ``Store.get`` itself. Internal callers resolve fixed constants and
+    never a name a user typed, and the disclosure this prevents is specific to a command whose
+    stdout is a data channel.
+
+    Parameters:
+        key: The setting name a user asked to read.
+
+    Raises:
+        click.ClickException: If the key looks like a credential, or does not follow ``KEY_PATTERN``.
+
+    Returns:
+        None
+    """
+    if re.search(SECRET_KEY_PATTERN, key):
+        raise click.ClickException(SECRET_READ_MESSAGE.format(key=key))
     _validate_key_format(key)
 
 
@@ -342,7 +405,30 @@ class Store:
                 )
             else:
                 if isinstance(decoded, dict):
-                    values = decoded
+                    # The container was already checked; the *values* were not, and every consumer
+                    # treats them as text -- `config export` reaches `value.replace(...)` and
+                    # `resolve_board` reaches `int(value)`. A hand-edited `{"jira.board_id": 123}`
+                    # therefore died with `AttributeError`, which is unmapped in `ERROR_CODES`, so
+                    # the user got exit 100 and a traceback blaming `mgsnake` -- in the one command
+                    # documented as `eval`'d from the shell profile. Same check `JiraClient.get`
+                    # makes on a response body, one layer down.
+                    #
+                    # Routed through `_recover_from_corruption`, exactly like the two sibling checks
+                    # below: a bad value is the same class of "unusable file" as bad JSON or a
+                    # non-object root, and `set`/`unset` need the same backup-and-reset escape hatch
+                    # those already get. Raising directly here left `set`/`unset` with no way to ever
+                    # remove the very value blocking them -- one bad hand-edit locked the whole scope.
+                    invalid = self._first_non_string_value(decoded)
+                    if invalid is None:
+                        values = decoded
+                    else:
+                        key, type_name = invalid
+                        values = self._recover_from_corruption(
+                            scope,
+                            path,
+                            NOT_A_STRING_MESSAGE.format(scope=scope, path=path, key=key, type=type_name),
+                            interactive,
+                        )
                 else:
                     values = self._recover_from_corruption(
                         scope,
@@ -352,6 +438,31 @@ class Store:
                     )
         self._values[scope] = values
         return values
+
+    @staticmethod
+    def _first_non_string_value(decoded: dict) -> Optional[tuple[str, str]]:
+        """Find the first value in a decoded scope that is not a string.
+
+        Reports rather than coerces: `str(123)` would silently rewrite what the user typed, and a
+        value that reads back as something other than what the file says is worse than a refusal
+        naming the key. The caller routes the finding through `_recover_from_corruption`, the same
+        as a JSON-decode error or a non-object root, so `set`/`unset` keep their backup-and-reset
+        escape hatch instead of being raised at directly.
+
+        Parameters:
+            decoded: The mapping just read from the state file.
+
+        Raises:
+            None
+
+        Returns:
+            Optional[tuple[str, str]]: The offending key and its actual type name, or ``None`` when
+                every value is a string.
+        """
+        for key, value in decoded.items():
+            if not isinstance(value, str):
+                return key, type(value).__name__
+        return None
 
     def _recover_from_corruption(self, scope: str, path: Path, reason: str, interactive: bool) -> dict[str, str]:
         """Offer to back up an unusable state file and start over, or fail with an actionable message.
@@ -533,6 +644,12 @@ class Store:
         path: Path = self._require_scope_path(scope)
         values: dict[str, str] = dict(self._load(scope, interactive=True))
         values[key] = value
+        # Stamping here, rather than only after a migration runs, is what closes the hole a
+        # shape-based migration cannot: a user who pins a field on a clone that never ran the older
+        # code would otherwise leave a bare key with no `.cached` sibling -- indistinguishable from a
+        # legacy cache -- and the next run would relocate the pin it was supposed to respect.
+        # `setdefault` so a future version already recorded here is never walked backwards.
+        values.setdefault(STATE_VERSION_KEY, CURRENT_STATE_VERSION)
         write_json_atomically(path, values, sort_keys=True)
         self._values[scope] = values
 
@@ -564,6 +681,26 @@ class Store:
         self._values[scope] = values
         return True
 
+    def is_current_layout(self, scope: str) -> bool:
+        """Tell whether a scope has already been written by the current state layout.
+
+        Read from the scope's own contents rather than through ``get``, which consults the
+        environment first: ``config export --scope repo`` would otherwise put ``MGSNAKE_STATE_VERSION``
+        in the environment and make the answer depend on which shell the command runs in.
+
+        Parameters:
+            scope: One of ``SCOPES``.
+
+        Raises:
+            click.ClickException: If the scope name is unknown.
+            ValidationError: If the scope's state file is unusable.
+
+        Returns:
+            bool: True when the scope carries the current version marker.
+        """
+        # Reads the raw scope, not `items`, which filters the marker out as the metadata it is.
+        return self._load(scope).get(STATE_VERSION_KEY) == CURRENT_STATE_VERSION
+
     def items(self, scope: Optional[str] = None, interactive: bool = False) -> dict[str, str]:
         """Return the stored settings, without applying the environment override.
 
@@ -580,11 +717,17 @@ class Store:
                 was requested explicitly -- its state file is unusable. Merging both scopes (the
                 default) degrades a broken one instead of failing; see ``_load_gracefully``.
 
+        The version marker is **not** a setting and is excluded here, which is what keeps it out of
+        `config list` and, more importantly, out of `config export`: exporting an internal marker
+        would put `MGSNAKE_STATE_VERSION` into every shell the profile starts, as noise no user
+        wrote and none can act on. It stays plainly visible in the file itself, so nothing is hidden
+        from anyone reading the state by hand.
+
         Returns:
-            dict[str, str]: The stored settings.
+            dict[str, str]: The stored settings, without the internal version marker.
         """
         if scope is not None:
-            return dict(self._load(scope, interactive=interactive))
+            return _without_marker(self._load(scope, interactive=interactive))
         merged: dict[str, str] = dict(self._load_gracefully(SCOPE_GLOBAL))
         merged.update(self._load_gracefully(SCOPE_REPO))
-        return merged
+        return _without_marker(merged)

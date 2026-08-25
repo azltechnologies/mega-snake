@@ -9,7 +9,13 @@ from click.testing import CliRunner
 import click
 import pytest
 
-from mega_snake.constants import JIRA_BOARD_ID_KEY, JIRA_SPRINT_FIELD_KEY, JIRA_STORY_POINTS_FIELD_KEY
+from mega_snake.constants import (
+    JIRA_BOARD_ID_KEY,
+    JIRA_SPRINT_FIELD_CACHE_KEY,
+    JIRA_SPRINT_FIELD_KEY,
+    JIRA_STORY_POINTS_FIELD_CACHE_KEY,
+    JIRA_STORY_POINTS_FIELD_KEY,
+)
 from mega_snake.jira_api.board import BOARD_PATH, PROJECT_PATH_TEMPLATE
 from mega_snake.jira_api.issues import (
     ALL_FIELDS,
@@ -51,8 +57,8 @@ SPRINT_ONE = {"id": 42, "name": "Sprint 1", "startDate": None, "endDate": None}
 def _prime(store: Store) -> None:
     """Cache the board id and the custom field ids so only the download itself makes requests."""
     store.set(JIRA_BOARD_ID_KEY, str(BOARD_ID))
-    store.set(JIRA_STORY_POINTS_FIELD_KEY, STORY_POINTS_FIELD)
-    store.set(JIRA_SPRINT_FIELD_KEY, SPRINT_FIELD)
+    store.set(JIRA_STORY_POINTS_FIELD_CACHE_KEY, STORY_POINTS_FIELD)
+    store.set(JIRA_SPRINT_FIELD_CACHE_KEY, SPRINT_FIELD)
 
 
 def _responses(issue_pages: list[list[dict]], sprints: list[dict], sprint_keys: list[str]) -> list[FakeResponse]:
@@ -346,8 +352,8 @@ def test_refresh_re_resolves_the_board_and_the_field_ids(jira_workspace: Path, f
     """
     store = Store.get_instance()
     store.set(JIRA_BOARD_ID_KEY, str(BOARD_ID))
-    store.set(JIRA_STORY_POINTS_FIELD_KEY, STALE_STORY_POINTS_FIELD)
-    store.set(JIRA_SPRINT_FIELD_KEY, STALE_SPRINT_FIELD)
+    store.set(JIRA_STORY_POINTS_FIELD_CACHE_KEY, STALE_STORY_POINTS_FIELD)
+    store.set(JIRA_SPRINT_FIELD_CACHE_KEY, STALE_SPRINT_FIELD)
     client, session = make_client(
         [
             FakeResponse({"id": PROJECT_ID, "key": PROJECT_KEY}),
@@ -382,8 +388,8 @@ def test_refresh_re_resolves_the_board_and_the_field_ids(jira_workspace: Path, f
     assert issues[0]["fields"]["storyPoints"] == 5, "the refreshed field id must drive the projection"
     assert issues[0]["fields"]["storyPoints"] != 999, "999 is what the stale cached id projects"
     assert [sprint["name"] for sprint in issues[0]["fields"]["sprint"]] == ["Sprint 1"]
-    assert store.items(SCOPE_REPO)[JIRA_STORY_POINTS_FIELD_KEY] == STORY_POINTS_FIELD
-    assert store.items(SCOPE_REPO)[JIRA_SPRINT_FIELD_KEY] == SPRINT_FIELD
+    assert store.items(SCOPE_REPO)[JIRA_STORY_POINTS_FIELD_CACHE_KEY] == STORY_POINTS_FIELD
+    assert store.items(SCOPE_REPO)[JIRA_SPRINT_FIELD_CACHE_KEY] == SPRINT_FIELD
 
 
 def test_without_refresh_both_caches_answer(jira_workspace: Path) -> None:
@@ -395,8 +401,8 @@ def test_without_refresh_both_caches_answer(jira_workspace: Path) -> None:
     """
     store = Store.get_instance()
     store.set(JIRA_BOARD_ID_KEY, str(BOARD_ID))
-    store.set(JIRA_STORY_POINTS_FIELD_KEY, STALE_STORY_POINTS_FIELD)
-    store.set(JIRA_SPRINT_FIELD_KEY, STALE_SPRINT_FIELD)
+    store.set(JIRA_STORY_POINTS_FIELD_CACHE_KEY, STALE_STORY_POINTS_FIELD)
+    store.set(JIRA_SPRINT_FIELD_CACHE_KEY, STALE_SPRINT_FIELD)
     client, session = make_client(_responses([RAW_ISSUES], [], []))
     output = jira_workspace / "cached.json"
 

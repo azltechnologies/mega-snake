@@ -19,7 +19,14 @@ import click
 from mega_snake.constants import SHELL_OPT
 from mega_snake.util.cli_group import CliGroup
 from mega_snake.util.formatting import ws_info, ws_success, ws_warning
-from mega_snake.util.store import SCOPE_ALL, SCOPE_GLOBAL, SCOPE_REPO, Store, env_var_name
+from mega_snake.util.store import (
+    SCOPE_ALL,
+    SCOPE_GLOBAL,
+    SCOPE_REPO,
+    Store,
+    env_var_name,
+    validate_readable_key,
+)
 from mega_snake.util.util import cli_metadata
 
 LIST_SCOPES: tuple[str, ...] = (SCOPE_REPO, SCOPE_GLOBAL, SCOPE_ALL)
@@ -98,7 +105,8 @@ def config() -> None:
     help="Prints to stdout the resolved value of a setting, following the "
     "`environment variable > repo > global` precedence chain. Nothing else is written to stdout, "
     "so the output can be captured with command substitution. Exits with status 1 when the setting "
-    "is defined nowhere.",
+    "is defined nowhere, when the name is not a dotted setting name, or when it looks like a "
+    "credential -- the store never holds secrets, and stdout is not where a token should land.",
     epilog="""
     Args:\n
         key: str - dotted name of the setting to read, e.g. jira.project_key.
@@ -112,15 +120,18 @@ def config_get(key: str) -> None:
         key: The dotted setting name.
 
     Raises:
-        click.ClickException: If the setting is defined nowhere, or an explicit-scope call elsewhere
-            in the process already reported a scope's state file as unusable. This command itself
-            never prompts to recover one, even from an interactive terminal: its stdout is a data
-            channel (`$(mgsnake config get ...)`), and a broken scope is skipped with a warning on
-            stderr instead -- see ``Store.get``.
+        click.ClickException: If the key is malformed or credential-shaped, if the setting is defined
+            nowhere, or if an explicit-scope call elsewhere in the process already reported a scope's
+            state file as unusable. This command itself never prompts to recover one, even from an
+            interactive terminal: its stdout is a data channel (`$(mgsnake config get ...)`), and a
+            broken scope is skipped with a warning on stderr instead -- see ``Store.get``.
 
     Returns:
         None
     """
+    # Before the lookup, because the first layer `require` consults is the environment: without this
+    # the command echoed any variable whose name the key derives to, credentials included.
+    validate_readable_key(key)
     click.echo(Store.get_instance().require(key))
 
 
