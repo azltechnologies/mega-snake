@@ -72,6 +72,26 @@ at all, those ids are used as a last resort and a warning says so — and that l
 deliberately *not* cached, so the warning keeps appearing on every run instead of being silenced by
 a cache entry that looks exactly like a resolved one.
 
+The same restraint applies when *two* fields share a display name, which is ordinary on instances
+that went through a Server-to-Cloud migration or that hold both a company-managed and a
+team-managed project. Story points are looked up under `Story Points` first and `Story point
+estimate` second, and a name declared exactly once is preferred over one declared twice *whatever
+that order says* — the order ranks how likely a name is to be the right field, not how trustworthy
+the answer is, and a certainty beats a coin flip. Only when every candidate name is ambiguous does
+the first declaration win, with a warning naming every candidate and nothing cached, because then
+either id is a guess. To settle it, pin the id yourself:
+`mgsnake config set jira.field.sprint customfield_10020`, which the warning spells out for you. A
+pinned id survives an ordinary run that cannot confirm it, precisely so it stays pinned.
+
+`--refresh` (`-r`) is the escape hatch for the opposite case: an id that *did* resolve, was cached,
+and later changed on the Jira side — a board recreated, a custom field re-created by a migration. A
+stale cached id is the one failure here that says nothing at all — `storyPoints` and `sprint` come
+out `null` on every issue with a successful exit — so if the projection looks empty and no warning
+explains it, re-run with `--refresh`. It re-resolves the board id *and* both field ids, and it is
+symmetric: an id the refresh cannot confirm is dropped from the cache rather than left behind, so
+the next run resolves it again instead of quietly answering with the entry you just asked it to
+distrust.
+
 If the values you get differ from the old script's, the new ones are the correct ones.
 
 With `--output` the working path is left alone entirely: nothing is created, nothing is prompted for

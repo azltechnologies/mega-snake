@@ -39,7 +39,6 @@ SPRINT_ISSUES_TEMPLATE: str = "/rest/agile/1.0/sprint/{sprint_id}/issue"
 DEFAULT_OUTPUT_FILE: str = "jira_board_issues.json"
 WORKING_PATH_PROPERTY: str = "working_path"
 ALL_FIELDS: str = "*all"
-SEARCH_EXPAND: str = "changelog,names,renderedFields"
 KEY_FIELD: str = "key"
 
 NO_FILTER_MESSAGE: str = (
@@ -95,10 +94,12 @@ def _iter_board_issues(client: JiraClient, filter_id: str) -> Iterator[dict]:
     Returns:
         Iterator[dict]: The raw issues, page after page.
     """
-    return client.paginate_tokens(
-        SEARCH_PATH,
-        {"jql": f"filter={filter_id}", "fields": ALL_FIELDS, "expand": SEARCH_EXPAND},
-    )
+    # No `expand`: the shell version asked for `changelog,names,renderedFields` to feed its `jq`
+    # filter, and `project_issue` reads none of the three. `changelog` alone is the full transition
+    # history of every field of every issue, inline, which on a board of a few thousand issues is
+    # routinely an order of magnitude more bytes over the wire than the projected output -- paid on
+    # every run of the one command whose whole point is "download once, then `jq`".
+    return client.paginate_tokens(SEARCH_PATH, {"jql": f"filter={filter_id}", "fields": ALL_FIELDS})
 
 
 def get_active_sprint_keys(client: JiraClient, board: Board, report: Callable[[str], None] = ws_info) -> set[str]:
@@ -135,7 +136,7 @@ def get_active_sprint_keys(client: JiraClient, board: Board, report: Callable[[s
 def download_board_issues(
     project_key: Optional[str] = None,
     output: Optional[str] = None,
-    refresh_board: bool = False,
+    refresh: bool = False,
     quiet: bool = False,
     client: Optional[JiraClient] = None,
 ) -> Path:
@@ -144,7 +145,8 @@ def download_board_issues(
     Parameters:
         project_key: The Jira project key. Falls back to the stored ``jira.project_key``.
         output: The destination file. Defaults to the working path's ``jira_board_issues.json``.
-        refresh_board: Whether to re-resolve the board instead of using the cached id.
+        refresh: Whether to ignore every cached Jira lookup (the board id and the custom field ids)
+            and resolve them from the instance again.
         quiet: Whether to silence the progress messages.
         client: An existing client to reuse. One is created on demand when omitted.
 
@@ -158,11 +160,11 @@ def download_board_issues(
     report: Callable[[str], None] = _silent if quiet else ws_info
     done: Callable[[str], None] = _silent if quiet else ws_success
     api: JiraClient = client or JiraClient()
-    board: Board = resolve_board(project_key, refresh_board, api)
+    board: Board = resolve_board(project_key, refresh, api)
     report(f"Board {board.id} on {board.cloud_domain}")
     filter_id: str = _get_board_filter_id(api, board.id)
     report(f"Board filter: {filter_id}")
-    field_ids: FieldIds = FieldIds.resolve(api)
+    field_ids: FieldIds = FieldIds.resolve(api, refresh)
     issues: list[dict] = [project_issue(raw, field_ids) for raw in _iter_board_issues(api, filter_id)]
     report(f"Downloaded {len(issues)} issues.")
     active_keys: set[str] = get_active_sprint_keys(api, board, report)
@@ -201,19 +203,23 @@ def download_board_issues(
     help="Destination file. Defaults to jira_board_issues.json inside the working path.",
 )
 @click.option(
-    "--refresh-board",
+    "--refresh",
+    "-r",
     is_flag=True,
     default=False,
-    help="Ignore the cached board id and resolve it from Jira again before downloading.",
+    help="Ignore every cached Jira lookup -- the board id and the story points / sprint custom "
+    "field ids -- and resolve them from the instance again. Use it when the Jira side changed: a "
+    "board recreated, or a custom field re-created by a migration, which the cache would otherwise "
+    "keep answering with a stale id and no warning.",
 )
 @click.option("--quiet", "-q", is_flag=True, default=False, help="Silence the progress messages.")
-def jira_issues(project_key: Optional[str], output: Optional[str], refresh_board: bool, quiet: bool) -> None:
+def jira_issues(project_key: Optional[str], output: Optional[str], refresh: bool, quiet: bool) -> None:
     """Download every issue of a project's board into a JSON file.
 
     Parameters:
         project_key: The Jira project key, or None to use the stored one.
         output: The destination file, or None to use the working path default.
-        refresh_board: Whether to bypass the cached board id.
+        refresh: Whether to bypass the cached board id and custom field ids.
         quiet: Whether to silence the progress messages.
 
     Raises:
@@ -235,4 +241,4 @@ def jira_issues(project_key: Optional[str], output: Optional[str], refresh_board
         # Securing the folder first is what lets complete_app_properties finish where __init__
         # stopped; called with the folder still missing it would raise FileNotFoundError.
         complete_app_properties()
-    download_board_issues(project_key, resolved_output, refresh_board, quiet)
+    download_board_issues(project_key, resolved_output, refresh, quiet)

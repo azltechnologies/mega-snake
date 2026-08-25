@@ -12,6 +12,7 @@ from mega_snake.jira_api.client import (
     DEFAULT_PAGE_SIZE,
     MAX_RETRIES,
     NOT_A_LIST_MESSAGE,
+    NOT_AN_OBJECT_MESSAGE,
     RETRY_METHODS,
     RETRY_STATUS,
     STATUS_MESSAGES,
@@ -84,6 +85,33 @@ def test_get_list_rejects_an_object() -> None:
         client.get_list("/rest/api/3/field")
 
     assert str(error.value) == NOT_A_LIST_MESSAGE.format(path="/rest/api/3/field")
+
+
+@pytest.mark.parametrize("body", [[], [{"id": "1"}], None, "maintenance", 7], ids=str)
+def test_get_rejects_a_body_that_is_not_an_object(body: object) -> None:
+    """Every caller of `get` treats the result as a mapping, so the shape is validated here.
+
+    Without this, a proxy answering `[]`, a captive portal answering a bare string, or an endpoint
+    reshaped by a future API version reaches `payload.get(...)` and raises `AttributeError` -- a type
+    unmapped in `ERROR_CODES`, so the user is told with exit 100 and a traceback that `mgsnake` is
+    defective, for what is a server-side problem. `null` is in the fixtures on purpose: it is the
+    one falsy body that a truth-based check would let through.
+    """
+    client, _ = make_client([FakeResponse(body)])
+
+    with pytest.raises(click.ClickException) as error:
+        client.get("/rest/agile/1.0/board/1/configuration")
+
+    message = str(error.value)
+    assert message == NOT_AN_OBJECT_MESSAGE.format(path="/rest/agile/1.0/board/1/configuration")
+    assert message != NOT_A_LIST_MESSAGE.format(path="/rest/agile/1.0/board/1/configuration")
+
+
+def test_get_returns_the_object() -> None:
+    """The positive half: a well-shaped object is returned untouched."""
+    client, _ = make_client([FakeResponse({"filter": {"id": "42"}})])
+
+    assert client.get("/rest/agile/1.0/board/1/configuration") == {"filter": {"id": "42"}}
 
 
 def test_get_list_returns_the_array() -> None:

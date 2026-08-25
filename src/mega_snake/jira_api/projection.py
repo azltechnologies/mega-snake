@@ -49,6 +49,12 @@ UNRESOLVED_FIELD_MESSAGE: str = (
     "which may not exist here and would project null."
 )
 
+AMBIGUOUS_FIELD_MESSAGE: str = (
+    "This Jira instance declares {count} custom fields named '{name}' ({ids}). Using the first one, "
+    "'{chosen}', which is a guess: if the projected value is wrong, pin the right id with "
+    "'mgsnake config set {key} <id>'."
+)
+
 
 @dataclass(frozen=True)
 class FieldIds:
@@ -58,30 +64,62 @@ class FieldIds:
     sprint: str
 
     @staticmethod
-    def _match(fields: list[dict], candidate_names: tuple[str, ...], fallback: str) -> tuple[str, bool]:
+    def _match(fields: list[dict], candidate_names: tuple[str, ...], fallback: str, key: str) -> tuple[str, bool]:
         """Find the id of the first field matching one of the candidate names.
 
-        Whether the id was actually found is returned alongside it, because the caller must not
-        cache a guess: a fallback stored as if it were a resolved id would silence the warning from
-        the second run onwards and project ``null`` forever, which is the very defect the by-name
-        resolution exists to fix, only moved inside the cache.
+        Whether the id may be cached is returned alongside it, and it is True only for an
+        *unambiguous* match. Two situations must not be cached, for the same reason: the fallback,
+        and a name declared by more than one field. Either one warns on the first run, and storing
+        the guess would make every later run take the cache branch, skip the field endpoint, and
+        project the wrong value *without warning* -- the very defect the by-name resolution exists
+        to fix, only moved inside the cache. Keeping the guess out of the store means the warning
+        keeps firing until a human resolves it.
+
+        Duplicate display names are ordinary on instances that went through a Server-to-Cloud
+        migration, or that hold both a company-managed and a team-managed project. Two rules follow
+        from that. **An unambiguous candidate is preferred over an ambiguous one**, whatever the
+        order of ``candidate_names``, because that order ranks how likely a name is to be the right
+        field and not how trustworthy the answer is. And when every candidate is ambiguous, **the
+        first declaration wins**: a dict comprehension over ``fields`` would have kept the *last*
+        entry instead, which is how the leftover field of a migration silently outranks the real
+        Jira Software one.
 
         Parameters:
             fields: The entries returned by the field endpoint.
             candidate_names: The display names to look for, in order of preference.
             fallback: The id to use when no field matches.
+            key: The store key to name in the ambiguity warning, so the user can pin the right id.
 
         Raises:
             None
 
         Returns:
-            tuple[str, bool]: The field id, and True only when it came from a real match.
+            tuple[str, bool]: The field id, and True only when it was resolved unambiguously.
         """
-        by_name: dict[str, str] = {str(field.get("name", "")).casefold(): str(field.get("id", "")) for field in fields}
-        for name in candidate_names:
-            field_id: Optional[str] = by_name.get(name.casefold())
-            if field_id:
-                return field_id, True
+        by_name: dict[str, list[str]] = {}
+        for field in fields:
+            name: str = str(field.get("name", "")).casefold()
+            field_id: str = str(field.get("id", ""))
+            if name and field_id:
+                by_name.setdefault(name, []).append(field_id)
+        candidates: list[tuple[str, list[str]]] = [
+            (candidate, by_name.get(candidate.casefold(), [])) for candidate in candidate_names
+        ]
+        # An unambiguous match on a less-preferred name beats a guess on the preferred one. The
+        # order of `candidate_names` ranks how likely a name is to be the right field, not how
+        # trustworthy the answer is: `Story Points` duplicated by a migration and `Story point
+        # estimate` declared exactly once means the second one is the only id we actually know.
+        for _, matches in candidates:
+            if len(matches) == 1:
+                return matches[0], True
+        for candidate, matches in candidates:
+            if len(matches) > 1:
+                ws_warning(
+                    AMBIGUOUS_FIELD_MESSAGE.format(
+                        count=len(matches), name=candidate, ids=", ".join(matches), chosen=matches[0], key=key
+                    )
+                )
+                return matches[0], False
         ws_warning(UNRESOLVED_FIELD_MESSAGE.format(names=", ".join(candidate_names), fallback=fallback))
         return fallback, False
 
@@ -107,19 +145,48 @@ class FieldIds:
                 return FieldIds(story_points=cached_story_points, sprint=cached_sprint)
         fields: list[dict] = client.get_list(FIELD_PATH)
         story_points, story_points_matched = FieldIds._match(
-            fields, STORY_POINTS_FIELD_NAMES, HISTORIC_STORY_POINTS_FIELD
+            fields, STORY_POINTS_FIELD_NAMES, HISTORIC_STORY_POINTS_FIELD, JIRA_STORY_POINTS_FIELD_KEY
         )
-        sprint, sprint_matched = FieldIds._match(fields, SPRINT_FIELD_NAMES, HISTORIC_SPRINT_FIELD)
-        # Only a real match is cached. Persisting a fallback would make the next run take the cache
-        # branch above, skip the field endpoint, and use the wrong id *without warning* -- and there
-        # is no flag to undo that, so recovering would mean unsetting a key the user has no reason
-        # to suspect, precisely because the warning stopped.
+        sprint, sprint_matched = FieldIds._match(
+            fields, SPRINT_FIELD_NAMES, HISTORIC_SPRINT_FIELD, JIRA_SPRINT_FIELD_KEY
+        )
+        # Only an unambiguous match is cached. Persisting a fallback -- or a guess between two
+        # fields sharing a display name -- would make the next run take the cache branch above, skip
+        # the field endpoint, and use the wrong id *without any warning at all*, which is strictly
+        # worse than the uncached guess: there, the warning keeps firing until a human acts on it.
+        # `jira-issues --refresh` is the escape hatch for an id that matched once and later changed,
+        # and it is symmetric: what a refresh cannot confirm is dropped rather than left behind.
         if store.has_scope(SCOPE_REPO):
-            if story_points_matched:
-                store.set(JIRA_STORY_POINTS_FIELD_KEY, story_points, SCOPE_REPO)
-            if sprint_matched:
-                store.set(JIRA_SPRINT_FIELD_KEY, sprint, SCOPE_REPO)
+            FieldIds._store(store, JIRA_STORY_POINTS_FIELD_KEY, story_points, story_points_matched, refresh)
+            FieldIds._store(store, JIRA_SPRINT_FIELD_KEY, sprint, sprint_matched, refresh)
         return FieldIds(story_points=story_points, sprint=sprint)
+
+    @staticmethod
+    def _store(store: Store, key: str, field_id: str, matched: bool, refresh: bool) -> None:
+        """Persist a resolved id, or drop the cached one that a refresh failed to confirm.
+
+        The drop is what makes ``--refresh`` mean what it says. Without it, a run that resolves
+        nothing writes nothing, so the entry the user asked to distrust survives the refresh and
+        answers again -- silently, since the cache branch never reaches the warning -- and the only
+        way out would be unsetting a key the user has no reason to suspect.
+
+        Parameters:
+            store: The store to write to. Its repository scope is known to exist.
+            key: The store key for this field.
+            field_id: The id that was resolved, real or guessed.
+            matched: Whether the id was resolved unambiguously, and may therefore be cached.
+            refresh: Whether this run was asked to distrust the cache.
+
+        Raises:
+            None
+
+        Returns:
+            None
+        """
+        if matched:
+            store.set(key, field_id, SCOPE_REPO)
+        elif refresh:
+            store.unset(key, SCOPE_REPO)
 
 
 def _pick(source: Optional[dict], *keys: str) -> dict:

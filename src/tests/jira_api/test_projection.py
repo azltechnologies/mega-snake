@@ -180,9 +180,11 @@ def test_a_fallback_field_id_is_never_cached(jira_workspace: Path, capsys: pytes
 
     The fallback ids are the very defect the by-name resolution exists to fix. Persisting one as if
     it had been resolved makes the next run take the cache branch, skip the field endpoint, and
-    project null *without saying anything* -- and there is no CLI flag that refreshes them, so the
-    only way out is unsetting a key the user has no reason to suspect, precisely because the warning
-    stopped. So: nothing is stored, and the second run warns again.
+    project null *without saying anything*. `jira-issues --refresh` would not rescue that either: it
+    re-queries the instance, but a run that falls back writes nothing, so the stale entry survives
+    the refresh and answers again on the run after it. The only way out would be unsetting a key the
+    user has no reason to suspect, precisely because the warning stopped. So: nothing is stored, and
+    the second run warns again.
     """
     assert jira_workspace.exists()
     client, session = make_client(
@@ -202,6 +204,49 @@ def test_a_fallback_field_id_is_never_cached(jira_workspace: Path, capsys: pytes
     assert second == FieldIds(story_points=HISTORIC_STORY_POINTS_FIELD, sprint=HISTORIC_SPRINT_FIELD)
     assert len(session.calls) == 2, "a fallback must not be answered from the cache"
     assert HISTORIC_STORY_POINTS_FIELD in capsys.readouterr().err, "the warning must keep firing"
+
+
+def test_a_duplicated_field_name_resolves_to_the_first_and_is_never_cached(
+    jira_workspace: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """Two fields may share a display name, and then the choice between them is a guess.
+
+    Common after a Server-to-Cloud migration, or on an instance holding both a company-managed and a
+    team-managed project: a leftover text field ends up named `Sprint` next to the real Jira Software
+    one. Two properties are pinned together because either one alone still lets the defect through:
+
+    - **first wins**, which is what the docstring promises -- a dict comprehension over the field
+      list keeps the *last* entry instead, so the leftover would outrank the real field;
+    - **the guess is not cached**, so the warning keeps firing. Cached, it would be answered from the
+      store on every later run with no warning at all, which is strictly worse than the fallback case
+      because nothing would ever hint that the projection is wrong.
+
+    The three ids are mutually distinct and none of them is the historic fallback, so no
+    implementation that ignores the ordering, or that falls back, can pass by coincidence.
+    """
+    assert jira_workspace.exists()
+    duplicated = [
+        {"id": SPRINT_FIELD, "name": "Sprint"},
+        {"id": "customfield_11500", "name": "sprint"},
+        {"id": STORY_POINTS_FIELD, "name": "Story Points"},
+    ]
+    client, session = make_client([FakeResponse(duplicated), FakeResponse(duplicated)])
+
+    first = FieldIds.resolve(client)
+    stored = Store.get_instance().items(SCOPE_REPO)
+    warning = capsys.readouterr().err
+    second = FieldIds.resolve(client)
+
+    assert first.sprint == SPRINT_FIELD, "the first declaration must win, not the last"
+    assert first.sprint != "customfield_11500"
+    assert first.sprint != HISTORIC_SPRINT_FIELD, "an ambiguous match is still a match, not a fallback"
+    assert JIRA_SPRINT_FIELD_KEY not in stored, "a guess between two fields must not be cached"
+    assert stored[JIRA_STORY_POINTS_FIELD_KEY] == STORY_POINTS_FIELD, "the unambiguous half is cached"
+    assert "customfield_11500" in warning and SPRINT_FIELD in warning, "the warning must name both candidates"
+    assert JIRA_SPRINT_FIELD_KEY in warning, "the warning must name the key that pins the right id"
+    assert second == first
+    assert len(session.calls) == 2, "an ambiguous match must not be answered from the cache"
+    assert SPRINT_FIELD in capsys.readouterr().err, "the warning must keep firing on every run"
 
 
 def test_the_field_that_did_resolve_is_still_cached(jira_workspace: Path) -> None:
@@ -248,3 +293,85 @@ def test_refresh_re_resolves_the_field_ids(jira_workspace: Path) -> None:
 
     assert refreshed == FieldIds(story_points="customfield_1", sprint="customfield_2")
     assert len(session.calls) == 2
+
+
+def test_an_unambiguous_alternative_name_beats_an_ambiguous_preferred_one(
+    jira_workspace: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """The order of `candidate_names` ranks likelihood, not trustworthiness.
+
+    `Story Points` comes first because it is the usual name, but a migration can leave two fields
+    carrying it while `Story point estimate` is declared exactly once -- and then the second name is
+    the only id actually known, so guessing between the duplicates would be choosing a coin flip over
+    a certainty. Being a real match, it is also cached, which the ambiguous guess never is.
+
+    All three ids differ from each other and from the historic fallback, so neither an
+    implementation that stops at the first name with any match nor one that falls back can pass by
+    coincidence.
+    """
+    assert jira_workspace.exists()
+    fields = [
+        {"id": "customfield_20001", "name": "Story Points"},
+        {"id": "customfield_20002", "name": "story points"},
+        {"id": STORY_POINTS_FIELD, "name": "Story point estimate"},
+        {"id": SPRINT_FIELD, "name": "Sprint"},
+    ]
+    client, _ = make_client([FakeResponse(fields)])
+
+    resolved = FieldIds.resolve(client)
+
+    warning = capsys.readouterr().err
+    assert resolved.story_points == STORY_POINTS_FIELD, "the unambiguous name must win"
+    assert resolved.story_points != "customfield_20001", "the first duplicate must not be guessed at"
+    assert resolved.story_points != HISTORIC_STORY_POINTS_FIELD, "an alternative name is a match, not a fallback"
+    assert Store.get_instance().items(SCOPE_REPO)[JIRA_STORY_POINTS_FIELD_KEY] == STORY_POINTS_FIELD
+    assert warning == "", "a certainty was available, so there is nothing to warn about"
+
+
+def test_a_refresh_that_resolves_nothing_drops_the_stale_cached_id(
+    jira_workspace: Path, capsys: pytest.CaptureFixture
+) -> None:
+    """`--refresh` means the cache is not to be trusted, and that has to include not confirming it.
+
+    A field renamed on the Jira side stops matching, so the run falls back and writes nothing. If the
+    stale entry survived that, the *next* run would take the cache branch and answer with it again --
+    and silently, because the cache branch never reaches the warning, so the one run that did warn
+    would be the only one, with nothing changed by it.
+
+    The negative half matters as much: the id that still resolves is written, not dropped along with
+    the other, so a partial rename does not cost the half that is still correct.
+    """
+    assert jira_workspace.exists()
+    store = Store.get_instance()
+    store.set(JIRA_STORY_POINTS_FIELD_KEY, "customfield_30001")
+    store.set(JIRA_SPRINT_FIELD_KEY, "customfield_30002")
+    client, _ = make_client([FakeResponse([{"id": SPRINT_FIELD, "name": "Sprint"}])])
+
+    resolved = FieldIds.resolve(client, refresh=True)
+
+    stored = Store.get_instance().items(SCOPE_REPO)
+    assert resolved.story_points == HISTORIC_STORY_POINTS_FIELD, "nothing matched, so the fallback answers"
+    assert JIRA_STORY_POINTS_FIELD_KEY not in stored, "the id the refresh could not confirm must be gone"
+    assert stored[JIRA_SPRINT_FIELD_KEY] == SPRINT_FIELD, "the half that did resolve is written, not dropped"
+    assert stored[JIRA_SPRINT_FIELD_KEY] != "customfield_30002"
+    assert HISTORIC_STORY_POINTS_FIELD in capsys.readouterr().err
+
+
+def test_a_run_without_refresh_leaves_an_unconfirmed_cached_id_alone(jira_workspace: Path) -> None:
+    """The negative of the drop: only a refresh is allowed to delete, never an ordinary run.
+
+    An ordinary run reaches the field endpoint solely because *one* of the two ids was missing from
+    the cache. Dropping the other one there would turn a half-warm cache into a cold one on every
+    run, and would delete an id the user may have pinned by hand with `mgsnake config set` -- which
+    is the documented remedy for the ambiguous case, so it must survive a run that cannot confirm it.
+    """
+    assert jira_workspace.exists()
+    store = Store.get_instance()
+    store.set(JIRA_STORY_POINTS_FIELD_KEY, "customfield_30001")
+    client, _ = make_client([FakeResponse([{"id": SPRINT_FIELD, "name": "Sprint"}])])
+
+    FieldIds.resolve(client)
+
+    stored = Store.get_instance().items(SCOPE_REPO)
+    assert stored[JIRA_STORY_POINTS_FIELD_KEY] == "customfield_30001", "a pinned id must survive a normal run"
+    assert stored[JIRA_SPRINT_FIELD_KEY] == SPRINT_FIELD

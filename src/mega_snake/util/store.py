@@ -333,9 +333,7 @@ class Store:
                 # `_load_gracefully` degrade a multi-scope read, which is the half that matters:
                 # before this, an unreadable `global` file killed `config export` outright, and that
                 # command is `eval`'d from the shell profile on every new terminal.
-                raise ValidationError(
-                    UNREADABLE_STORE_MESSAGE.format(scope=scope, path=path, error=error)
-                ) from error
+                raise ValidationError(UNREADABLE_STORE_MESSAGE.format(scope=scope, path=path, error=error)) from error
             try:
                 decoded: object = json.loads(content or "{}")
             except json.JSONDecodeError as error:

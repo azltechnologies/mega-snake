@@ -64,6 +64,7 @@ STATUS_MESSAGES: dict[int, str] = {
 UNEXPECTED_STATUS_MESSAGE: str = "Jira returned an unexpected status {status} for {path}: {body}"
 INVALID_JSON_MESSAGE: str = "Jira returned a response for {path} that is not valid JSON: {body}"
 NOT_A_LIST_MESSAGE: str = "Expected a JSON array from {path}, but Jira answered with something else."
+NOT_AN_OBJECT_MESSAGE: str = "Expected a JSON object from {path}, but Jira answered with something else."
 
 
 def _build_session(config: JiraConfig) -> "requests.Session":
@@ -140,12 +141,24 @@ class JiraClient:
             params: The query parameters, already as plain strings.
 
         Raises:
-            click.ClickException: If the request fails, as described in ``request``.
+            click.ClickException: If the request fails, as described in ``request``, or the body is
+                not a JSON object.
 
         Returns:
             dict: The decoded JSON body.
         """
-        return self.request(path, params)
+        payload = self.request(path, params)
+        # Symmetric with `get_list`, and for a blunter reason than tidiness: every caller treats
+        # this as a mapping (`configuration.get("filter")`, `project.get("id")`, the two
+        # paginators), so a body that decodes to a list or a bare null -- a captive portal, a proxy
+        # answering `[]`, a future API reshape -- would surface as `AttributeError`. That type is
+        # unmapped in `ERROR_CODES`, so the user would get exit 100 and a traceback claiming
+        # `mgsnake` is defective for what is a server-side problem, the exact inversion §7.6 exists
+        # to prevent. Note this checks the *container* type only: failures are still decided by the
+        # HTTP status, never by whether the object holds the keys we hoped for.
+        if not isinstance(payload, dict):
+            raise click.ClickException(NOT_AN_OBJECT_MESSAGE.format(path=path))
+        return payload
 
     def get_list(self, path: str, params: Optional[dict[str, str]] = None) -> list[dict]:
         """Perform a GET request whose response is a JSON array.

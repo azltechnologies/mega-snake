@@ -221,6 +221,31 @@ def test_format_export_quotes_per_shell(shell: str, value: str, expected: str) -
     assert _format_export(shell, PROJECT_KEY, value) == expected
 
 
+def test_export_emits_the_global_value_of_a_key_that_both_scopes_define(workspace: Path) -> None:
+    """The sibling of the test above: what happens when the *same* key lives in both scopes.
+
+    `export` writes environment variables, and those outrank both scopes, so evaluating this from a
+    shell profile makes the global value answer for a clone that deliberately overrode it -- and
+    `config set` defaults to the repo scope, so such overrides are the normal thing a user creates.
+    This is not a defect `export` can fix (a profile runs in whatever directory the terminal opened
+    in, so there is no "current repository" to filter against that would be reproducible); it is
+    documented in `config.md` and in the `--scope` help, and pinned here so nobody has to guess
+    which of the two a profile ends up using.
+    """
+    assert workspace.exists()
+    store = Store.get_instance()
+    store.set(DOMAIN_KEY, "company-a.atlassian.net", SCOPE_GLOBAL)
+    store.set(DOMAIN_KEY, "company-b.atlassian.net")
+
+    exported = CliRunner().invoke(config, ["export", "--shell", "bash"])
+
+    assert exported.stdout == "export JIRA_DOMAIN='company-a.atlassian.net'\n"
+    assert "company-b.atlassian.net" not in exported.stdout, "the repo override does not reach the profile"
+    # And the store itself still resolves the override correctly for anything that reads it in place:
+    # it is only the exported copy that inverts the precedence, which is the whole point of the note.
+    assert store.get(DOMAIN_KEY) == "company-b.atlassian.net"
+
+
 def test_export_defaults_to_the_active_shell(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Without --shell the syntax follows MEGA_SNAKE_SHELL, which the setup script exports."""
     assert workspace.exists()

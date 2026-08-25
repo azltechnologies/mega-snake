@@ -10,17 +10,21 @@ import click
 import pytest
 
 from mega_snake.constants import JIRA_BOARD_ID_KEY, JIRA_SPRINT_FIELD_KEY, JIRA_STORY_POINTS_FIELD_KEY
+from mega_snake.jira_api.board import BOARD_PATH, PROJECT_PATH_TEMPLATE
 from mega_snake.jira_api.issues import (
     ALL_FIELDS,
+    BOARD_CONFIGURATION_TEMPLATE,
     DEFAULT_OUTPUT_FILE,
-    SEARCH_EXPAND,
     download_board_issues,
     jira_issues,
 )
-from mega_snake.util.store import Store
+from mega_snake.jira_api.projection import FIELD_PATH
+from mega_snake.util.store import SCOPE_REPO, Store
 
 from tests.jira_api.jira_doubles import (
     BOARD_ID,
+    PROJECT_ID,
+    PROJECT_KEY,
     FakeResponse,
     make_client,
     sprint_issues_page,
@@ -31,6 +35,12 @@ RESOURCES = Path(__file__).resolve().parents[1] / "resources" / "jira"
 STORY_POINTS_FIELD = "customfield_99999"
 SPRINT_FIELD = "customfield_88888"
 FILTER_ID = "999"
+# The historic ids, used as the *stale* cache in the --refresh tests. The raw fixture carries them
+# too, with different values (999 story points, a closed "Historic sprint"), so which id the
+# projection used can be asserted on the output data instead of on a call count.
+STALE_STORY_POINTS_FIELD = "customfield_10016"
+STALE_SPRINT_FIELD = "customfield_10020"
+REFRESHED_BOARD_ID = 5150
 
 RAW_ISSUES = json.loads((RESOURCES / "board_issues_raw.json").read_text(encoding="utf-8"))
 
@@ -105,10 +115,12 @@ def test_the_board_filter_drives_the_search(jira_workspace: Path) -> None:
 
     download_board_issues(output=str(jira_workspace / "issues.json"), client=client)
 
+    # Compared by equality rather than by `"jql" in params`: `expand` has to be asserted *absent*,
+    # and only an equality assertion fails if someone reinstates it. `changelog` is the full
+    # transition history of every field of every issue, inline, and `project_issue` reads none of it.
     assert session.calls[1][1] == {
         "jql": f"filter={FILTER_ID}",
         "fields": ALL_FIELDS,
-        "expand": SEARCH_EXPAND,
         "maxResults": "100",
     }
 
@@ -313,3 +325,105 @@ def test_download_falls_back_to_the_working_path_when_called_without_a_command(j
 
     assert destination == working_path / DEFAULT_OUTPUT_FILE
     assert destination.is_file()
+
+
+@pytest.mark.parametrize("flag", ["--refresh", "-r"])
+def test_refresh_re_resolves_the_board_and_the_field_ids(jira_workspace: Path, flag: str) -> None:
+    """`--refresh` must reach *both* cached lookups, and it is asserted on the projected data.
+
+    Both spellings are run, because the short one is what a user types and a `-r` that never reaches
+    the command body would otherwise go unnoticed.
+
+    The flag was wired only to the board resolution once, and nothing failed: the field ids kept
+    being answered from the store, so a re-created custom field stayed stale forever with a
+    successful exit and no warning. Asserting call counts alone would not have caught it either --
+    the field endpoint being requested says nothing about which id the projection then used.
+
+    So the stale cache is primed with the *historic* ids, which the fixture also carries with
+    different values (`customfield_10016` is 999 where `customfield_99999` is 5, and the historic
+    sprint field holds a closed "Historic sprint"). Every assertion below therefore separates the
+    refreshed id from the cached one by value, and each one is paired with its negative.
+    """
+    store = Store.get_instance()
+    store.set(JIRA_BOARD_ID_KEY, str(BOARD_ID))
+    store.set(JIRA_STORY_POINTS_FIELD_KEY, STALE_STORY_POINTS_FIELD)
+    store.set(JIRA_SPRINT_FIELD_KEY, STALE_SPRINT_FIELD)
+    client, session = make_client(
+        [
+            FakeResponse({"id": PROJECT_ID, "key": PROJECT_KEY}),
+            FakeResponse({"values": [{"id": REFRESHED_BOARD_ID, "name": "recreated board"}]}),
+            CONFIGURATION_RESPONSE,
+            FakeResponse(
+                [
+                    {"id": STORY_POINTS_FIELD, "name": "Story Points"},
+                    {"id": SPRINT_FIELD, "name": "Sprint"},
+                ]
+            ),
+            FakeResponse({"issues": RAW_ISSUES}),
+            sprint_listing_page([]),
+        ]
+    )
+    output = jira_workspace / "refreshed.json"
+
+    with (
+        patch("mega_snake.jira_api.issues.get_property", return_value=str(jira_workspace / "workspace_temp")),
+        patch("mega_snake.jira_api.issues.JiraClient", return_value=client),
+    ):
+        result = CliRunner().invoke(jira_issues, ["-o", str(output), flag])
+
+    assert result.exit_code == 0, result.output
+    issues = json.loads(output.read_text(encoding="utf-8"))
+    # The board: the configuration is read for the board Jira just answered with, not the cached one.
+    assert BOARD_CONFIGURATION_TEMPLATE.format(board_id=REFRESHED_BOARD_ID) in session.paths
+    assert BOARD_CONFIGURATION_TEMPLATE.format(board_id=BOARD_ID) not in session.paths
+    assert store.items(SCOPE_REPO)[JIRA_BOARD_ID_KEY] == str(REFRESHED_BOARD_ID)
+    # The field ids: asserted through the projected values, which differ between the two ids.
+    assert FIELD_PATH in session.paths, "the field endpoint must be queried again"
+    assert issues[0]["fields"]["storyPoints"] == 5, "the refreshed field id must drive the projection"
+    assert issues[0]["fields"]["storyPoints"] != 999, "999 is what the stale cached id projects"
+    assert [sprint["name"] for sprint in issues[0]["fields"]["sprint"]] == ["Sprint 1"]
+    assert store.items(SCOPE_REPO)[JIRA_STORY_POINTS_FIELD_KEY] == STORY_POINTS_FIELD
+    assert store.items(SCOPE_REPO)[JIRA_SPRINT_FIELD_KEY] == SPRINT_FIELD
+
+
+def test_without_refresh_both_caches_answer(jira_workspace: Path) -> None:
+    """The negative of the test above, and the reason `--refresh` has to exist at all.
+
+    Same primed stale cache, no flag: not one of the three resolving endpoints is requested, and the
+    stale story-point id is what the projection uses. Without this half, an implementation that
+    ignored the cache entirely would pass the refresh test.
+    """
+    store = Store.get_instance()
+    store.set(JIRA_BOARD_ID_KEY, str(BOARD_ID))
+    store.set(JIRA_STORY_POINTS_FIELD_KEY, STALE_STORY_POINTS_FIELD)
+    store.set(JIRA_SPRINT_FIELD_KEY, STALE_SPRINT_FIELD)
+    client, session = make_client(_responses([RAW_ISSUES], [], []))
+    output = jira_workspace / "cached.json"
+
+    with (
+        patch("mega_snake.jira_api.issues.get_property", return_value=str(jira_workspace / "workspace_temp")),
+        patch("mega_snake.jira_api.issues.JiraClient", return_value=client),
+    ):
+        result = CliRunner().invoke(jira_issues, ["-o", str(output)])
+
+    assert result.exit_code == 0, result.output
+    issues = json.loads(output.read_text(encoding="utf-8"))
+    assert issues[0]["fields"]["storyPoints"] == 999, "the cached id is what answers without --refresh"
+    assert FIELD_PATH not in session.paths
+    assert PROJECT_PATH_TEMPLATE.format(project_key=PROJECT_KEY) not in session.paths
+    assert BOARD_PATH not in session.paths
+    assert BOARD_CONFIGURATION_TEMPLATE.format(board_id=BOARD_ID) in session.paths
+
+
+def test_the_old_refresh_board_flag_is_gone(jira_workspace: Path) -> None:
+    """The rename is a breaking change, and it is a clean break rather than a silent alias.
+
+    Left as an alias, `--refresh-board` would keep its old meaning -- the board only -- while the
+    documentation describes a flag that also refreshes the field ids, which is the worst of the two
+    outcomes: a user following the reference gets a stale projection and no error.
+    """
+    assert jira_workspace.exists()
+    spellings = [opt for option in jira_issues.params for opt in option.opts]
+
+    assert sorted(spellings) == ["--output", "--quiet", "--refresh", "-o", "-q", "-r", "project_key"]
+    assert "--refresh-board" not in spellings

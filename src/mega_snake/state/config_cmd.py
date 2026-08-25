@@ -267,7 +267,10 @@ def config_list(scope: str) -> None:
     show_default=True,
     help="Which scope to export: 'global' for the user-wide settings, 'repo' for the current "
     "clone's, or 'all' for both merged with the repository scope taking precedence. Exporting "
-    "anything but 'global' from a shell profile pins one clone's settings onto the whole session.",
+    "anything but 'global' from a shell profile pins one clone's settings onto the whole session. "
+    "Note that even 'global' inverts the documented precedence for any key a repository also "
+    "defines, since what is exported becomes an environment variable and those outrank both "
+    "scopes: prefer exporting only the keys no clone overrides.",
 )
 def config_export(shell: Optional[str], scope: str) -> None:
     """Print the stored settings as shell export statements.

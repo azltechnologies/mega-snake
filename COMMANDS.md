@@ -251,6 +251,27 @@ Reads resolve through **environment variable → repo → global**. The environm
 purpose: every workflow that exported `JIRA_DOMAIN` and friends keeps working untouched, so
 adopting the store can be gradual.
 
+`export` is a session bootstrap, not a synchronisation mechanism, and the difference matters
+because what it writes becomes an environment variable — the layer that outranks *both* scopes. So
+for any key a clone also defines in its `repo` scope, evaluating `export` from the shell profile
+inverts the precedence above for the rest of the session:
+
+```bash
+mgsnake config set jira.domain companyA.atlassian.net --global
+cd ~/clients/companyB && mgsnake config set jira.domain companyB.atlassian.net   # repo scope
+
+eval "$(mgsnake config export --shell bash)"   # in ~/.bashrc: JIRA_DOMAIN=companyA...
+cd ~/clients/companyB && mgsnake jira-issues   # ...so this talks to companyA. Exit 0.
+```
+
+Defaulting to `--scope global` is what keeps this narrow — the alternative, exporting `repo`, pins
+one clone's board id and project key onto every other clone — but it does not close it, and it
+cannot be closed from inside `export`: a shell profile runs in whatever directory the terminal
+happened to open in, so filtering against "the current repository" would make the exported set
+depend on where the terminal was launched, which is a worse failure because it is not reproducible.
+The rule to work by is therefore: **export only the keys no clone overrides.** In practice that is
+`jira.domain` and `jira.email`, which is exactly what the `global` scope is for.
+
 Credentials are refused, not warned about. Any name matching `token`, `secret`, `password`,
 `passwd`, `credential` or `api_key` fails with an error and nothing is written. `JIRA_API_TOKEN` and
 `GITHUB_TOKEN` stay in the environment: a plaintext credential in a state file is worse than an
@@ -282,6 +303,13 @@ to avoid. Four different behaviors apply, depending on the subcommand:
 - **`export` on one explicit scope** (`--scope repo` or `--scope global`) still fails loudly on a
   broken file, same as `set`/`unset`/`list` — it is only the *prompt* that `export` never gets,
   never the failure itself.
+
+A state file that cannot be *read* at all (wrong permissions, an I/O error) follows the same two
+rules — an explicit scope fails, a merged read degrades with a warning — but is **never** offered
+the backup-and-reset, on any terminal. Unreadable is not the same as corrupt: the contents are very
+likely intact behind the wrong permissions, so renaming the file aside and starting over would
+throw away recoverable settings to fix something `chmod` solves. The message names the file and
+says so.
 
 Settings the Jira commands read: `jira.domain`, `jira.email`, `jira.project_key`, `jira.board_id`,
 `jira.field.story_points` and `jira.field.sprint`. The last three are written by the commands
@@ -655,7 +683,7 @@ Downloads every issue of a Jira project's Agile board (epics, stories, tasks, su
 | Option | Description |
 | --- | --- |
 | `-o, --output TEXT` | Destination file. Defaults to jira_board_issues.json inside the working path. |
-| `--refresh-board` | Ignore the cached board id and resolve it from Jira again before downloading. |
+| `-r, --refresh` | Ignore every cached Jira lookup -- the board id and the story points / sprint custom field ids -- and resolve them from the instance again. Use it when the Jira side changed: a board recreated, or a custom field re-created by a migration, which the cache would otherwise keep answering with a stale id and no warning. |
 | `-q, --quiet` | Silence the progress messages. |
 | `-h, --help` | Show this message and exit. |
 
@@ -734,6 +762,26 @@ version projected `null` on any other tenant without saying anything. If the nam
 at all, those ids are used as a last resort and a warning says so — and that last-resort id is
 deliberately *not* cached, so the warning keeps appearing on every run instead of being silenced by
 a cache entry that looks exactly like a resolved one.
+
+The same restraint applies when *two* fields share a display name, which is ordinary on instances
+that went through a Server-to-Cloud migration or that hold both a company-managed and a
+team-managed project. Story points are looked up under `Story Points` first and `Story point
+estimate` second, and a name declared exactly once is preferred over one declared twice *whatever
+that order says* — the order ranks how likely a name is to be the right field, not how trustworthy
+the answer is, and a certainty beats a coin flip. Only when every candidate name is ambiguous does
+the first declaration win, with a warning naming every candidate and nothing cached, because then
+either id is a guess. To settle it, pin the id yourself:
+`mgsnake config set jira.field.sprint customfield_10020`, which the warning spells out for you. A
+pinned id survives an ordinary run that cannot confirm it, precisely so it stays pinned.
+
+`--refresh` (`-r`) is the escape hatch for the opposite case: an id that *did* resolve, was cached,
+and later changed on the Jira side — a board recreated, a custom field re-created by a migration. A
+stale cached id is the one failure here that says nothing at all — `storyPoints` and `sprint` come
+out `null` on every issue with a successful exit — so if the projection looks empty and no warning
+explains it, re-run with `--refresh`. It re-resolves the board id *and* both field ids, and it is
+symmetric: an id the refresh cannot confirm is dropped from the cache rather than left behind, so
+the next run resolves it again instead of quietly answering with the entry you just asked it to
+distrust.
 
 If the values you get differ from the old script's, the new ones are the correct ones.
 

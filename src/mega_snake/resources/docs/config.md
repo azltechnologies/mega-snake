@@ -47,6 +47,27 @@ Reads resolve through **environment variable → repo → global**. The environm
 purpose: every workflow that exported `JIRA_DOMAIN` and friends keeps working untouched, so
 adopting the store can be gradual.
 
+`export` is a session bootstrap, not a synchronisation mechanism, and the difference matters
+because what it writes becomes an environment variable — the layer that outranks *both* scopes. So
+for any key a clone also defines in its `repo` scope, evaluating `export` from the shell profile
+inverts the precedence above for the rest of the session:
+
+```bash
+mgsnake config set jira.domain companyA.atlassian.net --global
+cd ~/clients/companyB && mgsnake config set jira.domain companyB.atlassian.net   # repo scope
+
+eval "$(mgsnake config export --shell bash)"   # in ~/.bashrc: JIRA_DOMAIN=companyA...
+cd ~/clients/companyB && mgsnake jira-issues   # ...so this talks to companyA. Exit 0.
+```
+
+Defaulting to `--scope global` is what keeps this narrow — the alternative, exporting `repo`, pins
+one clone's board id and project key onto every other clone — but it does not close it, and it
+cannot be closed from inside `export`: a shell profile runs in whatever directory the terminal
+happened to open in, so filtering against "the current repository" would make the exported set
+depend on where the terminal was launched, which is a worse failure because it is not reproducible.
+The rule to work by is therefore: **export only the keys no clone overrides.** In practice that is
+`jira.domain` and `jira.email`, which is exactly what the `global` scope is for.
+
 Credentials are refused, not warned about. Any name matching `token`, `secret`, `password`,
 `passwd`, `credential` or `api_key` fails with an error and nothing is written. `JIRA_API_TOKEN` and
 `GITHUB_TOKEN` stay in the environment: a plaintext credential in a state file is worse than an
