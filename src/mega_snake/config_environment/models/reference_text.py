@@ -32,9 +32,11 @@ def reference_text(member: Union[VscodeTask, VscodeLaunch], working_path: str) -
     emit it, so nothing in the workspace file ever interpolates it. Should that change, it belongs
     here in the same commit.
 
-    The watcher redirect is asked of the watcher rather than read back from `args`: `add_logger_args`
-    only appends it while `to_dict` runs, which happens after inputs are written, so in a fresh
-    process `args` does not contain it yet.
+    The watcher redirect is asked of the watcher rather than read back from `args`: `args` holds
+    only what the member declares, and `to_dict` composes the redirect onto a copy of it, so the
+    redirect never reaches the member's own list at all. It used to arrive there as a side effect of
+    `add_logger_args` mutating the enum, which made this function's answer depend on whether
+    anything had called `to_dict` earlier in the process.
 
     Parameters:
         member: The task or launch configuration to flatten.

@@ -9,8 +9,9 @@ belongs to, so a stack that is not active simply contributes nothing.
 """
 
 from enum import Enum
+from functools import lru_cache
 import os
-from typing import Callable, Iterable, Mapping, Optional, Protocol, TypeVar
+from typing import AbstractSet, Callable, Iterable, Mapping, Optional, Protocol, TypeVar
 
 ALL_STACKS: str = "all"
 
@@ -225,11 +226,43 @@ def from_key(key: str) -> ProjectStack:
     raise ValueError(f"Unknown project stack: {key}")
 
 
+@lru_cache(maxsize=None)
+def _declaration_order(selected: frozenset[ProjectStack]) -> tuple[ProjectStack, ...]:
+    """Rescan the enum once per distinct stack set and remember the order it yields.
+
+    `sort_stacks` runs at least four times on the same active stacks in a single `working-env`
+    invocation -- once from `describe_stacks`, once from the `collect_by_stack` behind
+    `_get_recommended_extensions`, and twice from the `merge_by_stack` behind `_update_input_props`
+    and `_update_file_associations` -- and each run used to rebuild a set and walk the whole
+    `ProjectStack` enum to reach the same answer. The answer depends on nothing but the given stacks
+    and the declaration order of the enum, and neither of those moves while the process runs.
+
+    The key is a `frozenset` because that is what makes the memo agree with the contract: the order
+    a caller happens to hold its stacks in is deliberately irrelevant to the result, so two callers
+    holding the same stacks differently have to land on the same entry. The cache is bounded by the
+    number of distinct stack sets a process asks about, which is one for a real run.
+
+    Anything that could change a member's position in the enum would have to invalidate this, and
+    nothing can: `ProjectStack` is closed at import time.
+
+    Parameters:
+        selected: The stacks to order.
+
+    Returns:
+        tuple[ProjectStack, ...]: The stacks in declaration order.
+    """
+    return tuple(stack for stack in ProjectStack if stack in selected)
+
+
 def sort_stacks(stacks: Iterable[ProjectStack]) -> list[ProjectStack]:
     """Order a stack collection deterministically.
 
     Stacks travel around as sets, and iterating a set is not stable across runs; every consumer that
     turns them into output goes through this helper instead.
+
+    A fresh list is handed back on every call, never the tuple `_declaration_order` memoizes: the
+    callers own what they receive, and sharing the cached object would let one of them reorder the
+    answer every later caller gets.
 
     Parameters:
         stacks: The stacks to order.
@@ -237,8 +270,36 @@ def sort_stacks(stacks: Iterable[ProjectStack]) -> list[ProjectStack]:
     Returns:
         list[ProjectStack]: The stacks in declaration order.
     """
-    selected = set(stacks)
-    return [stack for stack in ProjectStack if stack in selected]
+    return list(_declaration_order(frozenset(stacks)))
+
+
+def _expand_into(stack: ProjectStack, resolved: set[ProjectStack]) -> None:
+    """Add a stack and everything it drags along to a set that may already hold part of the answer.
+
+    This is what stops a shared implication from being walked once per stack that names it: with
+    both `gradle` and `maven` active, the second one finds `java` already in `resolved` and stops
+    there instead of expanding the same subgraph again. Taking the accumulator as an argument is
+    what makes the skip possible at all -- `expand` on its own cannot know what its caller already
+    has, so it had no choice but to redo the walk and hand back a result the caller then merged.
+
+    The set is updated in place. The pop-time guard is what keeps the walk cycle-safe; the filtered
+    `extend` is an optimisation on top of it, keeping already-resolved stacks out of `pending`
+    rather than out of `resolved`.
+
+    Parameters:
+        stack: The stack to expand.
+        resolved: The accumulator, updated in place with the stack and its implications.
+
+    Returns:
+        None
+    """
+    pending: list[ProjectStack] = [stack]
+    while pending:
+        current: ProjectStack = pending.pop()
+        if current in resolved:
+            continue
+        resolved.add(current)
+        pending.extend(implied for implied in current.implied if implied not in resolved)
 
 
 def expand(stack: ProjectStack) -> set[ProjectStack]:
@@ -256,11 +317,7 @@ def expand(stack: ProjectStack) -> set[ProjectStack]:
         set[ProjectStack]: The stack itself plus every stack reachable through its implications.
     """
     resolved: set[ProjectStack] = set()
-    pending: list[ProjectStack] = [stack]
-    while pending:
-        current: ProjectStack = pending.pop()
-        resolved.add(current)
-        pending.extend(implied for implied in current.implied if implied not in resolved)
+    _expand_into(stack, resolved)
     return resolved
 
 
@@ -281,7 +338,7 @@ def detect_stacks(root: Optional[str] = None) -> set[ProjectStack]:
     active: set[ProjectStack] = {ProjectStack.COMMON}
     for stack in ProjectStack:
         if stack.is_present(root):
-            active.update(expand(stack))
+            _expand_into(stack, active)
     return active
 
 
@@ -320,12 +377,16 @@ def resolve_stacks(selected: Iterable[str] = (), root: Optional[str] = None) -> 
         # allowed set right here, so the rule belongs here too.
         if stack.opt_in:
             raise ValueError(f"Project stack '{stack.key}' is opt-in and can only be activated by its marker file")
-        active.update(expand(stack))
+        _expand_into(stack, active)
     return active
 
 
-def filter_by_stack(members: Iterable[T], stacks: set[ProjectStack]) -> list[T]:
+def filter_by_stack(members: Iterable[T], stacks: AbstractSet[ProjectStack]) -> list[T]:
     """Keep only the artifacts whose stack is active.
+
+    The stacks are taken as an `AbstractSet` rather than a `set`: the body only ever tests
+    membership, and the callers that memoize a filtered result have to key that memo on a
+    `frozenset`, which is not a `set` as far as the type checker is concerned.
 
     Parameters:
         members: The workspace artifacts to filter, normally an enum.

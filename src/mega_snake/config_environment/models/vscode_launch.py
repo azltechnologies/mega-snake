@@ -125,24 +125,39 @@ class VscodeLaunch(Enum):
         result: dict[str, Any] = {"name": self.task_name, "type": self.task_type, "request": self.request}
         if self.env:
             result["env"] = self.env
-        self.add_logger_args(working_path)
-        if self.args:
+        # A new list, never `self.args` itself -- see `logger_args` below.
+        args: list[str] = [*self.args, *self.logger_args(working_path)]
+        if args:
             if self.task_type == "debugpy":
-                result["args"] = " ".join(self.args)
+                result["args"] = " ".join(args)
             else:
-                result["args"] = self.args
+                result["args"] = args
         for key, value in self.extra_args.items():
             result[key] = value
         return result
 
-    # TODO(#55-followup): same in-place enum mutation as `VscodeTask.add_logger_args`; see the full
-    # note there. Fix both together -- this `to_dict` joins `args` with `" "` for the `debugpy` type,
-    # so the two call sites do not compose the value identically and cannot be changed in isolation.
-    def add_logger_args(self, working_path: str) -> None:
-        """Adds the redirect arg to the task."""
-        if self.watcher:
-            output: str = self.watcher.get_pattern_date(working_path)
-            self.args.extend(output.split(" "))
+    def logger_args(self, working_path: str) -> list[str]:
+        """Build the redirect arguments the configuration's watcher wants appended to its args.
+
+        Returned rather than appended to `self.args`, for the reason spelled out in full on
+        `VscodeTask.logger_args`: an enum member is a process-wide singleton, so extending its own
+        `args` welded the redirect onto the configuration for the rest of the process. This
+        `to_dict` joins the arguments with `" "` for the `debugpy` type, which is why the two call
+        sites had to be turned into pure builders together -- they do not compose the emitted value
+        identically and could not be changed one at a time.
+
+        Parameters:
+            working_path: Path of the working folder the log file is anchored to.
+
+        Raises:
+            None
+
+        Returns:
+            list[str]: The redirect arguments, empty when the configuration has no watcher.
+        """
+        if not self.watcher:
+            return []
+        return self.watcher.get_pattern_date(working_path).split(" ")
 
     @staticmethod
     def add_launch_version(json_data: dict[str, Any]) -> Optional[dict[str, Any]]:

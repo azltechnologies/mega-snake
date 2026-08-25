@@ -116,6 +116,19 @@ def test_sort_stacks() -> None:
     # duplicates are collapsed
     assert sort_stacks([ProjectStack.NODE, ProjectStack.NODE]) == [ProjectStack.NODE]
 
+    # the memo behind the sort never escapes: a caller editing what it got back must not be able to
+    # reorder the answer every later caller receives
+    stacks: set[ProjectStack] = {ProjectStack.MAVEN, ProjectStack.COMMON}
+    first: list[ProjectStack] = sort_stacks(stacks)
+    first.append(ProjectStack.NODE)
+    second: list[ProjectStack] = sort_stacks(stacks)
+    assert second == [ProjectStack.COMMON, ProjectStack.MAVEN]
+    assert second is not first
+    # and the answer does not depend on how the caller happened to hold its stacks
+    assert sort_stacks([ProjectStack.MAVEN, ProjectStack.COMMON]) == sort_stacks(
+        [ProjectStack.COMMON, ProjectStack.MAVEN]
+    )
+
 
 def test_detect_stacks(tmp_path: Path) -> None:
     """Test the detection of the stacks from the repository content"""
@@ -167,6 +180,31 @@ def test_expand_resolves_implications_transitively() -> None:
     for stack in ProjectStack:
         if stack is not ProjectStack.SNAKE:
             assert ProjectStack.SNAKE not in expand(stack), f"{stack.key} drags the development stack along"
+
+
+def test_a_shared_implication_is_walked_only_once(tmp_path: Path, monkeypatch: Any) -> None:
+    """Two stacks implying the same language expand it once between them, not once each."""
+    visited: list[ProjectStack] = []
+    real_implied = ProjectStack.implied.fget
+
+    def spy(stack: ProjectStack) -> tuple[ProjectStack, ...]:
+        """Record every stack whose implications are resolved, then delegate to the real property."""
+        visited.append(stack)
+        return real_implied(stack)
+
+    monkeypatch.setattr(ProjectStack, "implied", property(spy))
+
+    resolved: set[ProjectStack] = resolve_stacks(["gradle", "maven"], str(tmp_path))
+    assert resolved == {ProjectStack.COMMON, ProjectStack.GRADLE, ProjectStack.JAVA, ProjectStack.MAVEN}
+    assert visited.count(ProjectStack.JAVA) == 1, f"java expanded {visited.count(ProjectStack.JAVA)} times: {visited}"
+    assert visited.count(ProjectStack.GRADLE) == 1
+    assert visited.count(ProjectStack.MAVEN) == 1
+
+    visited.clear()
+    _write_marker(tmp_path, "build.gradle")
+    _write_marker(tmp_path, "pom.xml")
+    assert detect_stacks(str(tmp_path)) == resolved
+    assert visited.count(ProjectStack.JAVA) == 1, f"java expanded {visited.count(ProjectStack.JAVA)} times: {visited}"
 
 
 def test_detect_stacks_defaults_to_the_current_directory(tmp_path: Path, monkeypatch: Any) -> None:
