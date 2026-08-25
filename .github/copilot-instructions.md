@@ -265,9 +265,49 @@ This is the most complex module, responsible for generating `.code-workspace` fi
 
 - **Logic**:
   1. Validates Git repository status.
-  2. Loads local developer overrides (`initial_load`).
-  3. Configures Java (`set-java`) and Gradle (`set-gradle`).
-  4. Generates VS Code tasks, launch configurations, and recommendations.
+  2. Resolves the **active stacks** — from `--stack`, or by detecting marker files in the current
+     directory (`project_stack.py`, below).
+  3. Loads local developer overrides (`initial_load`).
+  4. Configures the tools of the active stacks only: `set-java`, `set-gradle` and `set-maven` each
+     run when their stack is active, and are reported as skipped otherwise.
+  5. Generates the VS Code tasks, launch configurations, log watchers and extension
+     recommendations **belonging to the active stacks**.
+
+#### `project_stack.py` — the stack model
+
+**Every artifact `working-env` emits is tagged with the stack that owns it, and the workspace
+writer keeps only the artifacts of the active stacks.** That single rule replaced the scattered
+`os.path.exists` checks the module used to grow, and is why the Java-centric default is gone: a
+repository with no JVM build file is never asked for a JDK.
+
+`ProjectStack` is the single source of truth. Each member carries its marker files, the stacks it
+implies, the extensions and the `files.associations` entries it contributes:
+
+| Helper | Role |
+| --- | --- |
+| `detect_stacks(root)` | The active stacks, from the marker files in **one** directory — never recursive, so a vendored `package.json` cannot activate Node. |
+| `resolve_stacks(selected, root)` | `--stack` wins outright and skips detection entirely; `all` means every stack a user may ask for. |
+| `expand(stack)` | A stack plus everything it implies, **transitively** — depth lives here alone, so a new stack implying `gradle` still brings `java`. |
+| `filter_by_stack(members, stacks)` | The one filter every artifact enum goes through. |
+| `sort_stacks(stacks)` | Deterministic ordering; stacks travel as sets, and set iteration is not stable. |
+| `StackAware` | The protocol (`stack: ProjectStack`) that `VscodeTask`, `VscodeLaunch`, `VscodeInput` and `LogWatcher` all satisfy. |
+
+Three things that are easy to get wrong when adding a stack or an artifact:
+
+- **`COMMON` is always active** and is what an untagged artifact defaults to. Tag deliberately:
+  an artifact left on `COMMON` lands in every workspace, on every repository.
+- **An `opt_in` stack is absent from `--stack` and from `all`**, so its marker file is the *only*
+  way in. `SNAKE` uses this to keep mega-snake's own debug launch out of every user's Python
+  repository — §1 FIRST RULE, in enum form.
+- **The tagging is a graph, not a set of labels.** A task redirects into a `LogWatcher`, depends on
+  other tasks by label, and calls a `VscodeInput` through `${input:<id>}`. Tagging a member with a
+  stack that does not activate its referent writes a dangling reference into the workspace, and VS
+  Code only reports it when the developer runs the entry. `src/tests/config_environment/models/test_stack_references.py`
+  walks that whole graph as an invariant — keep new references inside it rather than adding a
+  per-member example test.
+
+**Nothing already in the `.code-workspace` is ever removed.** Narrowing the stacks adds less; it
+never takes anything away, which is what makes the change safe to roll out on existing workspaces.
 
 #### `set-java` (`java_set.py`)
 
@@ -1189,6 +1229,36 @@ Plus `mgsnake generate-docs --check`, which catches a committed `COMMANDS.md` th
 tests and the check catch _different_ failures: the tests catch missing/duplicated prose, the check catches a stale
 generated file. **After changing any command metadata, run `mgsnake generate-docs` and commit the regenerated
 `COMMANDS.md` in the same change.**
+
+### 6.4 Formatting (`ruff format`) — the last step before a commit
+
+**Every commit must carry formatted code, and the formatting runs _after_ the suite is green, never before.**
+The order is the rule:
+
+```bash
+uv run pytest          # 1. all tests pass, coverage thresholds met
+uv run ruff format     # 2. only then, format
+uv run ruff check .    # 3. lint still clean, and commit
+```
+
+**Why formatting comes last.** Code that is still failing its tests is code that is still being rewritten, so
+formatting it early only means formatting it twice, and it mixes reflowed lines into the diff you are trying to
+read while debugging. Running it once, on the final shape of the change, keeps the formatting noise in a single
+pass and keeps the review diff about the behaviour that changed. It is also the only order in which a green run
+means anything: the suite you saw pass is the code you are committing, modulo formatting only.
+
+**Why the author has to remember it.** CI runs `ruff check src/mega_snake` (lint) and never `ruff format --check`,
+so unformatted code merges silently — nothing is going to catch this for you. That is exactly how the repository
+accumulated a backlog of files that predate the rule.
+
+**Scope.** `[tool.ruff]` in `pyproject.toml` sets `include = ["src/**/*.py"]` and excludes `src/tests`, so the
+formatter covers `src/mega_snake` only. Test files are outside its scope and must not be reformatted into a
+change.
+
+**Format the files your change already touches — do not sweep unrelated ones into a feature PR.** A bare
+`uv run ruff format` reformats every file that predates this rule, which buries the actual change under unrelated
+reflows and makes the PR unreviewable. Clearing that backlog is legitimate work, but it belongs in a commit of its
+own that does nothing else.
 
 ---
 

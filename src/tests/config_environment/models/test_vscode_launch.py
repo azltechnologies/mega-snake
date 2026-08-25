@@ -1,10 +1,18 @@
 """Test for VscodeLaunch model"""
 
+from pathlib import Path
 from typing import Generator
 from types import SimpleNamespace, MethodType
 import inspect
 from unittest.mock import patch, MagicMock
 import pytest
+from mega_snake.config_environment.models.project_stack import (
+    ProjectStack,
+    SNAKE_MARKER,
+    detect_stacks,
+    filter_by_stack,
+    resolve_stacks,
+)
 from mega_snake.config_environment.models.vscode_launch import VscodeLaunch, LAUNCH_VERSION_QUERY
 
 VERSION_TEST = "1.2.3"
@@ -55,9 +63,9 @@ def test_add_logger_args() -> None:
         args_size = len(member.args)
         mock = MagicMock()
         mock.return_value = "mocked log path"
-        member.watcher.get_pattern_date = mock
-        member.add_logger_args("path/to/working")
-        mock.assert_called_once()
+        with patch.object(member.watcher, "get_pattern_date", mock):
+            member.add_logger_args("path/to/working")
+            mock.assert_called_once()
         assert len(member.args) == args_size + 3
 
 
@@ -73,9 +81,12 @@ def test_to_dict() -> None:
     list_launch.append(fake_launch)
     for member in list_launch:
         mock = MagicMock()
-        member.add_logger_args = mock
-        result = member.to_dict(param)
-        mock.assert_called_once_with(param)
+        # `fake_launch` is a bare SimpleNamespace, so it has no `add_logger_args` of its own to
+        # save and restore -- `create=True` lets patch.object add it for the block and delete it
+        # again on exit, instead of leaving it stuck on the object for later tests to trip over.
+        with patch.object(member, "add_logger_args", mock, create=True):
+            result = member.to_dict(param)
+            mock.assert_called_once_with(param)
         assert result["name"] == member.task_name
         assert result["type"] == member.task_type
         assert result["request"] == member.request
@@ -88,6 +99,32 @@ def test_to_dict() -> None:
                 assert result["args"] == member.args
         for key, value in member.extra_args.items():
             assert result[key] == value
+        # the stack only decides whether the configuration is written, it is not part of it
+        assert "stack" not in result
+
+
+def test_stack(tmp_path: Path) -> None:
+    """Test that every launch configuration declares the stack it belongs to"""
+    for member in VscodeLaunch:
+        assert isinstance(member.stack, ProjectStack)
+    # A launch configuration always debugs one language's runtime, so none of them may be common --
+    # the same guard `VscodeTask.test_stack` makes, which this test was missing while
+    # `VscodeLaunch.__init__` still defaulted `stack` to `ProjectStack.COMMON`
+    assert not [member for member in VscodeLaunch if member.stack is ProjectStack.COMMON]
+    assert VscodeLaunch.DEBUG_JAVA.stack is ProjectStack.JAVA
+    for member in (VscodeLaunch.DEBUG_PYTHON_FILE, VscodeLaunch.DEBUG_PYTHON_MODULE):
+        assert member.stack is ProjectStack.PYTHON
+    # the launch that debugs mega-snake itself belongs to the opt-in development stack, so it never
+    # reaches a user's Python project: the `python` selection alone must not pull it in
+    assert VscodeLaunch.DEBUG_PYTHON_SNAKE.stack is ProjectStack.SNAKE
+    assert VscodeLaunch.DEBUG_PYTHON_SNAKE not in filter_by_stack(VscodeLaunch, resolve_stacks(["python"]))
+    assert VscodeLaunch.DEBUG_PYTHON_SNAKE not in filter_by_stack(VscodeLaunch, resolve_stacks(["all"]))
+    # naming the key is refused too, so the marker file is genuinely the only way in -- which is
+    # what actually keeps this launch configuration out of a user's repository
+    with pytest.raises(ValueError, match="opt-in"):
+        resolve_stacks([ProjectStack.SNAKE.key])
+    (tmp_path / SNAKE_MARKER).write_text("", encoding="utf-8")
+    assert VscodeLaunch.DEBUG_PYTHON_SNAKE in filter_by_stack(VscodeLaunch, detect_stacks(str(tmp_path)))
 
 
 def test_add_launch_config(_launch_config_query: MagicMock) -> None:

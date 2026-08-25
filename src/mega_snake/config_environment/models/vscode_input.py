@@ -4,6 +4,7 @@ from enum import Enum, auto
 import json
 from typing import Any, Optional, TYPE_CHECKING
 import jq
+from mega_snake.config_environment.models.project_stack import ProjectStack
 
 if TYPE_CHECKING:
     from mega_snake.config_environment.models.vscode_task import VscodeTask
@@ -32,6 +33,9 @@ class VscodeInput(Enum):
         },
         None,
         InputType.BOTH,
+        # Deliberately common, not untagged: every task and launch configuration that redirects its
+        # output interpolates this timestamp, whatever stack it belongs to.
+        ProjectStack.COMMON,
     )
     SELECT_BUILD = (
         "selectBuildTask",
@@ -40,6 +44,7 @@ class VscodeInput(Enum):
         {"task": JAVA_DEBUG_PREFIX},
         None,
         InputType.TASK,
+        ProjectStack.GRADLE,
     )
 
     input_id: str
@@ -50,6 +55,7 @@ class VscodeInput(Enum):
     input_default: Optional[str]
     input_description: Optional[str]
     enum_type: InputType
+    stack: ProjectStack
 
     def __init__(
         self,
@@ -59,8 +65,27 @@ class VscodeInput(Enum):
         input_args: Optional[dict[str, str]],
         input_description: str,
         enum_type: InputType,
+        stack: ProjectStack,
     ) -> None:
-        """Initialize a VscodeInput enum member with all required VS Code input configuration fields."""
+        """Initialize a VscodeInput enum member with all required VS Code input configuration fields.
+
+        Parameters:
+            input_id: The id tasks and launch configurations interpolate as `${input:<id>}`.
+            input_type: The VS Code input type.
+            input_command: The command the input runs, when it is a command input.
+            input_args: The arguments handed to that command.
+            input_description: The description VS Code shows when prompting.
+            enum_type: The blocks the input may be written into.
+        stack: The stack the member belongs to. Explicit for every member on purpose: with a
+            `ProjectStack.COMMON` default, an untagged member and a deliberately shared one were
+            byte-identical, so forgetting the tag silently wrote the artifact into every workspace.
+
+        Raises:
+            None
+
+        Returns:
+            None
+        """
         self.input_id = input_id
         self.input_type = input_type
         self.input_command = input_command
@@ -69,6 +94,7 @@ class VscodeInput(Enum):
         self.input_default = None
         self.input_description = input_description
         self.enum_type = enum_type
+        self.stack = stack
 
     def to_dict(self) -> dict[str, Any]:
         """Converts the enum to a dictionary."""

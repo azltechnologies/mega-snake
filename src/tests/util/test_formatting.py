@@ -216,6 +216,31 @@ def test_ws_advice_forced_writes_to_stderr_only(mk_logger: MagicMock, capsys: py
 
 
 @pytest.mark.parametrize(
+    "force, expected_level, dropped_level",
+    [
+        pytest.param(True, "info", "debug", id="forced"),
+        pytest.param(False, "debug", "info", id="not_forced"),
+    ],
+)
+def test_ws_advice_logs_a_forced_message_above_the_default_threshold(
+    force: bool, expected_level: str, dropped_level: str, mk_logger: MagicMock
+) -> None:
+    """A forced advice must reach the log file at the default level, an ordinary one must not.
+
+    `force` gates the console print only. Logging a forced message at DEBUG left it invisible in the
+    log file unless the whole run was at `--log-level DEBUG`, so the on-screen line and the
+    persistent record disagreed. The negative half is what pins the pair: asserting only that INFO
+    was called would also pass if the helper logged at both levels.
+    """
+    mk_logger.level = logging.DEBUG if not force else logging.INFO
+
+    ws_advice("Advice message", force=force)
+
+    getattr(mk_logger, expected_level).assert_called_once_with("Advice message", stacklevel=2)
+    getattr(mk_logger, dropped_level).assert_not_called()
+
+
+@pytest.mark.parametrize(
     "helper",
     [
         pytest.param(ws_success, id="ws_success"),
