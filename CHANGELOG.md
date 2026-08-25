@@ -16,7 +16,65 @@ lives in the GitHub Release body (`gh release create --generate-notes`); this fi
 **Releasing:** every release must have its own `## [X.Y.Z]` section here, matching the `version` field in
 `pyproject.toml` and the `vX.Y.Z` tag. `.github/workflows/release.yml` refuses to publish otherwise.
 
-## [Unreleased]
+## [0.1.7] - 2026-08-25
+
+### Added
+
+- **`mgsnake config`.** A persistent settings store the CLI both writes and reads, replacing three
+  configuration layers that could not be written to. Subcommands: `get KEY`, `set KEY VALUE
+  [--global]`, `unset KEY [--global]`, `list [--scope repo|global|all]` and `export [--shell]
+  [--scope]`. State lives in `<git-dir>/mgsnake/state.json` (repo scope, per-clone) and
+  `~/.config/mgsnake/state.json` / `%APPDATA%\mgsnake\state.json` (global scope), written
+  atomically. Reads resolve **environment variable → repo → global**. Credential-shaped keys
+  (`token`, `secret`, `password`, `passwd`, `credential`, `api_key`) are refused on both `set` and
+  `get`. A corrupt state file offers to back itself up and reset on an explicit scope from an
+  interactive terminal, and fails loudly everywhere else; a merged read (`get`, `list --scope all`,
+  `export --scope all`) degrades with a warning instead of blocking a setting that lives in the
+  healthy scope.
+- **`mgsnake jira-board`, `jira-sprint` and `jira-issues`.** Native replacements for
+  `getJiraBoard.sh`, `getSprintInfo.sh` and `jira_board_issues.sh`, built on the new `config` store
+  so a project key only needs to be set once (`mgsnake config set jira.project_key TAROTAPP`).
+  - `jira-board` resolves a project key to its board id and caches it per clone (`--refresh` to
+    force re-resolution); a project with several boards prompts once and caches the answer.
+  - `jira-sprint` lists the board's active sprint(s) as a JSON array.
+  - `jira-issues` downloads the whole board to `workspace_temp/jira_board_issues.json` (or
+    `--output`) in one request-light pass, paging through Jira's Agile API to the end so no sprint
+    hides on a later page. Story points and sprint custom field ids are resolved by display name
+    and cached; ambiguous or unresolved names fall back to a warning and are never cached, so the
+    warning keeps appearing until the field is pinned with
+    `mgsnake config set jira.field.sprint customfield_10020` (undo with `config unset`).
+  - Retry and pooling are handled by `urllib3`/`requests.Session`; only `GET` is retried, and
+    401/403/404 never are. Requires `jira.domain`, `jira.email` and `JIRA_API_TOKEN`
+    (`JIRA_MCP_TOKEN` is a deprecated fallback that warns on stderr); `REQUESTS_CA_BUNDLE` is
+    honored for TLS-inspecting corporate proxies.
+- **`working-env` now configures only the stacks a repository actually uses.** A new `ProjectStack`
+  model tags every workspace artifact (tasks, launch configurations, log watchers, inputs,
+  recommended extensions) with the stack it belongs to, so a repository with no JVM code no longer
+  gets asked for a JDK or has Java/Gradle/Maven tasks, launch configs and settings written into its
+  workspace. `--stack/-s` (repeatable, `all` supported) overrides the detection for layouts it
+  cannot see, such as a build file in a subfolder.
+
+### Changed
+
+- Skipped stacks (e.g. no Gradle or Maven file found) are now reported once, through a single
+  informational message, instead of one warning per stack on every run of `working-env`.
+
+### Fixed
+
+- `LogWatcher.GENERIC` moved to the `python` stack: it only watches a log file the Python launch
+  configurations produce, so Java-only and Node-only workspaces were previously given a watcher for
+  a file they never generate.
+- **`generate-docs` no longer depends on the terminal that ran it.** Click wrapped each command's
+  usage line to the current terminal width, so `COMMANDS.md` came out different on a narrow screen
+  than on CI — and a narrow enough terminal even split a metavar mid-word. The synopsis is now
+  rendered at a fixed width and collapsed to a single line, so the committed reference matches the
+  `generate-docs --check` run in the release workflow.
+
+### Breaking
+
+- `jira-board`'s `boardId` is now a JSON number rather than a string. `jira-sprint` now always
+  returns a JSON array, including when there is a single active sprint (the shell version emitted a
+  bare object in that case, and two concatenated objects when there were two).
 
 ## [0.1.6] - 2026-08-24
 

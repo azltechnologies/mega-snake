@@ -188,6 +188,11 @@ def _build_command_context(root: CliGroup, command: click.Command, command_name:
     return click.Context(command, info_name=command_name, parent=parent_ctx, **command.context_settings)
 
 
+# Width used only to render the synopsis: wide enough that Click never wraps a usage line, so
+# the generated docs do not depend on the terminal that produced them.
+SYNOPSIS_WIDTH = 10_000
+
+
 def _get_synopsis(root: CliGroup, command: click.Command, command_name: str) -> str:
     """Render a normalized one-line synopsis for a command.
 
@@ -203,7 +208,14 @@ def _get_synopsis(root: CliGroup, command: click.Command, command_name: str) -> 
         str: The normalized synopsis string.
     """
     ctx = _build_command_context(root, command, command_name)
-    return command.get_usage(ctx).removeprefix("Usage: ").strip()
+    # Click wraps the usage line to whatever terminal is attached, so the very same command yields
+    # a different committed COMMANDS.md locally than on CI -- and a narrow terminal even splits a
+    # metavar mid-word. Widening the context past any realistic usage line stops the wrapping at
+    # the source; collapsing whitespace afterwards guarantees the single line promised above.
+    ctx.terminal_width = SYNOPSIS_WIDTH
+    ctx.max_content_width = SYNOPSIS_WIDTH
+    usage = command.get_usage(ctx).removeprefix("Usage: ")
+    return " ".join(usage.split())
 
 
 def _get_option_docs(root: CliGroup, command: click.Command, command_name: str) -> tuple[CommandOptionDoc, ...]:

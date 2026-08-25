@@ -314,3 +314,38 @@ def test_help_render_keeps_the_real_command_registry_intact() -> None:
     assert "generate-docs" in app_main.cli.commands
     assert "generate-docs |" not in app_main.cli.commands
     assert set(app_main.cli.commands) == original_keys
+
+
+# Widths bracketing the realistic range: narrow enough that Click would wrap (and even split a
+# metavar mid-word), wide enough that it never would.
+TERMINAL_WIDTHS = ("30", "45", "80", "120", "500")
+
+
+def test_synopsis_is_identical_at_every_terminal_width(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every command synopsis must render the same string whatever terminal produced it.
+
+    The generated COMMANDS.md is committed and re-checked on CI, so a synopsis that depends on the
+    terminal width makes the check fail for whoever regenerated the file on a narrower screen.
+    """
+    rendered: dict[str, dict[str, str]] = {}
+    for width in TERMINAL_WIDTHS:
+        monkeypatch.setenv("COLUMNS", width)
+        rendered[width] = {entry.name: entry.synopsis for entry in iter_introspected_commands(app_main.cli)}
+
+    reference_width = TERMINAL_WIDTHS[-1]
+    reference = rendered[reference_width]
+    for width in TERMINAL_WIDTHS:
+        for name, synopsis in rendered[width].items():
+            assert synopsis == reference[name], (
+                f"{name} renders as {synopsis!r} at COLUMNS={width}"
+                f" but as {reference[name]!r} at COLUMNS={reference_width}"
+            )
+
+
+def test_synopsis_is_a_single_unpadded_line(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A synopsis must be one line with single spaces, even on a terminal too narrow to hold it."""
+    monkeypatch.setenv("COLUMNS", TERMINAL_WIDTHS[0])
+    for entry in iter_introspected_commands(app_main.cli):
+        assert "\n" not in entry.synopsis, f"{entry.name} synopsis spans several lines: {entry.synopsis!r}"
+        assert "  " not in entry.synopsis, f"{entry.name} synopsis carries wrap padding: {entry.synopsis!r}"
+        assert entry.synopsis == entry.synopsis.strip(), f"{entry.name} synopsis is padded: {entry.synopsis!r}"
