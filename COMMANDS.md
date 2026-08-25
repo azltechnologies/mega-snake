@@ -190,6 +190,156 @@ Because it writes the local environment files, a successful run exits with statu
 `mgsnake` shell function installed by the init script (see `shell-path`) reads that status and
 re-sources them, so the environment it just configured applies to the current session.
 
+## Configuration
+
+### config
+
+Reads and writes the persistent settings mgsnake remembers between runs, in two scopes: `repo` (stored inside the current clone's git directory) and `global` (stored in the user's config directory). Reads resolve through `environment variable > repo > global`, so an exported variable always wins and existing environment-based workflows keep working. Credential-shaped names are refused: secrets stay in environment variables only.
+
+**Synopsis:** `mgsnake config [OPTIONS] COMMAND [ARGS]...`
+
+| Option | Description |
+| --- | --- |
+| `-h, --help` | Show this message and exit. |
+
+The repository already had three configuration layers and not one of them could be written to:
+`config.properties` ships inside the wheel and is replaced on every install, `AppProperties` is a
+per-process singleton kept deliberately immutable, and the local config/env files are a shell
+prelude the CLI writes once and never reads back. This command is the missing middle piece — state
+the CLI both writes and reads — and it is what lets the Jira commands stop asking for a project key
+on every single call.
+
+Subcommands:
+
+| Subcommand | What it does |
+|---|---|
+| `get KEY` | Prints the resolved value. Only the value reaches stdout, so `$(mgsnake config get jira.project_key)` is safe. Exits 1 when nothing defines it. |
+| `set KEY VALUE [--global]` | Stores the setting, atomically. |
+| `unset KEY [--global]` | Removes it from that one scope only. |
+| `list [--scope repo\|global\|all]` | Prints `key=value` lines of what is on disk. |
+| `export [--shell] [--scope]` | Prints export statements for the `global` scope, meant to be evaluated from the shell profile. |
+
+#### Output
+
+Two files, one per scope, both plain sorted JSON:
+
+- `<git-dir>/mgsnake/state.json` — the `repo` scope, the default target of `set` and `unset`. Living
+  inside `.git` means it is never committed without touching `.gitignore` or `.git/info/exclude`, it
+  is per-clone, and it dies with the clone. `workspace_temp` was rejected for this: it is explicitly
+  disposable, and state that evaporates is not state.
+- `~/.config/mgsnake/state.json` (`%APPDATA%\mgsnake\state.json` on Windows) — the `global` scope.
+
+Writes go through a temporary file in the same directory followed by a rename, so an interrupted run
+cannot leave behind a half-written file that would then break every other command.
+
+#### Examples
+
+```bash
+mgsnake config set jira.domain azltech.atlassian.net --global
+mgsnake config set jira.email dev@example.com --global
+mgsnake config set jira.project_key TAROTAPP
+
+mgsnake jira-board            # no arguments needed any more
+
+# In the shell profile: the user-wide settings only, which is what `export` defaults to.
+eval "$(mgsnake config export --shell bash)"
+```
+
+#### Notes
+
+Reads resolve through **environment variable → repo → global**. The environment sits on top on
+purpose: every workflow that exported `JIRA_DOMAIN` and friends keeps working untouched, so
+adopting the store can be gradual.
+
+`export` is a session bootstrap, not a synchronisation mechanism, and the difference matters
+because what it writes becomes an environment variable — the layer that outranks *both* scopes. So
+for any key a clone also defines in its `repo` scope, evaluating `export` from the shell profile
+inverts the precedence above for the rest of the session:
+
+```bash
+mgsnake config set jira.domain companyA.atlassian.net --global
+cd ~/clients/companyB && mgsnake config set jira.domain companyB.atlassian.net   # repo scope
+
+eval "$(mgsnake config export --shell bash)"   # in ~/.bashrc: JIRA_DOMAIN=companyA...
+cd ~/clients/companyB && mgsnake jira-issues   # ...so this talks to companyA. Exit 0.
+```
+
+Defaulting to `--scope global` is what keeps this narrow — the alternative, exporting `repo`, pins
+one clone's board id and project key onto every other clone — but it does not close it, and it
+cannot be closed from inside `export`: a shell profile runs in whatever directory the terminal
+happened to open in, so filtering against "the current repository" would make the exported set
+depend on where the terminal was launched, which is a worse failure because it is not reproducible.
+The rule to work by is therefore: **export only the keys no clone overrides.** In practice that is
+`jira.domain` and `jira.email`, which is exactly what the `global` scope is for.
+
+Two conventions keep the file readable. A key ending in `.cached` is written by a command rather
+than by you — `jira.field.sprint.cached` is what `jira-issues` worked out on its own — and the
+bare key beside it is yours alone: nothing in the CLI writes `jira.field.sprint`, and when both
+exist the bare one wins. That is why pinning a value actually sticks; see `jira-issues` for the
+full story. Removing a `.cached` key is always safe, since the command that wrote it will work the
+value out again.
+
+Credentials are refused, not warned about, on the way in *and* on the way out. Any name matching
+`token`, `secret`, `password`, `passwd`, `credential` or `api_key` fails `config set` with an error
+and nothing is written; `JIRA_API_TOKEN` and `GITHUB_TOKEN` stay in the environment, because a
+plaintext credential in a state file is worse than an exported variable precisely because it
+persists and is forgotten. `config get` refuses to print one too — its first precedence layer is the
+environment, so without that guard `mgsnake config get jira.api_token` would echo the live token to
+stdout, and `mgsnake config get path` would echo `$PATH`. `config get` also insists on a real dotted
+setting name for the same reason: it is a settings reader, not a general-purpose way to dump the
+environment into a command substitution.
+
+The file also carries a `mgsnake.state_version` marker, written the first time anything is stored
+in that scope. It is what lets a one-time migration tell state written by an older version from
+state you wrote yourself — a distinction the keys alone cannot make. It is metadata rather than a
+setting, so `config list` and `config export` leave it out; it is plainly there if you read the file.
+
+Names must be lowercase and dotted (`jira.field.story_points`), which is what keeps the file
+navigable instead of turning into a flat junk drawer.
+
+The whole group runs before any initialization, so it works outside a configured environment and
+even before `MEGA_SNAKE_SHELL` exists. Outside a git repository the `repo` scope simply does not
+exist: reads fall back to the global one, and writes say so and suggest `--global`.
+
+An unusable state file (invalid JSON, or valid JSON that is not an object) is never silently
+discarded, and it is never grounds for a hang either — the two failure modes this mechanism is built
+to avoid. Four different behaviors apply, depending on the subcommand:
+
+- **`set`, `unset` and `list` on one explicit scope** (`--scope repo` or `--scope global`) ask about
+  that exact file, so from an interactive terminal they offer to back the broken file up next to
+  itself (renamed, never deleted) and start a fresh empty one. Declining, or running
+  non-interactively (a script, CI, a closed stdin), fails loudly instead, naming the broken file for
+  manual repair.
+- **`get` and `export` never prompt, on any terminal.** Both are meant to be consumed by a shell —
+  `$(mgsnake config get ...)`, and `export` specifically `eval`'d from a shell profile on every new
+  terminal — so a prompt on a corrupt file would hang a script's stdout capture, or a terminal's
+  startup, instead of failing it in milliseconds.
+- **`get` and `list --scope all` / `export --scope all`** merge both scopes, so a single broken one
+  degrades instead of blocking a setting that only lives in the healthy scope — a warning naming the
+  broken file is still printed once per run, but nothing is offered to fix it from there.
+- **`export` on one explicit scope** (`--scope repo` or `--scope global`) still fails loudly on a
+  broken file, same as `set`/`unset`/`list` — it is only the *prompt* that `export` never gets,
+  never the failure itself.
+
+A state file that cannot be *read* at all (wrong permissions, an I/O error) follows the same two
+rules — an explicit scope fails, a merged read degrades with a warning — but is **never** offered
+the backup-and-reset, on any terminal. Unreadable is not the same as corrupt: the contents are very
+likely intact behind the wrong permissions, so renaming the file aside and starting over would
+throw away recoverable settings to fix something `chmod` solves. The message names the file and
+says so.
+
+Settings the Jira commands read: `jira.domain`, `jira.email`, `jira.project_key`, `jira.board_id`,
+`jira.field.story_points` and `jira.field.sprint`. The last three are written by the commands
+themselves as a cache; removing them just forces a fresh resolution.
+
+`export` covers the `global` scope by default, and that default is load-bearing. An environment
+variable outranks every scope, and a shell profile runs in whatever directory the terminal happened
+to open in — so exporting the `repo` scope from there would pin one clone's `jira.project_key` and
+`jira.board_id` onto the whole session, and every *other* clone would then resolve them from the
+environment. `mgsnake jira-issues` in a second repository would download the first one's board, with
+no warning and exit code 0. `--scope repo` and `--scope all` are still there for anyone who wants
+exactly that, per shell rather than per profile.
+
 ## Dependency Audit
 
 ### scan-dependencies
@@ -485,6 +635,269 @@ A remote is not required: without one, the command asks for the local main branc
 local branches against it. A `--format` option to customize the columns and output shape is
 planned; for now the table is fixed. `remote-branches-cleanup` builds this same inventory in memory
 for its interactive deletion — this report is for inspection.
+
+## Jira
+
+### jira-board
+
+Resolves a Jira project key to its Agile board and prints `{"boardId": ..., "cloudDomain": ...}` to stdout, and nothing else, so the output can be captured with command substitution. The board id is cached in the current clone once resolved, so later runs answer without any HTTP call. `boardId` is an integer, not a string as the shell version emitted it.
+
+**Synopsis:** `mgsnake jira-board [OPTIONS] [PROJECT_KEY]`
+
+**Aliases:** `jb`
+
+| Option | Description |
+| --- | --- |
+| `--refresh` | Ignore the cached board id and resolve it from Jira again. Use it after the project's boards changed, or to pick a different board when the project has several. |
+| `-h, --help` | Show this message and exit. |
+
+- `project_key` — Jira project key. Defaults to the stored jira.project_key.
+
+Resolving a board takes two round trips — project key to project id, then project id to board — and
+the answer almost never changes. That is why the result is cached per clone: the first run pays for
+the lookup and every later one answers from disk, with no HTTP call and, therefore, no credentials
+needed at all.
+
+#### Output
+
+Nothing on disk except the cache entry: `jira.board_id` is written to the repository scope of the
+state store (see `config`), but only when the resolved project matches the stored
+`jira.project_key`. Passing a different project key explicitly neither reads nor writes that cache,
+so one clone's board can never be served for somebody else's project.
+
+#### Examples
+
+```bash
+mgsnake jira-board                       # uses the stored project key
+mgsnake jira-board TAROTAPP | jq .boardId
+mgsnake jira-board --refresh             # after the project's boards changed
+```
+
+#### Notes
+
+**Breaking change.** `boardId` is now a number. The shell version emitted it through `jq --arg`, so
+it was the string `"1"`, while `getSprintInfo` turned around and used it as a number — the two
+disagreed with each other. Any `jq` filter comparing it against a string needs adjusting.
+
+An unknown project is an error naming the key. The shell version let `jq -r '.id'` return the string
+`null`, asked Jira for `?projectKeyOrId=null`, and printed `{"boardId": "null"}` without a word.
+
+When a project has several boards you are asked which one, and the answer is cached. The prompt goes
+to stderr so it cannot corrupt a captured stdout — although in a `$(...)` capture you will not see
+it, so run the command once on its own (or with `--refresh`) to make the choice.
+
+Requires `jira.domain`, `jira.email` and `JIRA_API_TOKEN`; see the `config` reference. On a corporate
+machine with a TLS-inspecting proxy, point `REQUESTS_CA_BUNDLE` at the corporate CA bundle.
+
+### jira-issues
+
+Downloads every issue of a Jira project's Agile board (epics, stories, tasks, subtasks), projects them into the compact schema the Jira skills consume, flags the ones that belong to an active sprint, and writes the result as a JSON array. The story points and sprint custom fields are resolved by name for the current Jira instance instead of being hardcoded, so the output is correct on any tenant. Progress goes to the console; only the file receives the data.
+
+**Synopsis:** `mgsnake jira-issues [OPTIONS] [PROJECT_KEY]`
+
+**Aliases:** `ji`
+
+| Option | Description |
+| --- | --- |
+| `-o, --output TEXT` | Destination file. Defaults to jira_board_issues.json inside the working path. |
+| `-r, --refresh` | Ignore every cached Jira lookup -- the board id and the story points / sprint custom field ids -- and resolve them from the instance again. Use it when the Jira side changed: a board recreated, or a custom field re-created by a migration, which the cache would otherwise keep answering with a stale id and no warning. |
+| `-q, --quiet` | Silence the progress messages. |
+| `-h, --help` | Show this message and exit. |
+
+- `project_key` — Jira project key. Defaults to the stored jira.project_key.
+
+The whole board goes to a file rather than through the MCP server on purpose: the skills need to
+slice the same dataset many times over (by epic, by assignee, by status, by sprint), and paying for
+a fresh remote round trip per question is both slow and rate-limited. One download, then `jq`.
+
+#### Output
+
+A JSON array written atomically to `workspace_temp/jira_board_issues.json`, or to `--output`. Every
+entry has this shape:
+
+```jsonc
+{
+  "id": "10001",
+  "link": "https://<domain>/rest/api/2/issue/10001",
+  "key": "TAROTAPP-1",
+  "fields": {
+    "summary": …, "statuscategorychangedate": …, "created": …, "resolutiondate": …,
+    "lastViewed": …, "updated": …, "description": …,
+    "issuetype": { "name": …, "subtask": …, "entityId": …, "hierarchyLevel": … },
+    "parent": { "id": …, "key": … },
+    "project": { "id": …, "key": …, "name": … },
+    "status": { "id": …, "name": …, "statusCategory": { "id": …, "key": …, "name": … } },
+    "workratio": …, "issuerestriction": …,
+    "priority": { "id": …, "name": … },
+    "labels": [ … ],
+    "storyPoints": …,
+    "assignee": { "accountId": …, "displayName": …, "emailAddress": …, "timeZone": … },
+    "creator":  { … same shape … },
+    "reporter": { … same shape … },
+    "votes": { "votes": …, "hasVoted": … },
+    "attachment": [ { "id": …, "filename": …, "mimeType": …, "size": …, "contentUrl": …, "author": { … } } ],
+    "attachmentsCount": …,
+    "comment": [ { "id": …, "created": …, "updated": …, "jsdPublic": …, "body": …, "author": { … }, "updateAuthor": { … } } ],
+    "commentCount": …,
+    "sprint": [ { "id": …, "name": …, "state": …, "startDate": …, "endDate": …, "completeDate": … } ]
+  },
+  "activeSprint": true
+}
+```
+
+A nested object that Jira returned as `null` becomes an object whose values are all `null`, never
+`null` itself — `parent` above all, since `.fields.parent.key == null` is the documented way to find
+orphaned stories and it throws the moment `parent` itself is null.
+
+#### Examples
+
+```bash
+mgsnake jira-issues                              # stored project key, default destination
+mgsnake jira-issues TAROTAPP -o /tmp/board.json
+mgsnake jira-issues --quiet                      # for scripts and CI
+
+# What is in the current sprint, with points and assignee
+jq -r '.[] | select(.activeSprint)
+        | "\(.key)\t\(.fields.storyPoints // "-")\t\(.fields.assignee.displayName // "unassigned")\t\(.fields.summary)"' \
+   workspace_temp/jira_board_issues.json
+
+# Stories with no epic
+jq -r '.[] | select(.fields.parent.key == null) | .key' workspace_temp/jira_board_issues.json
+
+# Points per assignee in the active sprint
+jq '[.[] | select(.activeSprint)] | group_by(.fields.assignee.displayName)
+     | map({assignee: .[0].fields.assignee.displayName, points: (map(.fields.storyPoints // 0) | add)})' \
+   workspace_temp/jira_board_issues.json
+```
+
+#### Notes
+
+The story points and sprint custom fields are looked up by name (`Story Points`, or
+`Story point estimate` on team-managed projects, and `Sprint`) and cached per clone. Their ids are
+allocated per Jira instance, so the hardcoded `customfield_10016`/`customfield_10020` of the shell
+version projected `null` on any other tenant without saying anything. If the names cannot be found
+at all, those ids are used as a last resort and a warning says so — and that last-resort id is
+deliberately *not* cached, so the warning keeps appearing on every run instead of being silenced by
+a cache entry that looks exactly like a resolved one.
+
+The same restraint applies when *two* fields share a display name, which is ordinary on instances
+that went through a Server-to-Cloud migration or that hold both a company-managed and a
+team-managed project. Story points are looked up under `Story Points` first and `Story point
+estimate` second, and a name declared exactly once is preferred over one declared twice *whatever
+that order says* — the order ranks how likely a name is to be the right field, not how trustworthy
+the answer is, and a certainty beats a coin flip. Only when every candidate name is ambiguous does
+the first declaration win, with a warning naming every candidate and nothing cached, because then
+either id is a guess. To settle it, pin the id yourself:
+`mgsnake config set jira.field.sprint customfield_10020`, which the warning spells out for you.
+
+A pin and a cache entry live in **different keys**, and that separation is what makes pinning work
+at all:
+
+| Key | Written by | Read |
+| --- | --- | --- |
+| `jira.field.sprint` | you, with `config set` | always, and it wins |
+| `jira.field.sprint.cached` | the command itself | only when there is no pin, and not under `--refresh` |
+
+Sharing one key looked tidy and quietly broke all three ways a pin can be used: the resolver wrote
+the id it worked out on top of the pin as soon as a lookup succeeded, `--refresh` deleted the pin it
+could not confirm, and — worst of the three — a pin was only *read* if the other field happened to
+be cached too, so pinning the ambiguous field left the value sitting in the state file, unread,
+while the guess kept being used. Nothing writes the bare key now except you. To undo a pin, remove
+it: `mgsnake config unset jira.field.sprint`.
+
+If you ran an earlier version of this command, the bare key may still hold what it wrote back then
+as a cache, not a pin. The first run after upgrading moves it onto `.cached` automatically — reported
+with an info message naming both keys — so it keeps behaving as a cache (re-resolved on `--refresh`)
+instead of silently freezing on the value it happened to hold.
+
+**A pin you create yourself is never moved.** The move is decided by a version marker the state file
+carries, not by how the keys look: a legacy cache and a fresh pin are the same key holding the same
+kind of value, so there is nothing in their shape to tell apart. Writing any setting stamps the
+marker, so a pin made with `config set` is already stamped before the migration ever looks, and the
+migration runs at most once per clone.
+
+`--refresh` (`-r`) is the escape hatch for the opposite case: an id that *did* resolve, was cached,
+and later changed on the Jira side — a board recreated, a custom field re-created by a migration. A
+stale cached id is the one failure here that says nothing at all — `storyPoints` and `sprint` come
+out `null` on every issue with a successful exit — so if the projection looks empty and no warning
+explains it, re-run with `--refresh`. It re-resolves the board id *and* both field ids, and it is
+symmetric: a cached id the refresh cannot confirm is dropped rather than left behind, so the next
+run resolves it again instead of quietly answering with the entry you just asked it to distrust.
+Pins are untouched — `--refresh` distrusts what the tool worked out, never what you decided — so if
+a run keeps returning the same id despite the flag, check for a pin with
+`mgsnake config list | grep jira.field`.
+
+If the values you get differ from the old script's, the new ones are the correct ones.
+
+With `--output` the working path is left alone entirely: nothing is created, nothing is prompted for
+and nothing is excluded from git. Without it, the default destination lives inside the working path,
+so the command offers to create the folder when it is missing.
+
+The download reads the board's own filter, so "every issue of the board" means exactly what Jira
+means by it — including issues that live outside the project when the filter says so.
+
+Progress goes to the console and the data only to the file, so `--quiet` is safe to combine with
+anything. Every failure exits 1 with the reason on stderr.
+
+On a corporate machine with a TLS-inspecting proxy the request layer will not see the corporate root
+CA, because it validates against its own bundled certificate store rather than the system one. Point
+`REQUESTS_CA_BUNDLE` at the corporate bundle:
+
+```bash
+export REQUESTS_CA_BUNDLE=/etc/ssl/certs/corporate-ca-bundle.crt
+```
+
+Never disable verification instead.
+
+### jira-sprint
+
+Prints the active sprints of a Jira project's Agile board to stdout as a JSON array, and nothing else, so the output can be captured with command substitution. The array is always an array: one active sprint yields a one-element list, and a board with none (kanban, or a sprint that was never started) yields an empty list and a successful exit.
+
+**Synopsis:** `mgsnake jira-sprint [OPTIONS] [PROJECT_KEY]`
+
+**Aliases:** `js`
+
+| Option | Description |
+| --- | --- |
+| `-h, --help` | Show this message and exit. |
+
+- `project_key` — Jira project key. Defaults to the stored jira.project_key.
+
+Answers "what is the team working on right now?" for the board behind a project, in the shape the
+Jira skills consume.
+
+#### Output
+
+Nothing on disk. The board lookup it performs first may populate the cached `jira.board_id`, exactly
+as `jira-board` does.
+
+Each entry carries `id`, `name`, `startDate`, `endDate`, `cloudDomain` and `boardId` — the same keys
+the shell version produced, with `boardId` now a number.
+
+#### Examples
+
+```bash
+mgsnake jira-sprint | jq '.[0].name'
+mgsnake jira-sprint TAROTAPP | jq -r '.[] | "\(.id) \(.name)"'
+```
+
+#### Notes
+
+**Breaking change.** The result is a JSON array. `getSprintInfo.sh` piped `.values[]` through `jq`
+without wrapping it, so a single active sprint came out as a bare object and two came out as two
+concatenated objects — which is not a JSON document at all and blows up in `json.load`. Filters that
+assumed a single object need `jq '.[0]'`.
+
+A board with no active sprint (a kanban board, or a sprint that was never started) prints `[]` and
+exits 0. That is an answer, not a failure.
+
+Boards are per project, so this always resolves the board first; with a warm cache that costs no
+extra request.
+
+The sprint listing is paged through to the end. Jira's Agile API pages with `startAt`/`isLast` and
+never sends a continuation token, so a board with a long sprint history cannot hide an active sprint
+on page two — which would otherwise show up in `jira-issues` as every one of that sprint's issues
+being flagged `activeSprint: false`.
 
 ## Light Weight
 

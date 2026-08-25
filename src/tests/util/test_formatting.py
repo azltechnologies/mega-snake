@@ -297,7 +297,7 @@ def test_ws_error(mk_logger: MagicMock) -> None:
         assert extra.get("namefile") == "unknown file"
 
 
-def test_workspace_error(mk_error: MagicMock) -> None:
+def test_workspace_error(mk_error: MagicMock, tmp_path: pytest.TempPathFactory) -> None:
     """Test WorkspaceError class"""
     value_error_message = "This is a value error"
     workspace_error_message = "This is a workspace error"
@@ -336,7 +336,10 @@ def test_workspace_error(mk_error: MagicMock) -> None:
 
     # Test when logs are set up
     # with patch("mega_snake.util.formatting.logging") as mock_file_handler:
-    config_log("workspace_error_file.log", logging.INFO)
+    # An absolute path under tmp_path: `config_log` resolves a relative name against the current
+    # working directory, which during a test run is the repository root -- so the previous
+    # relative name wrote an untracked `workspace_error_file.log` there on every `pytest`.
+    config_log(str(tmp_path / "workspace_error_file.log"), logging.INFO)
     try:
         raise ValueError(value_error_message)
     except ValueError as val_err:
