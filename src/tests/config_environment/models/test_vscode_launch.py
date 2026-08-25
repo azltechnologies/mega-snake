@@ -63,9 +63,9 @@ def test_add_logger_args() -> None:
         args_size = len(member.args)
         mock = MagicMock()
         mock.return_value = "mocked log path"
-        member.watcher.get_pattern_date = mock
-        member.add_logger_args("path/to/working")
-        mock.assert_called_once()
+        with patch.object(member.watcher, "get_pattern_date", mock):
+            member.add_logger_args("path/to/working")
+            mock.assert_called_once()
         assert len(member.args) == args_size + 3
 
 
@@ -81,9 +81,12 @@ def test_to_dict() -> None:
     list_launch.append(fake_launch)
     for member in list_launch:
         mock = MagicMock()
-        member.add_logger_args = mock
-        result = member.to_dict(param)
-        mock.assert_called_once_with(param)
+        # `fake_launch` is a bare SimpleNamespace, so it has no `add_logger_args` of its own to
+        # save and restore -- `create=True` lets patch.object add it for the block and delete it
+        # again on exit, instead of leaving it stuck on the object for later tests to trip over.
+        with patch.object(member, "add_logger_args", mock, create=True):
+            result = member.to_dict(param)
+            mock.assert_called_once_with(param)
         assert result["name"] == member.task_name
         assert result["type"] == member.task_type
         assert result["request"] == member.request

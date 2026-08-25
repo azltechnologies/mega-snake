@@ -1079,6 +1079,48 @@ def test_task_and_launch_blocks_are_skipped_when_no_member_is_active() -> None:
     assert python_updated is True
 
 
+def test_debug_java_launch_without_watcher_gets_no_input() -> None:
+    """A stack whose only launch configuration is DEBUG_JAVA (no watcher) never gets `todayTimestamp`.
+
+    `_referenced_input_ids` exists precisely because `DEBUG_JAVA` -- the sole launch configuration
+    active for a plain java/gradle/maven repository -- carries no watcher, so nothing in it
+    interpolates `todayTimestamp`. Regressing `_referenced_input_ids` back to "every input of an
+    active stack, unfiltered" would make this input reappear.
+    """
+    java_stacks: set[ProjectStack] = {ProjectStack.COMMON, ProjectStack.JAVA}
+
+    # DEBUG_JAVA is the only launch configuration active for this stack selection, and it has no
+    # watcher -- the exact scenario the docstring of `_referenced_input_ids` describes
+    active_launches = filter_by_stack(VscodeLaunch, java_stacks)
+    assert active_launches == [VscodeLaunch.DEBUG_JAVA]
+    assert VscodeLaunch.DEBUG_JAVA.watcher is None
+
+    empty: dict[str, Any] = {"folders": [], "settings": {}}
+    launch_data, updated = update_vscode_launch(empty, WK_PATH, java_stacks)
+
+    assert updated is True
+    # the block is written -- DEBUG_JAVA itself is a configuration -- but no `.launch.inputs` key is
+    # ever added, since nothing in it calls one: `add_tasks_input` is only reached for a called id
+    assert "inputs" not in launch_data["launch"]
+    launch_inputs = jq.compile(LAUNCH_INPUT_QUERY).input(launch_data).first()
+    assert launch_inputs is None
+    assert VscodeInput.TODAY_TIMESTAMP.input_id not in [entry["id"] for entry in (launch_inputs or [])]
+
+    # the same stack's *task* block does call `todayTimestamp` (via GRADLE_BUILD's watcher, absent
+    # here, or JAVA_REMOTE_DEBUG's) -- this proves the filter is per-block, not per-stack, so the
+    # test above does not pass merely because `java_stacks` never references any input at all
+    tasks_data, _ = update_vscode_tasks(empty, WK_PATH, java_stacks)
+    tasks_inputs = jq.compile(TASKS_INPUT_QUERY).input(tasks_data).first()
+    assert VscodeInput.TODAY_TIMESTAMP.input_id in [entry["id"] for entry in tasks_inputs]
+
+    # a stack whose active launch configurations DO carry a watcher gets the input in `.launch.inputs`
+    # too -- guards the other side of the property, so the negative assertion above does not pass
+    # merely because `.launch.inputs` is never populated for any stack
+    python_launch_data, _ = update_vscode_launch(empty, WK_PATH, PYTHON_STACKS)
+    python_launch_inputs = jq.compile(LAUNCH_INPUT_QUERY).input(python_launch_data).first()
+    assert VscodeInput.TODAY_TIMESTAMP.input_id in [entry["id"] for entry in python_launch_inputs]
+
+
 def test_get_recommended_extensions() -> None:
     """Test that the recommended extensions are collected once and in stack declaration order"""
     result: list[str] = get_recommended_extensions(EVERY_STACK)

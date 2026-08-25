@@ -4,7 +4,8 @@ import os
 import shutil
 import json
 import re
-from typing import Any, Optional
+from collections.abc import Sequence
+from typing import Any, Optional, Union
 import click
 import jq
 from mega_snake.constants import APP_NAME
@@ -14,6 +15,7 @@ from mega_snake.util.formatting import ws_success
 from mega_snake.config_environment.util import update_workspace
 from mega_snake.config_environment.models.github_queries import PrQueries, IssuesQueries
 from mega_snake.config_environment.models.log_viewer_watcher import LogWatcher
+from mega_snake.config_environment.models.reference_text import INPUT_CALL_PATTERN, reference_text
 from mega_snake.config_environment.models.project_stack import (
     ProjectStack,
     describe_stacks,
@@ -446,6 +448,35 @@ def _update_log_watchers(
     return json_data, updated
 
 
+def _referenced_input_ids(members: Sequence[Union[VscodeTask, VscodeLaunch]], working_path: str) -> set[str]:
+    """Collect every input id the given tasks or launch configurations interpolate.
+
+    An input is only useful to VS Code while something in its own block calls it, and the two blocks
+    are filtered independently: `InputType.LAUNCH` never reaches `.tasks.inputs`, and a stack may
+    activate an input whose only caller belongs to another stack. `DEBUG_JAVA` is the case that made
+    this necessary — it is the only launch configuration of `java`/`gradle`/`maven` and it carries no
+    watcher, so every plain `pom.xml` or `build.gradle` repository used to get `todayTimestamp` in
+    `.launch.inputs` with nothing interpolating it.
+
+    The watcher redirect is asked of the watcher rather than read back from `args`: `add_logger_args`
+    only appends it while `to_dict` runs, which happens after the inputs are written.
+
+    Parameters:
+        members: The tasks or launch configurations that survived the stack filter.
+        working_path: Path of the working folder the redirect is anchored to.
+
+    Raises:
+        None
+
+    Returns:
+        set[str]: The ids of the inputs those members call.
+    """
+    referenced: set[str] = set()
+    for member in members:
+        referenced.update(INPUT_CALL_PATTERN.findall(reference_text(member, working_path)))
+    return referenced
+
+
 def _update_vscode_tasks(
     json_data: dict[str, Any], working_path: str, stacks: set[ProjectStack]
 ) -> tuple[dict[str, Any], bool]:
@@ -468,10 +499,11 @@ def _update_vscode_tasks(
     """
     updated = False
 
-    # The version and the inputs are the container of the tasks, and nothing else consumes them:
-    # `todayTimestamp` is only ever interpolated into a task command. Writing them for a workspace
-    # with no active task would leave a `"version": "2.0.0"` block holding an input nobody calls,
-    # which is what the module promises not to do.
+    # The version and the inputs are the container of the tasks, and nothing else consumes them.
+    # Writing them for a workspace with no active task would leave a `"version": "2.0.0"` block
+    # holding an input nobody calls, which is what the module promises not to do. The same promise
+    # is what `_referenced_input_ids` enforces per input below: surviving the stack filter is not
+    # enough, an active task in this block has to interpolate it.
     active_tasks: list[VscodeTask] = filter_by_stack(VscodeTask, stacks)
     if not active_tasks:
         return json_data, False
@@ -481,7 +513,12 @@ def _update_vscode_tasks(
         updated = True
         json_data = res
 
-    for input_type in [a for a in filter_by_stack(VscodeInput, stacks) if a.enum_type != InputType.LAUNCH]:
+    called_inputs: set[str] = _referenced_input_ids(active_tasks, working_path)
+    for input_type in [
+        a
+        for a in filter_by_stack(VscodeInput, stacks)
+        if a.enum_type != InputType.LAUNCH and a.input_id in called_inputs
+    ]:
         res = input_type.add_tasks_input(json_data, TASKS_INPUT_QUERY)
         if res:
             updated = True
@@ -517,8 +554,10 @@ def _update_vscode_launch(
     """
     updated = False
 
-    # Same reasoning as the tasks above: the inputs of this block are only referenced by the launch
-    # configurations themselves, through the log redirect their watcher builds.
+    # Same reasoning as the tasks above, and the same per-input check: a launch configuration only
+    # ever reaches an input through the log redirect its watcher builds, so a stack whose only
+    # configuration carries no watcher (`DEBUG_JAVA`, i.e. every plain java/gradle/maven repository)
+    # must get the block without the input rather than an input nothing interpolates.
     active_launches: list[VscodeLaunch] = filter_by_stack(VscodeLaunch, stacks)
     if not active_launches:
         return json_data, False
@@ -528,7 +567,10 @@ def _update_vscode_launch(
         updated = True
         json_data = res
 
-    for input_type in [a for a in filter_by_stack(VscodeInput, stacks) if a.enum_type != InputType.TASK]:
+    called_inputs: set[str] = _referenced_input_ids(active_launches, working_path)
+    for input_type in [
+        a for a in filter_by_stack(VscodeInput, stacks) if a.enum_type != InputType.TASK and a.input_id in called_inputs
+    ]:
         res = input_type.add_tasks_input(json_data, LAUNCH_INPUT_QUERY)
         if res:
             updated = True

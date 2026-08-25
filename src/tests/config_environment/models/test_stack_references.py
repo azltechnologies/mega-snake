@@ -10,17 +10,16 @@ watcher that was filtered out. VS Code reports that only when the developer runs
 These tests walk the whole universe instead of sampling the tags that happen to exist today.
 """
 
-import json
 import re
 from typing import Optional, Union
 
 from mega_snake.config_environment.create_working_env import DEFAULT_PROPS
 from mega_snake.config_environment.models.project_stack import ProjectStack, expand, resolve_stacks
+from mega_snake.config_environment.models.reference_text import INPUT_CALL_PATTERN, reference_text
 from mega_snake.config_environment.models.vscode_input import VscodeInput
 from mega_snake.config_environment.models.vscode_launch import REMOTE_DEBUG_PORT_QUERY, VscodeLaunch
 from mega_snake.config_environment.models.vscode_task import VscodeTask
 
-INPUT_CALL_PATTERN = re.compile(r"\$\{input:([^}]+)\}")
 CONFIG_REF_PATTERN = re.compile(r"\$\{config:([^}]+)\}")
 
 # Any path works: only the `${input:...}` the redirect interpolates is of interest, never the
@@ -45,34 +44,6 @@ def _activated_by(stack: ProjectStack) -> set[ProjectStack]:
     if stack.opt_in:
         return {ProjectStack.COMMON, *expand(stack)}
     return resolve_stacks([stack.key])
-
-
-def _reference_text(member: Union[VscodeTask, VscodeLaunch]) -> str:
-    """Join every field of a member that VS Code interpolates references out of.
-
-    `extra_args` is included, and that is the point: `to_dict` emits it verbatim, so the Windows
-    overrides on the Gradle build tasks (`{"windows": {"command": …, "args": …}}`) and a launch's
-    `port`/`program` entries are as much a reference site as `command` is. Scanning only `command`
-    and `args` left them outside the walk this module claims to be exhaustive.
-
-    Parameters:
-        member: The task or launch configuration to flatten.
-
-    Returns:
-        str: Every interpolatable field, joined; JSON for the nested ones so no value is lost.
-    """
-    parts: list[str] = [getattr(member, "command", None) or "", *getattr(member, "args", [])]
-    for nested in (getattr(member, "extra_args", None), getattr(member, "env", None)):
-        if nested:
-            parts.append(json.dumps(nested))
-    # The redirect a watcher builds is rendered, not stored. `add_logger_args` appends it to
-    # `member.args` -- but it does so by mutating the enum member in place, from inside `to_dict()`,
-    # so in a fresh process `args` does not contain it and the walk sees nothing. Calling `to_dict`
-    # here would find it at the price of leaving that mutation behind for every later test in the
-    # session; asking the watcher for the same string costs nothing and is order-independent.
-    if getattr(member, "watcher", None):
-        parts.append(member.watcher.get_pattern_date(WATCHER_PROBE_PATH))
-    return " ".join(parts)
 
 
 def _owner_of_label(label: str) -> VscodeTask:
@@ -122,7 +93,7 @@ def test_task_input_calls_stay_inside_their_own_stacks() -> None:
     inputs_by_id: dict[str, VscodeInput] = {member.input_id: member for member in VscodeInput}
     for task in VscodeTask:
         active: set[ProjectStack] = _activated_by(task.stack)
-        for input_id in INPUT_CALL_PATTERN.findall(_reference_text(task)):
+        for input_id in INPUT_CALL_PATTERN.findall(reference_text(task, WATCHER_PROBE_PATH)):
             assert input_id in inputs_by_id, f"{task.name} calls '${{input:{input_id}}}', which no VscodeInput declares"
             referenced: VscodeInput = inputs_by_id[input_id]
             assert referenced.stack in active, (
@@ -152,7 +123,7 @@ def test_launch_input_calls_stay_inside_their_own_stacks() -> None:
     inputs_by_id: dict[str, VscodeInput] = {member.input_id: member for member in VscodeInput}
     for launch in VscodeLaunch:
         active: set[ProjectStack] = _activated_by(launch.stack)
-        for input_id in INPUT_CALL_PATTERN.findall(_reference_text(launch)):
+        for input_id in INPUT_CALL_PATTERN.findall(reference_text(launch, WATCHER_PROBE_PATH)):
             assert input_id in inputs_by_id, (
                 f"{launch.name} calls '${{input:{input_id}}}', which no VscodeInput declares"
             )
@@ -177,7 +148,7 @@ def test_the_input_reference_walk_actually_sees_something() -> None:
     stays satisfied by whichever reference happens to survive a refactor.
     """
     def calls(member: Union[VscodeTask, VscodeLaunch]) -> list[str]:
-        return INPUT_CALL_PATTERN.findall(_reference_text(member))
+        return INPUT_CALL_PATTERN.findall(reference_text(member, WATCHER_PROBE_PATH))
 
     task_refs: dict[str, list[str]] = {member.name: calls(member) for member in VscodeTask if calls(member)}
     launch_refs: dict[str, list[str]] = {member.name: calls(member) for member in VscodeLaunch if calls(member)}
@@ -193,7 +164,7 @@ def test_the_input_reference_walk_actually_sees_something() -> None:
     for owner in (VscodeLaunch.DEBUG_PYTHON_FILE.name, VscodeTask.GRADLE_BUILD.name):
         refs: dict[str, list[str]] = launch_refs if owner in launch_refs else task_refs
         assert VscodeInput.TODAY_TIMESTAMP.input_id in refs.get(owner, []), (
-            f"{owner} no longer contributes the redirect's ${{input:...}}; _reference_text stopped "
+            f"{owner} no longer contributes the redirect's ${{input:...}}; reference_text stopped "
             f"reading the watcher redirect: tasks={task_refs} launches={launch_refs}"
         )
 
@@ -211,7 +182,7 @@ def test_config_references_stay_inside_their_own_stacks() -> None:
     """
     for member in (*VscodeTask, *VscodeLaunch):
         active: set[ProjectStack] = _activated_by(member.stack)
-        for key in CONFIG_REF_PATTERN.findall(_reference_text(member)):
+        for key in CONFIG_REF_PATTERN.findall(reference_text(member, WATCHER_PROBE_PATH)):
             owner: Optional[ProjectStack] = PROP_OWNER.get(key)
             if owner is None:
                 continue
@@ -224,16 +195,18 @@ def test_config_references_stay_inside_their_own_stacks() -> None:
 def test_the_config_reference_walk_actually_sees_something() -> None:
     """The walk above is only meaningful while some member really does read a DEFAULT_PROPS key.
 
-    Without this, deleting every `${config:…}` reference -- or breaking `_reference_text` -- would
+    Without this, deleting every `${config:…}` reference -- or breaking `reference_text` -- would
     leave `test_config_references_stay_inside_their_own_stacks` passing over an empty loop, which is
     the shape of a test that verifies nothing.
     """
     referenced: set[str] = set()
     for member in (*VscodeTask, *VscodeLaunch):
-        referenced.update(key for key in CONFIG_REF_PATTERN.findall(_reference_text(member)) if key in PROP_OWNER)
+        referenced.update(
+            key for key in CONFIG_REF_PATTERN.findall(reference_text(member, WATCHER_PROBE_PATH)) if key in PROP_OWNER
+        )
     assert referenced, "no member reads a DEFAULT_PROPS setting; the config-reference invariant walks nothing"
     # DEBUG_JAVA reads the port from `extra_args` and from nowhere else, so it is the one member that
-    # proves `_reference_text` reaches in there -- the precise gap this walk was extended to close.
-    assert REMOTE_DEBUG_PORT_QUERY in CONFIG_REF_PATTERN.findall(_reference_text(VscodeLaunch.DEBUG_JAVA)), (
-        "DEBUG_JAVA's `${config:…}` port lives in extra_args; _reference_text no longer reads that field"
-    )
+    # proves `reference_text` reaches in there -- the precise gap this walk was extended to close.
+    assert REMOTE_DEBUG_PORT_QUERY in CONFIG_REF_PATTERN.findall(
+        reference_text(VscodeLaunch.DEBUG_JAVA, WATCHER_PROBE_PATH)
+    ), "DEBUG_JAVA's `${config:…}` port lives in extra_args; reference_text no longer reads that field"

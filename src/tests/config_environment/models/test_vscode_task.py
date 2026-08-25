@@ -58,9 +58,9 @@ def test_add_logger_args() -> None:
         args_size = len(member.args)
         mock = MagicMock()
         mock.return_value = "mocked log path"
-        member.watcher.get_pattern_date = mock
-        member.add_logger_args("path/to/working")
-        mock.assert_called_once()
+        with patch.object(member.watcher, "get_pattern_date", mock):
+            member.add_logger_args("path/to/working")
+            mock.assert_called_once()
         assert len(member.args) == args_size + 3
 
 
@@ -69,9 +69,9 @@ def test_to_dict() -> None:
     param = "path/to/working"
     for member in VscodeTask:
         mock = MagicMock()
-        member.add_logger_args = mock
-        result = member.to_dict(param)
-        mock.assert_called_once_with(param)
+        with patch.object(member, "add_logger_args", mock):
+            result = member.to_dict(param)
+            mock.assert_called_once_with(param)
         assert result["label"] == member.label
         assert result["hide"] == member.hidden
         assert result["detail"] == member.detail

@@ -257,9 +257,10 @@ class VscodeTask(Enum):
     #    `test_launch_input_calls_stay_inside_their_own_stacks` shipped green over an empty loop
     #    because in a fresh interpreter `args` does not contain the redirect, while any earlier test
     #    that called `to_dict` would have retroactively put it there -- making the test's result
-    #    depend on pytest's collection order. `_reference_text` in
-    #    `src/tests/config_environment/models/test_stack_references.py` now asks the watcher for the
-    #    rendered redirect rather than reading `args`, precisely to stay out of this.
+    #    depend on pytest's collection order. `reference_text` in
+    #    `src/mega_snake/config_environment/models/reference_text.py` (used from both this module's
+    #    caller and `test_stack_references.py`) now asks the watcher for the rendered redirect rather
+    #    than reading `args`, precisely to stay out of this.
     #
     # The fix is small and local: leave `self.args` alone and have `to_dict` compose the value it
     # emits, e.g. `args = [*self.args, *self._logger_args(working_path)]`, turning this method into a

@@ -235,7 +235,10 @@ in a folder where the Java stack was skipped.
 
 Skipping a stack never removes anything: recommended extensions, tasks and launch configurations
 already present in the `.code-workspace` file are left untouched, so a workspace configured before
-a stack was dropped keeps working. Remove those entries by hand when you want them gone.
+a stack was dropped keeps working. Remove those entries by hand when you want them gone. A Python
+repository that used to see `PYTHON DEBUG (Snake)` in a freshly generated workspace and no longer
+does has not lost anything by mistake — that entry only ever belonged to the opt-in `snake` stack
+above, and this is the paragraph that explains its absence.
 
 Requires a valid Git repository. Developer-specific overrides are loaded before the defaults are
 written, so anything you set through `init-local-config` wins over the values this command
