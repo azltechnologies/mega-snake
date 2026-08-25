@@ -4,6 +4,7 @@ import os
 import shutil
 import json
 import re
+from functools import lru_cache
 from collections.abc import Callable, Sequence
 from typing import Any, Optional, Union
 import click
@@ -232,9 +233,14 @@ DEFAULT_PROPS: dict[ProjectStack, dict[str, Any]] = {
     ProjectStack.JAVA: {
         REMOTE_DEBUG_PORT_QUERY: 5005,
         "mgsnake.java.remoteDebug.profile": "dev",
-        "mgsnake.java.remoteDebug.jar": "build/libs/*.jar",
         "java.jdt.ls.vmargs": "-XX:+UseParallelGC -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90"
         " -Dsun.zip.disableMemoryMapping=true -Xmx4G -Xms100m -Xlog:disable",
+    },
+    ProjectStack.GRADLE: {
+        "mgsnake.java.remoteDebug.jar": "build/libs/*.jar",
+    },
+    ProjectStack.MAVEN: {
+        "mgsnake.java.remoteDebug.jar": "target/*.jar",
     },
 }
 FILE_ASSOCIATION_QUERY = '.settings.["files.associations"]'
@@ -459,8 +465,9 @@ def _referenced_input_ids(members: Sequence[Union[VscodeTask, VscodeLaunch]], wo
     watcher, so every plain `pom.xml` or `build.gradle` repository used to get `todayTimestamp` in
     `.launch.inputs` with nothing interpolating it.
 
-    The watcher redirect is asked of the watcher rather than read back from `args`: `add_logger_args`
-    only appends it while `to_dict` runs, which happens after the inputs are written.
+    The watcher redirect is asked of the watcher rather than read back from `args`: `args` holds
+    only what the member declares, and `to_dict` composes the redirect onto a copy of it, so it
+    never appears there.
 
     Parameters:
         members: The tasks or launch configurations that survived the stack filter.
@@ -476,6 +483,30 @@ def _referenced_input_ids(members: Sequence[Union[VscodeTask, VscodeLaunch]], wo
     for member in members:
         referenced.update(INPUT_CALL_PATTERN.findall(reference_text(member, working_path)))
     return referenced
+
+
+@lru_cache(maxsize=None)
+def _active_inputs(stacks: frozenset[ProjectStack]) -> tuple[VscodeInput, ...]:
+    """Filter the inputs of the active stacks, once per distinct stack set.
+
+    `_update_stack_block` runs twice per `working-env` invocation -- once for `.tasks`, once for
+    `.launch` -- on the very same active stacks, and used to rescan `VscodeInput` on each of them
+    to reach the identical list. The answer depends on nothing but the given stacks and the stack
+    each input is tagged with, and neither moves while the process runs.
+
+    A tuple, not the list `filter_by_stack` returns: the same object is handed to both blocks, so it
+    has to be something neither of them can reorder for the other.
+
+    A test that retags a `VscodeInput` member has to call `_active_inputs.cache_clear()`, since the
+    tag is the one input to this function that is not part of its key.
+
+    Parameters:
+        stacks: The active stacks.
+
+    Returns:
+        tuple[VscodeInput, ...]: The inputs belonging to an active stack, in declaration order.
+    """
+    return tuple(filter_by_stack(VscodeInput, stacks))
 
 
 def _update_stack_block(
@@ -527,7 +558,7 @@ def _update_stack_block(
         json_data = res
 
     called_inputs: set[str] = _referenced_input_ids(members, working_path)
-    for input_type in filter_by_stack(VscodeInput, stacks):
+    for input_type in _active_inputs(frozenset(stacks)):
         if input_type.enum_type == foreign_inputs or input_type.input_id not in called_inputs:
             continue
         res = input_type.add_tasks_input(json_data, input_query)

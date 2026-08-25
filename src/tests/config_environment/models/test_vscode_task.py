@@ -1,6 +1,6 @@
 """Test for VscodeTask model"""
 
-from typing import Generator
+from typing import Any, Generator
 from unittest.mock import patch, MagicMock
 import pytest
 from mega_snake.config_environment.models.project_stack import ProjectStack
@@ -52,24 +52,47 @@ def test_stack() -> None:
     assert VscodeTask.RUN_JAVA_DEBUG.stack is ProjectStack.GRADLE
 
 
-def test_add_logger_args() -> None:
-    """Test add_logger_args"""
-    for member in [t for t in VscodeTask if t.watcher]:
-        args_size = len(member.args)
-        mock = MagicMock()
-        mock.return_value = "mocked log path"
-        with patch.object(member.watcher, "get_pattern_date", mock):
-            member.add_logger_args("path/to/working")
-            mock.assert_called_once()
-        assert len(member.args) == args_size + 3
+def test_logger_args() -> None:
+    """The redirect is returned, never appended to the member's own args."""
+    for member in VscodeTask:
+        declared: list[str] = list(member.args)
+        if member.watcher:
+            mock = MagicMock(return_value="> 'mocked log path' 2>&1")
+            with patch.object(member.watcher, "get_pattern_date", mock):
+                result: list[str] = member.logger_args("path/to/working")
+                mock.assert_called_once_with("path/to/working")
+            assert result == [">", "'mocked", "log", "path'", "2>&1"]
+        else:
+            assert member.logger_args("path/to/working") == []
+        assert member.args == declared, f"{member.name} mutated its own args"
+
+
+def test_to_dict_is_repeatable() -> None:
+    """Two `to_dict` calls on the same member emit the redirect exactly once each."""
+    member: VscodeTask = VscodeTask.GRADLE_BUILD
+    assert member.watcher, "this test needs a task that actually redirects into a watcher"
+    declared: list[str] = list(member.args)
+    expected: list[str] = [*declared, *member.watcher.get_pattern_date("wp").split(" ")]
+
+    first: dict[str, Any] = member.to_dict("wp")
+    second: dict[str, Any] = member.to_dict("wp")
+
+    assert first == second
+    assert first["args"] == expected
+    assert first["args"].count("2>&1") == 1
+    assert member.args == declared, "to_dict wrote the redirect back into the enum member"
+
+    first["args"].append("polluted")
+    assert member.args == declared
+    assert member.to_dict("wp")["args"] == expected
 
 
 def test_to_dict() -> None:
     """Test to_dict"""
     param = "path/to/working"
     for member in VscodeTask:
-        mock = MagicMock()
-        with patch.object(member, "add_logger_args", mock):
+        mock = MagicMock(return_value=[])
+        with patch.object(member, "logger_args", mock):
             result = member.to_dict(param)
             mock.assert_called_once_with(param)
         assert result["label"] == member.label

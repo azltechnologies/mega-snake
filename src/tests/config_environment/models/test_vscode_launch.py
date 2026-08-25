@@ -1,7 +1,7 @@
 """Test for VscodeLaunch model"""
 
 from pathlib import Path
-from typing import Generator
+from typing import Any, Generator
 from types import SimpleNamespace, MethodType
 import inspect
 from unittest.mock import patch, MagicMock
@@ -57,16 +57,19 @@ def test_add_launch_version() -> None:
         assert result is None
 
 
-def test_add_logger_args() -> None:
-    """Test add_logger_args"""
-    for member in [t for t in VscodeLaunch if t.watcher]:
-        args_size = len(member.args)
-        mock = MagicMock()
-        mock.return_value = "mocked log path"
-        with patch.object(member.watcher, "get_pattern_date", mock):
-            member.add_logger_args("path/to/working")
-            mock.assert_called_once()
-        assert len(member.args) == args_size + 3
+def test_logger_args() -> None:
+    """The redirect is returned, never appended to the member's own args."""
+    for member in VscodeLaunch:
+        declared: list[str] = list(member.args)
+        if member.watcher:
+            mock = MagicMock(return_value="> 'mocked log path' 2>&1")
+            with patch.object(member.watcher, "get_pattern_date", mock):
+                result: list[str] = member.logger_args("path/to/working")
+                mock.assert_called_once_with("path/to/working")
+            assert result == [">", "'mocked", "log", "path'", "2>&1"]
+        else:
+            assert member.logger_args("path/to/working") == []
+        assert member.args == declared, f"{member.name} mutated its own args"
 
 
 def test_to_dict() -> None:
@@ -80,11 +83,11 @@ def test_to_dict() -> None:
     fake_launch.task_type = "fake"
     list_launch.append(fake_launch)
     for member in list_launch:
-        mock = MagicMock()
-        # `fake_launch` is a bare SimpleNamespace, so it has no `add_logger_args` of its own to
+        mock = MagicMock(return_value=[])
+        # `fake_launch` is a bare SimpleNamespace, so it has no `logger_args` of its own to
         # save and restore -- `create=True` lets patch.object add it for the block and delete it
         # again on exit, instead of leaving it stuck on the object for later tests to trip over.
-        with patch.object(member, "add_logger_args", mock, create=True):
+        with patch.object(member, "logger_args", mock, create=True):
             result = member.to_dict(param)
             mock.assert_called_once_with(param)
         assert result["name"] == member.task_name
@@ -101,6 +104,23 @@ def test_to_dict() -> None:
             assert result[key] == value
         # the stack only decides whether the configuration is written, it is not part of it
         assert "stack" not in result
+
+
+def test_to_dict_is_repeatable() -> None:
+    """Two `to_dict` calls on the same configuration emit the redirect exactly once each."""
+    member: VscodeLaunch = VscodeLaunch.DEBUG_PYTHON_FILE
+    assert member.watcher, "this test needs a configuration that actually redirects into a watcher"
+    assert member.task_type == "debugpy", "this test exists to cover the joined-args branch"
+    declared: list[str] = list(member.args)
+    expected: str = " ".join([*declared, *member.watcher.get_pattern_date("wp").split(" ")])
+
+    first: dict[str, Any] = member.to_dict("wp")
+    second: dict[str, Any] = member.to_dict("wp")
+
+    assert first == second
+    assert first["args"] == expected
+    assert first["args"].count("2>&1") == 1
+    assert member.args == declared, "to_dict wrote the redirect back into the enum member"
 
 
 def test_stack(tmp_path: Path) -> None:

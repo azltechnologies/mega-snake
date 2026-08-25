@@ -16,6 +16,7 @@ from mega_snake.config_environment.create_working_env import (
     _configure_tools as configure_tools,
     _update_vscode_tasks as update_vscode_tasks,
     _update_vscode_launch as update_vscode_launch,
+    _active_inputs as active_inputs,
     _launch_substituter as launch_substituter,
     EXTENSIONS_QUERY,
     GIT_BLAME_QUERY,
@@ -1013,6 +1014,73 @@ def test_add_default_settings_only_writes_active_stacks(
     assert jq.compile(f'{FILE_ASSOCIATION_QUERY}.["*.yml"]').input(result_data).first() == "yaml"
 
 
+def test_maven_gets_correct_jar_path_not_gradle_default(
+    get_property: MagicMock,
+    mk_input: MagicMock,
+    os_replace: MagicMock,
+    ws_success: MagicMock,
+    ws_advice: MagicMock,
+    get_remote_url: MagicMock,
+) -> None:
+    """Maven-only stacks use target/*.jar, not the Gradle default build/libs/*.jar"""
+    get_remote_url.return_value = "https://github.com/dummy_user/dummy_repo"
+    mk_input.return_value = ""
+    m_open: MagicMock = mock_open()
+    file_mock: MagicMock = m_open.return_value
+    write_mock: MagicMock = file_mock.write
+
+    def read_side_effect() -> str:
+        """Read the real fixture file behind the mocked open call"""
+        with real_open(m_open.call_args.args[0], "r", encoding="utf-8") as file:
+            return file.read()
+
+    file_mock.read.side_effect = read_side_effect
+    maven_stacks: set[ProjectStack] = {ProjectStack.COMMON, ProjectStack.JAVA, ProjectStack.MAVEN}
+
+    with patch("builtins.open", m_open):
+        add_default_settings(EMPTY_WK_FILE, WK_PATH, maven_stacks)
+        result_data: dict[str, Any] = written_workspace(write_mock)
+
+    # verify Maven gets target/*.jar, not build/libs/*.jar
+    jar_path: str = jq.compile('.settings.["mgsnake.java.remoteDebug.jar"]').input(result_data).first()
+    assert jar_path == "target/*.jar", f"Maven should use target/*.jar but got {jar_path}"
+    assert jar_path != "build/libs/*.jar", "Maven should not inherit Gradle's default"
+    ws_success.assert_called_once()
+
+
+def test_gradle_gets_correct_jar_path(
+    get_property: MagicMock,
+    mk_input: MagicMock,
+    os_replace: MagicMock,
+    ws_success: MagicMock,
+    ws_advice: MagicMock,
+    get_remote_url: MagicMock,
+) -> None:
+    """Gradle-only stacks use build/libs/*.jar"""
+    get_remote_url.return_value = "https://github.com/dummy_user/dummy_repo"
+    mk_input.return_value = ""
+    m_open: MagicMock = mock_open()
+    file_mock: MagicMock = m_open.return_value
+    write_mock: MagicMock = file_mock.write
+
+    def read_side_effect() -> str:
+        """Read the real fixture file behind the mocked open call"""
+        with real_open(m_open.call_args.args[0], "r", encoding="utf-8") as file:
+            return file.read()
+
+    file_mock.read.side_effect = read_side_effect
+    gradle_stacks: set[ProjectStack] = {ProjectStack.COMMON, ProjectStack.JAVA, ProjectStack.GRADLE}
+
+    with patch("builtins.open", m_open):
+        add_default_settings(EMPTY_WK_FILE, WK_PATH, gradle_stacks)
+        result_data: dict[str, Any] = written_workspace(write_mock)
+
+    # verify Gradle gets build/libs/*.jar
+    jar_path: str = jq.compile('.settings.["mgsnake.java.remoteDebug.jar"]').input(result_data).first()
+    assert jar_path == "build/libs/*.jar", f"Gradle should use build/libs/*.jar but got {jar_path}"
+    ws_success.assert_called_once()
+
+
 def test_narrowing_the_stacks_never_removes_existing_entries(
     get_property: MagicMock,
     mk_input: MagicMock,
@@ -1080,6 +1148,21 @@ def test_task_and_launch_blocks_are_skipped_when_no_member_is_active() -> None:
     # simply reporting that nothing is ever written
     _, python_updated = update_vscode_launch(empty, WK_PATH, PYTHON_STACKS)
     assert python_updated is True
+
+
+def test_the_active_inputs_are_filtered_once_for_both_blocks() -> None:
+    """`VscodeInput` is scanned once per run, not once per block."""
+    active_inputs.cache_clear()
+    empty: dict[str, Any] = {"folders": [], "settings": {}}
+
+    update_vscode_tasks(empty, WK_PATH, EVERY_STACK)
+    update_vscode_launch(empty, WK_PATH, EVERY_STACK)
+
+    info = active_inputs.cache_info()
+    assert info.misses == 1, f"the input enum was rescanned for the second block: {info}"
+    assert info.hits == 1, f"the second block did not reuse the first block's filtering: {info}"
+
+    assert list(active_inputs(frozenset(EVERY_STACK))) == filter_by_stack(VscodeInput, EVERY_STACK)
 
 
 def test_debug_java_launch_without_watcher_gets_no_input() -> None:

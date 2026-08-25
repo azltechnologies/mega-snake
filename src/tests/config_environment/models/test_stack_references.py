@@ -148,10 +148,12 @@ def test_the_input_reference_walk_actually_sees_something() -> None:
 
     `test_launch_input_calls_stay_inside_their_own_stacks` shipped green over an **empty loop**: no
     launch configuration carries a `${input:...}` in `command`/`args`/`extra_args`/`env` at import
-    time, and the one edge that exists -- the watcher redirect -- reached `args` only because
-    `add_logger_args` mutates the enum member in place from inside `to_dict()`. A test whose
+    time, and the one edge that exists -- the watcher redirect -- used to reach `args` only because
+    the enum member's own `add_logger_args` mutated it in place from inside `to_dict()`. A test whose
     docstring promises an invariant while its body distinguishes no behaviour is the failure the
     sibling config guard was written to prevent, and it was reproduced here one test later.
+    `reference_text` now asks the watcher for the redirect directly (`VscodeTask.logger_args` /
+    `VscodeLaunch.logger_args`), which is what keeps this walk meaningful in a fresh process too.
 
     So both walks are pinned by the field they must reach, not merely by being non-empty: a count
     stays satisfied by whichever reference happens to survive a refactor.
