@@ -7,7 +7,9 @@ import pytest
 from mega_snake.config_environment.models.project_stack import (
     ALL_STACKS,
     SNAKE_MARKER,
+    collect_by_stack,
     expand,
+    merge_by_stack,
     NO_ASSOCIATIONS,
     NO_EXTENSIONS,
     ProjectStack,
@@ -256,3 +258,43 @@ def test_describe_stacks() -> None:
     assert lines[0].strip() == f"{ProjectStack.COMMON.key}: {ProjectStack.COMMON.description}"
     assert lines[1].strip() == f"{ProjectStack.JAVA.key}: {ProjectStack.JAVA.description}"
     assert describe_stacks([]) == ""
+
+
+def test_collect_by_stack_orders_by_declaration_and_keeps_the_first_occurrence() -> None:
+    """The collected order follows the enum, not the caller's set, and a repeat is kept once.
+
+    The stacks are passed in reverse declaration order on purpose: a helper that simply iterated the
+    argument would produce the node contribution first and pass an assertion written against its own
+    input.
+    """
+    contributions: dict[ProjectStack, list[str]] = {
+        ProjectStack.JAVA: ["shared-extension", "java-extension"],
+        ProjectStack.NODE: ["node-extension", "shared-extension"],
+    }
+    collected = collect_by_stack([ProjectStack.NODE, ProjectStack.JAVA], lambda stack: contributions.get(stack, []))
+
+    assert collected == ["shared-extension", "java-extension", "node-extension"]
+    # an inactive stack contributes nothing, however loudly it is declared
+    assert collect_by_stack([ProjectStack.JAVA], lambda stack: contributions.get(stack, [])) == [
+        "shared-extension",
+        "java-extension",
+    ]
+
+
+def test_merge_by_stack_gives_the_last_declared_stack_the_final_say() -> None:
+    """A key contributed twice takes the value of the stack declared last, and only that one.
+
+    The two values are distinguishable on purpose: with the same value on both sides, an
+    implementation that dropped the second contribution entirely would pass just as well.
+    """
+    contributions: dict[ProjectStack, dict[str, str]] = {
+        ProjectStack.JAVA: {"shared.key": "from-java", "java.key": "java-only"},
+        ProjectStack.NODE: {"shared.key": "from-node"},
+    }
+    merged = merge_by_stack([ProjectStack.NODE, ProjectStack.JAVA], lambda stack: contributions.get(stack, {}))
+
+    assert merged["shared.key"] == "from-node", "the stack declared last must win"
+    assert merged["shared.key"] != "from-java"
+    assert merged == {"shared.key": "from-node", "java.key": "java-only"}
+    # and the loser's value is what remains once the winner is not active any more
+    assert merge_by_stack([ProjectStack.JAVA], lambda stack: contributions.get(stack, {}))["shared.key"] == "from-java"

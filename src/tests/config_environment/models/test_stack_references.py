@@ -10,10 +10,15 @@ watcher that was filtered out. VS Code reports that only when the developer runs
 These tests walk the whole universe instead of sampling the tags that happen to exist today.
 """
 
+import inspect
 import re
+from enum import EnumMeta
 from typing import Optional, Union
 
+import pytest
+
 from mega_snake.config_environment.create_working_env import DEFAULT_PROPS
+from mega_snake.config_environment.models.log_viewer_watcher import LogWatcher
 from mega_snake.config_environment.models.project_stack import ProjectStack, expand, resolve_stacks
 from mega_snake.config_environment.models.reference_text import INPUT_CALL_PATTERN, reference_text
 from mega_snake.config_environment.models.vscode_input import VscodeInput
@@ -21,6 +26,10 @@ from mega_snake.config_environment.models.vscode_launch import REMOTE_DEBUG_PORT
 from mega_snake.config_environment.models.vscode_task import VscodeTask
 
 CONFIG_REF_PATTERN = re.compile(r"\$\{config:([^}]+)\}")
+
+# Every enum whose members satisfy the `StackAware` protocol, i.e. everything the workspace writer
+# filters by stack. A new one added later is expected to be listed here.
+STACK_AWARE_ENUMS: list[EnumMeta] = [VscodeTask, VscodeLaunch, VscodeInput, LogWatcher]
 
 # Any path works: only the `${input:...}` the redirect interpolates is of interest, never the
 # folder it is anchored to.
@@ -210,3 +219,27 @@ def test_the_config_reference_walk_actually_sees_something() -> None:
     assert REMOTE_DEBUG_PORT_QUERY in CONFIG_REF_PATTERN.findall(
         reference_text(VscodeLaunch.DEBUG_JAVA, WATCHER_PROBE_PATH)
     ), "DEBUG_JAVA's `${config:…}` port lives in extra_args; reference_text no longer reads that field"
+
+
+@pytest.mark.parametrize(
+    "enum_class",
+    [pytest.param(enum_class, id=enum_class.__name__) for enum_class in STACK_AWARE_ENUMS],
+)
+def test_every_stack_aware_member_declares_its_stack_explicitly(enum_class: EnumMeta) -> None:
+    """No `StackAware` enum may give `stack` a default, so an untagged member cannot be constructed.
+
+    With `stack: ProjectStack = ProjectStack.COMMON`, a member that forgot the tag and a member that
+    is deliberately shared produced identical state, and `COMMON` is always active -- so the mistake
+    wrote the artifact into every workspace, on every repository, and the reference walks in this
+    module passed it happily (a wrongly-`COMMON` member's referents are trivially reachable). Making
+    the argument mandatory turns that into a `TypeError` at import time, which is the only moment it
+    can be caught, and it is checked over every enum rather than one because the guard used to be a
+    hand-copied assertion that `VscodeLaunch` never received.
+    """
+    parameter = inspect.signature(enum_class.__init__).parameters["stack"]
+    assert parameter.default is inspect.Parameter.empty, (
+        f"{enum_class.__name__}.__init__ defaults `stack` to {parameter.default}: an untagged "
+        "member would silently land in every workspace"
+    )
+    for member in enum_class:
+        assert isinstance(member.stack, ProjectStack), f"{enum_class.__name__}.{member.name} declares no stack"

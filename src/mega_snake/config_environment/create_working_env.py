@@ -4,7 +4,7 @@ import os
 import shutil
 import json
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any, Optional, Union
 import click
 import jq
@@ -18,11 +18,12 @@ from mega_snake.config_environment.models.log_viewer_watcher import LogWatcher
 from mega_snake.config_environment.models.reference_text import INPUT_CALL_PATTERN, reference_text
 from mega_snake.config_environment.models.project_stack import (
     ProjectStack,
+    collect_by_stack,
     describe_stacks,
     filter_by_stack,
+    merge_by_stack,
     resolve_stacks,
     selectable_keys,
-    sort_stacks,
 )
 from mega_snake.config_environment.models.vscode_task import VscodeTask, TASKS_INPUT_QUERY
 from mega_snake.config_environment.models.vscode_input import VscodeInput, InputType
@@ -130,6 +131,16 @@ def _execute(git_repo: bool, stacks: tuple[str, ...] = ()) -> None:  # previousl
     _add_default_settings(workspace_file, working_path, active_stacks)
 
 
+# The Java, Gradle and Maven setup steps as data: each row pairs the stack that switches the step on
+# with the call that runs it and the name of the command a user runs to do it by hand. A fourth build
+# tool is one row here instead of a fourth near-identical block inside `_configure_tools`.
+TOOL_SETUP: tuple[tuple[ProjectStack, Callable[[str], None], str], ...] = (
+    (ProjectStack.JAVA, lambda workspace_file: set_java(False, workspace_file), str(java_command.name)),
+    (ProjectStack.GRADLE, lambda workspace_file: set_gradle(False, workspace_file), str(gradle_command.name)),
+    (ProjectStack.MAVEN, lambda workspace_file: set_maven(None, workspace_file), str(maven_command.name)),
+)
+
+
 def _configure_tools(workspace_file: str, stacks: set[ProjectStack], explicit: bool) -> None:
     """Run the Java, Gradle and Maven configuration steps of the active stacks.
 
@@ -151,23 +162,16 @@ def _configure_tools(workspace_file: str, stacks: set[ProjectStack], explicit: b
     Returns:
         None
     """
-    skipped: list[tuple[ProjectStack, Optional[str]]] = []
-    if ProjectStack.JAVA in stacks:
-        set_java(False, workspace_file)
-    else:
-        skipped.append((ProjectStack.JAVA, java_command.name))
-    if ProjectStack.GRADLE in stacks:
-        set_gradle(False, workspace_file)
-    else:
-        skipped.append((ProjectStack.GRADLE, gradle_command.name))
-    if ProjectStack.MAVEN in stacks:
-        set_maven(None, workspace_file)
-    else:
-        skipped.append((ProjectStack.MAVEN, maven_command.name))
+    skipped: list[tuple[ProjectStack, str]] = []
+    for stack, configure, command_name in TOOL_SETUP:
+        if stack in stacks:
+            configure(workspace_file)
+        else:
+            skipped.append((stack, command_name))
     _skipped_stacks_advice(skipped, explicit)
 
 
-def _skipped_stacks_advice(skipped: list[tuple[ProjectStack, Optional[str]]], explicit: bool) -> None:
+def _skipped_stacks_advice(skipped: list[tuple[ProjectStack, str]], explicit: bool) -> None:
     """Report the stacks that were skipped, in a single message, and how to configure them anyway.
 
     The reason has to follow the selection: an explicit --stack replaces the detection entirely, so
@@ -177,7 +181,9 @@ def _skipped_stacks_advice(skipped: list[tuple[ProjectStack, Optional[str]]], ex
 
     `force` is passed to `ws_advice` because the message is addressed to the user, not to a
     developer debugging the tool: without it the line is only printed at DEBUG level, and the way to
-    configure a skipped stack would be invisible to everyone running `working-env` normally.
+    configure a skipped stack would be invisible to everyone running `working-env` normally. A
+    forced advice is also logged at INFO rather than DEBUG, so it survives in the log file at the
+    default level -- see `ws_advice`.
 
     Parameters:
         skipped: The stacks left out, paired with the name of the command that configures each one
@@ -348,12 +354,7 @@ def _get_recommended_extensions(stacks: set[ProjectStack]) -> list[str]:
     Returns:
         list[str]: The extension ids, without duplicates and in stack declaration order.
     """
-    extensions: list[str] = []
-    for stack in sort_stacks(stacks):
-        for extension in stack.extensions:
-            if extension not in extensions:
-                extensions.append(extension)
-    return extensions
+    return collect_by_stack(stacks, lambda stack: stack.extensions)
 
 
 def _add_recommended_extensions(json_data: dict[str, Any], stacks: set[ProjectStack]) -> tuple[dict[str, Any], bool]:
@@ -477,14 +478,76 @@ def _referenced_input_ids(members: Sequence[Union[VscodeTask, VscodeLaunch]], wo
     return referenced
 
 
+def _update_stack_block(
+    json_data: dict[str, Any],
+    members: Sequence[Union[VscodeTask, VscodeLaunch]],
+    working_path: str,
+    stacks: set[ProjectStack],
+    add_version: Callable[[dict[str, Any]], Optional[dict[str, Any]]],
+    input_query: str,
+    foreign_inputs: InputType,
+    write_member: Callable[[Any, dict[str, Any]], Optional[dict[str, Any]]],
+) -> tuple[dict[str, Any], bool]:
+    """Write one stack-filtered block of the workspace file: its version, its inputs, its members.
+
+    The `tasks` and `launch` blocks are the same shape -- guard, version, inputs, members -- and the
+    input filtering in the middle is the subtle part (see `_referenced_input_ids`). Writing it twice
+    meant fixing it twice, which is the drift `test_stack_references.py` was written to catch after
+    the fact rather than prevent.
+
+    The block itself is only scaffolded when at least one member survives the stack filter: a
+    workspace with nothing to run must not be given a bare `version` key holding an input nothing
+    interpolates. The same promise is what the per-input check enforces below -- surviving the stack
+    filter is not enough, an active member of *this* block has to interpolate it.
+
+    Parameters:
+        json_data: The parsed workspace file to update.
+        members: The members of this block that survived the stack filter.
+        working_path: Path of the working folder the entries are anchored to.
+        stacks: The active stacks, used to filter the inputs those members call.
+        add_version: Stamps the block's version key, returning None when it is already there.
+        input_query: The jq query addressing this block's `inputs` array.
+        foreign_inputs: The input kind that belongs to the *other* block and must never be written
+            into this one.
+        write_member: Writes one member into the workspace, returning None when it is already there.
+
+    Raises:
+        None
+
+    Returns:
+        tuple[dict[str, Any], bool]: The workspace data, and whether anything was added.
+    """
+    if not members:
+        return json_data, False
+
+    updated = False
+    res = add_version(json_data)
+    if res:
+        updated = True
+        json_data = res
+
+    called_inputs: set[str] = _referenced_input_ids(members, working_path)
+    for input_type in filter_by_stack(VscodeInput, stacks):
+        if input_type.enum_type == foreign_inputs or input_type.input_id not in called_inputs:
+            continue
+        res = input_type.add_tasks_input(json_data, input_query)
+        if res:
+            updated = True
+            json_data = res
+
+    for member in members:
+        res = write_member(member, json_data)
+        if res:
+            updated = True
+            json_data = res
+
+    return json_data, updated
+
+
 def _update_vscode_tasks(
     json_data: dict[str, Any], working_path: str, stacks: set[ProjectStack]
 ) -> tuple[dict[str, Any], bool]:
     """Write the VS Code tasks of the active stacks, plus the inputs those tasks call.
-
-    The `tasks` block itself is only scaffolded when at least one task survives the stack
-    filter: a workspace with nothing to run must not be given a bare `version` key and an
-    input nothing interpolates.
 
     Parameters:
         json_data: The parsed workspace file to update in place.
@@ -497,40 +560,16 @@ def _update_vscode_tasks(
     Returns:
         tuple[dict[str, Any], bool]: The workspace data, and whether anything was added.
     """
-    updated = False
-
-    # The version and the inputs are the container of the tasks, and nothing else consumes them.
-    # Writing them for a workspace with no active task would leave a `"version": "2.0.0"` block
-    # holding an input nobody calls, which is what the module promises not to do. The same promise
-    # is what `_referenced_input_ids` enforces per input below: surviving the stack filter is not
-    # enough, an active task in this block has to interpolate it.
-    active_tasks: list[VscodeTask] = filter_by_stack(VscodeTask, stacks)
-    if not active_tasks:
-        return json_data, False
-
-    res = VscodeTask.add_tasks_version(json_data)
-    if res:
-        updated = True
-        json_data = res
-
-    called_inputs: set[str] = _referenced_input_ids(active_tasks, working_path)
-    for input_type in [
-        a
-        for a in filter_by_stack(VscodeInput, stacks)
-        if a.enum_type != InputType.LAUNCH and a.input_id in called_inputs
-    ]:
-        res = input_type.add_tasks_input(json_data, TASKS_INPUT_QUERY)
-        if res:
-            updated = True
-            json_data = res
-
-    for task in active_tasks:
-        res = task.add_tasks_task(json_data, working_path)
-        if res:
-            updated = True
-            json_data = res
-
-    return json_data, updated
+    return _update_stack_block(
+        json_data,
+        filter_by_stack(VscodeTask, stacks),
+        working_path,
+        stacks,
+        VscodeTask.add_tasks_version,
+        TASKS_INPUT_QUERY,
+        InputType.LAUNCH,
+        lambda task, data: task.add_tasks_task(data, working_path),
+    )
 
 
 def _update_vscode_launch(
@@ -538,8 +577,10 @@ def _update_vscode_launch(
 ) -> tuple[dict[str, Any], bool]:
     """Write the VS Code launch configurations of the active stacks, plus their inputs.
 
-    Mirrors `_update_vscode_tasks`, including the empty-block guard: the `launch` key is
-    only created when a configuration actually belongs to one of the active stacks.
+    The per-input check matters most here: a launch configuration only ever reaches an input through
+    the log redirect its watcher builds, so a stack whose only configuration carries no watcher
+    (`DEBUG_JAVA`, i.e. every plain java/gradle/maven repository) must get the block without the
+    input rather than an input nothing interpolates.
 
     Parameters:
         json_data: The parsed workspace file to update in place.
@@ -552,67 +593,70 @@ def _update_vscode_launch(
     Returns:
         tuple[dict[str, Any], bool]: The workspace data, and whether anything was added.
     """
-    updated = False
-
-    # Same reasoning as the tasks above, and the same per-input check: a launch configuration only
-    # ever reaches an input through the log redirect its watcher builds, so a stack whose only
-    # configuration carries no watcher (`DEBUG_JAVA`, i.e. every plain java/gradle/maven repository)
-    # must get the block without the input rather than an input nothing interpolates.
-    active_launches: list[VscodeLaunch] = filter_by_stack(VscodeLaunch, stacks)
-    if not active_launches:
-        return json_data, False
-
-    res = VscodeLaunch.add_launch_version(json_data)
-    if res:
-        updated = True
-        json_data = res
-
-    called_inputs: set[str] = _referenced_input_ids(active_launches, working_path)
-    for input_type in [
-        a for a in filter_by_stack(VscodeInput, stacks) if a.enum_type != InputType.TASK and a.input_id in called_inputs
-    ]:
-        res = input_type.add_tasks_input(json_data, LAUNCH_INPUT_QUERY)
-        if res:
-            updated = True
-            json_data = res
-
-    for launch in active_launches:
-        res = launch.add_launch_config(json_data, _launch_substituter, working_path)
-        if res:
-            updated = True
-            json_data = res
-
-    return json_data, updated
+    return _update_stack_block(
+        json_data,
+        filter_by_stack(VscodeLaunch, stacks),
+        working_path,
+        stacks,
+        VscodeLaunch.add_launch_version,
+        LAUNCH_INPUT_QUERY,
+        InputType.TASK,
+        lambda launch, data: launch.add_launch_config(data, _launch_substituter, working_path),
+    )
 
 
 def _update_input_props(json_data: dict[str, Any], stacks: set[ProjectStack]) -> tuple[dict[str, Any], bool]:
-    """Update the VSCode input properties of the active stacks"""
+    """Write the `.settings` defaults contributed by the active stacks, asking the user for each one.
+
+    A key already present in the workspace is left untouched, defaults included: the value there is
+    the user's, and re-prompting for it on every run is exactly what an idempotent command must not
+    do.
+
+    Parameters:
+        json_data: The parsed workspace file to update.
+        stacks: The active stacks; a stack that is not active contributes no default.
+
+    Raises:
+        None
+
+    Returns:
+        tuple[dict[str, Any], bool]: The workspace data, and whether anything was added.
+    """
     updated = False
-    for stack in sort_stacks(stacks):
-        for key, value in DEFAULT_PROPS.get(stack, {}).items():
-            snake_query: str = f'.settings.["{key}"]'
-            result = jq.compile(snake_query).input(json_data).first()
-            if result is None:
-                prompt: str = f"Enter a value for {key}"
-                value = get_input_or_default(prompt, value)
-                jq_query = f"{snake_query} = {json.dumps(value)}"
-                json_data = jq.compile(jq_query).input(json_data).first()
-                updated = True
+    for key, default in merge_by_stack(stacks, lambda stack: DEFAULT_PROPS.get(stack, {})).items():
+        snake_query: str = f'.settings.["{key}"]'
+        result = jq.compile(snake_query).input(json_data).first()
+        if result is None:
+            prompt: str = f"Enter a value for {key}"
+            value = get_input_or_default(prompt, default)
+            jq_query = f"{snake_query} = {json.dumps(value)}"
+            json_data = jq.compile(jq_query).input(json_data).first()
+            updated = True
 
     return json_data, updated
 
 
 def _update_file_associations(json_data: dict[str, Any], stacks: set[ProjectStack]) -> tuple[dict[str, Any], bool]:
-    """Update the file associations of the active stacks in workspace"""
+    """Write the `files.associations` entries contributed by the active stacks.
+
+    Parameters:
+        json_data: The parsed workspace file to update.
+        stacks: The active stacks; a stack that is not active contributes no association.
+
+    Raises:
+        None
+
+    Returns:
+        tuple[dict[str, Any], bool]: The workspace data, and whether anything was added.
+    """
     updated = False
-    for stack in sort_stacks(stacks):
-        for key, value in stack.file_associations.items():
-            file_query: str = f'{FILE_ASSOCIATION_QUERY}.["{key}"]'
-            result = jq.compile(file_query).input(json_data).first()
-            if not result:
-                jq_query = f"{file_query} = {json.dumps(value)}"
-                json_data = jq.compile(jq_query).input(json_data).first()
-                updated = True
+    for key, value in merge_by_stack(stacks, lambda stack: stack.file_associations).items():
+        file_query: str = f'{FILE_ASSOCIATION_QUERY}.["{key}"]'
+        result = jq.compile(file_query).input(json_data).first()
+        if not result:
+            jq_query = f"{file_query} = {json.dumps(value)}"
+            json_data = jq.compile(jq_query).input(json_data).first()
+            updated = True
     return json_data, updated
 
 

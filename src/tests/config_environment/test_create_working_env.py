@@ -42,11 +42,15 @@ from mega_snake.config_environment.models.vscode_launch import (
     LAUNCH_INPUT_QUERY,
 )
 from mega_snake.config_environment.models.vscode_input import VscodeInput, InputType
-from mega_snake.config_environment.models.project_stack import ProjectStack, filter_by_stack, sort_stacks
+from mega_snake.config_environment.models.project_stack import ProjectStack, filter_by_stack, merge_by_stack
 from mega_snake.util.util import load_json_with_comments
 from mega_snake.util.formatting import UserDeclinedError
 
 
+# Deliberately every member, the opt-in one included: these tests want the widest possible set of
+# artifacts written, not a reachable selection. `resolve_stacks(["all"])` can never produce this set,
+# and the boundary that guarantees it -- `all` and `--stack snake` both leaving SNAKE out -- is
+# pinned in `models/test_project_stack.py` and `models/test_vscode_launch.py`, not here.
 EVERY_STACK: set[ProjectStack] = set(ProjectStack)
 PYTHON_STACKS: set[ProjectStack] = {ProjectStack.COMMON, ProjectStack.PYTHON}
 NODE_STACKS: set[ProjectStack] = {ProjectStack.COMMON, ProjectStack.NODE}
@@ -298,19 +302,18 @@ def reset_mocks(*mocks: MagicMock) -> None:
 
 
 def flat_default_props(stacks: set[ProjectStack]) -> dict[str, Any]:
-    """Flatten the per-stack default properties in the order the command writes them"""
-    props: dict[str, Any] = {}
-    for stack in sort_stacks(stacks):
-        props.update(DEFAULT_PROPS.get(stack, {}))
-    return props
+    """Flatten the per-stack default properties through the same helper the command writes them with.
+
+    Re-deriving the merge here would only prove the two copies of the algorithm agree with each
+    other; the expected value has to come from the production primitive for the assertion to say
+    anything about production.
+    """
+    return merge_by_stack(stacks, lambda stack: DEFAULT_PROPS.get(stack, {}))
 
 
 def flat_file_associations(stacks: set[ProjectStack]) -> dict[str, str]:
-    """Flatten the per-stack file associations in the order the command writes them"""
-    associations: dict[str, str] = {}
-    for stack in sort_stacks(stacks):
-        associations.update(stack.file_associations)
-    return associations
+    """Flatten the per-stack file associations through the same helper the command writes them with"""
+    return merge_by_stack(stacks, lambda stack: stack.file_associations)
 
 
 def written_workspace(write_mock: MagicMock) -> dict[str, Any]:

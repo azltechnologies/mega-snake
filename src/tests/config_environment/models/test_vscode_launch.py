@@ -107,6 +107,10 @@ def test_stack(tmp_path: Path) -> None:
     """Test that every launch configuration declares the stack it belongs to"""
     for member in VscodeLaunch:
         assert isinstance(member.stack, ProjectStack)
+    # A launch configuration always debugs one language's runtime, so none of them may be common --
+    # the same guard `VscodeTask.test_stack` makes, which this test was missing while
+    # `VscodeLaunch.__init__` still defaulted `stack` to `ProjectStack.COMMON`
+    assert not [member for member in VscodeLaunch if member.stack is ProjectStack.COMMON]
     assert VscodeLaunch.DEBUG_JAVA.stack is ProjectStack.JAVA
     for member in (VscodeLaunch.DEBUG_PYTHON_FILE, VscodeLaunch.DEBUG_PYTHON_MODULE):
         assert member.stack is ProjectStack.PYTHON

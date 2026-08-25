@@ -29,12 +29,12 @@ class LogWatcher(Enum):
     # `mgsnake` itself, in whatever repository it runs.
     GENERIC = ("GENERIC LOG", f"logs/output{SUBSTITUTE_LOG_DATE_TAG}", ProjectStack.PYTHON)
     JAVA_DEBUG = ("JAVA DEBUG LOG", f"logs/java_debug{SUBSTITUTE_LOG_DATE_TAG}", ProjectStack.JAVA)
-    # No stack, so it lands in every workspace: this is the log `mgsnake` itself writes
+    # Explicitly common, so it lands in every workspace: this is the log `mgsnake` itself writes
     # (`log_file_name` in config.properties), which exists in any repository the CLI is run from,
     # not only in the Python ones. The title is kept verbatim because `add_watcher` deduplicates by
     # title -- renaming it would add a second entry pointing at the same file in every workspace
     # configured before the change.
-    PYTHON_SNAKE = ("PYTHON SNAKE LOG", f"logs/python_snake{SUBSTITUTE_LOG_DATE_TAG}")
+    PYTHON_SNAKE = ("PYTHON SNAKE LOG", f"logs/python_snake{SUBSTITUTE_LOG_DATE_TAG}", ProjectStack.COMMON)
     MAVEN_CLEAN_INSTALL = (
         "MAVEN CLEAN INSTALL",
         f"logs/maven_clean_install{SUBSTITUTE_LOG_DATE_TAG}",
@@ -53,8 +53,22 @@ class LogWatcher(Enum):
         ProjectStack.MAVEN,
     )
 
-    def __init__(self, title: str, pattern: str, stack: ProjectStack = ProjectStack.COMMON) -> None:
-        """Initialize with a display title, the log file glob pattern and the stack it belongs to."""
+    def __init__(self, title: str, pattern: str, stack: ProjectStack) -> None:
+        """Initialize with a display title, the log file glob pattern and the stack it belongs to.
+
+        Parameters:
+            title: The name shown in the log viewer; `add_watcher` deduplicates on it.
+            pattern: The glob of the log file, relative to the working path.
+        stack: The stack the member belongs to. Explicit for every member on purpose: with a
+            `ProjectStack.COMMON` default, an untagged member and a deliberately shared one were
+            byte-identical, so forgetting the tag silently wrote the artifact into every workspace.
+
+        Raises:
+            None
+
+        Returns:
+            None
+        """
         self.title = title
         self.pattern = pattern
         self.stack = stack

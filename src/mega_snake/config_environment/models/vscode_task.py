@@ -216,9 +216,30 @@ class VscodeTask(Enum):
         watcher: Optional[LogWatcher],
         problem_matcher: Optional[Any],
         extra_args: Optional[dict[str, Any]],
-        stack: ProjectStack = ProjectStack.COMMON,
+        stack: ProjectStack,
     ) -> None:
-        """Initialize a VscodeTask enum member with all required VS Code task configuration fields."""
+        """Initialize a VscodeTask enum member with all required VS Code task configuration fields.
+
+        Parameters:
+            label: The task label VS Code shows and other entries depend on.
+            hidden: Whether the task is hidden from the task picker.
+            task_type: The VS Code task type, when the task declares one.
+            command: The command the task runs.
+            args: The arguments passed to the command.
+            detail: The description shown next to the label.
+            watcher: The log watcher the task redirects its output into, when it has one.
+            problem_matcher: The VS Code problem matcher, emitted verbatim.
+            extra_args: Extra keys copied verbatim into the emitted task.
+        stack: The stack the member belongs to. Explicit for every member on purpose: with a
+            `ProjectStack.COMMON` default, an untagged member and a deliberately shared one were
+            byte-identical, so forgetting the tag silently wrote the artifact into every workspace.
+
+        Raises:
+            None
+
+        Returns:
+            None
+        """
         self.label = label
         self.stack = stack
         self.hidden = hidden
@@ -248,10 +269,16 @@ class VscodeTask(Enum):
     #
     # Two consequences, one latent and one that has already cost us:
     #
-    # 1. LATENT: a second `to_dict` on the same member emits the redirect twice, which VS Code would
-    #    run as `... > log 2>&1 > log 2>&1`. Nothing does that today -- `_update_vscode_tasks` and
-    #    `_update_vscode_launch` iterate each member exactly once per run, and the process exits
-    #    afterwards -- so no user has ever seen it. It stays one accidental second call away.
+    # 1. NOT LATENT IN THE SUITE, only in production: a second `to_dict` on the same member emits
+    #    the redirect twice, which VS Code would run as `... > log 2>&1 > log 2>&1`. No *user* has
+    #    seen it -- `_update_vscode_tasks` and `_update_vscode_launch` iterate each member exactly
+    #    once per run, and the process exits afterwards. Inside one pytest process it already
+    #    happens: `test_create_working_env.py` drives `update_vscode_launch(..., PYTHON_STACKS)`
+    #    from more than one test, so `DEBUG_PYTHON_FILE`/`DEBUG_PYTHON_MODULE` do accumulate the
+    #    redirect. Nothing catches it because the only assertion on the emitted `args` compares
+    #    `result["args"]` against `member.args` *after* the mutation, which is true either way; the
+    #    first exact-value assertion anyone writes on a task's args turns collection-order
+    #    dependent. That is the same accumulation as point 2, reached from the other direction.
     #
     # 2. ALREADY BIT US: within a single pytest process the mutation leaks between test modules.
     #    `test_launch_input_calls_stay_inside_their_own_stacks` shipped green over an empty loop

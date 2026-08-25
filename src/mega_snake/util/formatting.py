@@ -311,9 +311,16 @@ def ws_advice(message: str, force: bool = False) -> None:
     one to do so, because `local-config-path` is read with `$(...)` in `config_setup.sh` and its
     value was polluted by these lines whenever the CLI ran at DEBUG level.
 
+    A forced advice is logged at INFO, not at DEBUG. `force` only lifts the console gate, so the
+    record itself still has to clear the logger's effective level to reach a handler: at the default
+    `--log-level INFO` a DEBUG record is dropped before dispatch, which left the log file with no
+    trace at all of a message the user was shown on screen -- exactly the message a later
+    troubleshooting session goes looking for.
+
     Parameters:
         message: The advice message to print and log.
-        force: When True, print regardless of the current log level.
+        force: When True, print regardless of the current log level, and log at INFO so the message
+            survives in the log file at the default level.
 
     Raises:
         None
@@ -325,7 +332,10 @@ def ws_advice(message: str, force: bool = False) -> None:
     log_level = logger.level
     if log_level == logging.DEBUG or force:
         print(Fore.GREEN + Back.BLACK + message, file=sys.stderr)
-        logger.debug(message, stacklevel=2)
+        if force:
+            logger.info(message, stacklevel=2)
+        else:
+            logger.debug(message, stacklevel=2)
 
 
 def ws_tip(messages: dict[Color, str]) -> None:

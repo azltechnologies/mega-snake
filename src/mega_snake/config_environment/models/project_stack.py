@@ -10,7 +10,7 @@ belongs to, so a stack that is not active simply contributes nothing.
 
 from enum import Enum
 import os
-from typing import Iterable, Optional, Protocol, TypeVar
+from typing import Callable, Iterable, Mapping, Optional, Protocol, TypeVar
 
 ALL_STACKS: str = "all"
 
@@ -192,6 +192,7 @@ class StackAware(Protocol):
 
 
 T = TypeVar("T", bound=StackAware)
+V = TypeVar("V")
 
 
 def selectable_keys() -> list[str]:
@@ -334,6 +335,51 @@ def filter_by_stack(members: Iterable[T], stacks: set[ProjectStack]) -> list[T]:
         list[T]: The artifacts belonging to an active stack, in their original order.
     """
     return [member for member in members if member.stack in stacks]
+
+
+def collect_by_stack(stacks: Iterable[ProjectStack], contribution: Callable[[ProjectStack], Iterable[V]]) -> list[V]:
+    """Collect what each active stack contributes to a list, without duplicates.
+
+    Parameters:
+        stacks: The active stacks; the order they are given in is irrelevant, `sort_stacks` decides
+            the result's order.
+        contribution: What the given stack contributes.
+
+    Returns:
+        list[V]: Every contributed value, in stack declaration order, first occurrence kept.
+    """
+    collected: list[V] = []
+    for stack in sort_stacks(stacks):
+        for value in contribution(stack):
+            if value not in collected:
+                collected.append(value)
+    return collected
+
+
+def merge_by_stack(
+    stacks: Iterable[ProjectStack], contribution: Callable[[ProjectStack], Mapping[str, V]]
+) -> dict[str, V]:
+    """Merge what each active stack contributes to a mapping.
+
+    The merge is what makes the precedence a property of this function instead of an accident of the
+    call site: a key contributed by two stacks takes the value of the one declared last. There is no
+    such key today, which is exactly why the rule needs a single home -- the callers used to write
+    the entries straight into the workspace as they went, so the *first* stack won there while the
+    test helper that mirrored them merged into a dict and let the last one win. Both read as
+    obviously correct, and nothing compared them.
+
+    Parameters:
+        stacks: The active stacks; the order they are given in is irrelevant, `sort_stacks` decides
+            the precedence.
+        contribution: What the given stack contributes.
+
+    Returns:
+        dict[str, V]: The merged mapping, in stack declaration order.
+    """
+    merged: dict[str, V] = {}
+    for stack in sort_stacks(stacks):
+        merged.update(contribution(stack))
+    return merged
 
 
 def describe_stacks(stacks: Iterable[ProjectStack]) -> str:

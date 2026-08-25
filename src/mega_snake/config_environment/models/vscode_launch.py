@@ -87,9 +87,29 @@ class VscodeLaunch(Enum):
         watcher: Optional[LogWatcher],
         depends_on: Optional[list[VscodeTask]],
         extra_args: Optional[dict[str, Any]],
-        stack: ProjectStack = ProjectStack.COMMON,
+        stack: ProjectStack,
     ) -> None:
-        """Initialize a VscodeLaunch enum member with all required VS Code launch configuration fields."""
+        """Initialize a VscodeLaunch enum member with all required VS Code launch configuration fields.
+
+        Parameters:
+            task_name: The configuration name VS Code shows in the debug picker.
+            task_type: The debug adapter type.
+            request: The debug request kind (`launch` or `attach`).
+            env: Environment variables handed to the debuggee.
+            args: The arguments passed to the debuggee.
+            watcher: The log watcher the configuration redirects its output into, when it has one.
+            depends_on: The tasks that must run before this configuration.
+            extra_args: Extra keys copied verbatim into the emitted configuration.
+        stack: The stack the member belongs to. Explicit for every member on purpose: with a
+            `ProjectStack.COMMON` default, an untagged member and a deliberately shared one were
+            byte-identical, so forgetting the tag silently wrote the artifact into every workspace.
+
+        Raises:
+            None
+
+        Returns:
+            None
+        """
         self.task_name = task_name
         self.stack = stack
         self.task_type = task_type

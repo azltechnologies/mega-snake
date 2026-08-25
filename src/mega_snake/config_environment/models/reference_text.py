@@ -22,10 +22,15 @@ INPUT_CALL_PATTERN = re.compile(r"\$\{input:([^}]+)\}")
 def reference_text(member: Union[VscodeTask, VscodeLaunch], working_path: str) -> str:
     """Join every field of a member that VS Code interpolates references out of.
 
-    `extra_args` is included, and that is the point: `to_dict` emits it verbatim, so the Windows
-    overrides on the Gradle build tasks (`{"windows": {"command": ..., "args": ...}}`) and a
-    launch's `port`/`program` entries are as much a reference site as `command` is. Scanning only
-    `command` and `args` would leave them outside the walk this function backs.
+    The fields are the ones `to_dict` emits, and that is the rule for extending this function: a
+    value VS Code never receives cannot interpolate anything, and a value it does receive is a
+    reference site no matter how nested it is. `extra_args` is included for exactly that reason --
+    the Windows overrides on the Gradle build tasks (`{"windows": {"command": ..., "args": ...}}`)
+    and a launch's `port`/`program` entries are as much a reference site as `command` is -- and so
+    is `problem_matcher`, which is `Any`-typed, unvalidated and copied verbatim into
+    `result["problemMatcher"]`. `VscodeLaunch.depends_on` is deliberately absent: `to_dict` does not
+    emit it, so nothing in the workspace file ever interpolates it. Should that change, it belongs
+    here in the same commit.
 
     The watcher redirect is asked of the watcher rather than read back from `args`: `add_logger_args`
     only appends it while `to_dict` runs, which happens after inputs are written, so in a fresh
@@ -41,10 +46,13 @@ def reference_text(member: Union[VscodeTask, VscodeLaunch], working_path: str) -
         None
 
     Returns:
-        str: Every interpolatable field, joined; JSON for the nested ones so no value is lost.
+        str: Every field `to_dict` emits, joined; JSON for the nested ones so no value is lost.
     """
-    parts: list[str] = [getattr(member, "command", None) or "", *member.args]
-    for nested in (member.extra_args, getattr(member, "env", None)):
+    # Falsy entries are dropped rather than joined: a member without a `command` (every
+    # `VscodeLaunch`) used to contribute an empty string, and `" ".join` turned that into a leading
+    # space on the whole flattened text.
+    parts: list[str] = [part for part in (getattr(member, "command", None), *member.args) if part]
+    for nested in (member.extra_args, getattr(member, "env", None), getattr(member, "problem_matcher", None)):
         if nested:
             parts.append(json.dumps(nested))
     if member.watcher:
