@@ -1,6 +1,6 @@
 """Tests for the generate-skill command."""
 
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Generator
 from unittest.mock import MagicMock, patch
 
@@ -11,12 +11,17 @@ from mega_snake.docs_gen.generate_skill import (
     ALL_SKILL_DIRS,
     SKILL_CLAUDE_DIR,
     SKILL_COPILOT_DIR,
+    SKILL_DESCRIPTION,
+    SKILL_DIR_LABEL,
     SKILL_FILE,
+    SKILL_NAME,
     SKILL_TARGET_OPT,
     SKILL_TRACKING_KEYS,
     _apply_tracking,
     _check_all_existing_skill_files,
+    _skill_document,
     _skill_path,
+    _tracking_entries,
     _write_skill_files,
     generate_skill,
 )
@@ -24,11 +29,21 @@ from mega_snake.util.formatting import VALIDATION_ERROR_CODE
 
 SAMPLE_MARKDOWN = "# Available Commands\n\n## Documentation\n\n### generate-skill\n"
 
+# What the command actually writes: the frontmatter plus the rendered reference. Spelled out here
+# rather than reusing _skill_document() so a change in the composition has to be acknowledged.
+SAMPLE_DOCUMENT = f'---\nname: mgsnake\ndescription: "{SKILL_DESCRIPTION}"\n---\n\n{SAMPLE_MARKDOWN}'
+
+# The literal directory entries the tracking helpers must receive. Written out instead of derived
+# from SKILL_*_DIR so the expectation cannot restate the expression under test: on Windows
+# str(SKILL_COPILOT_DIR) is ".github\\skills\\mgsnake", which these literals reject.
+COPILOT_ENTRY = ".github/skills/mgsnake/"
+CLAUDE_ENTRY = ".claude/skills/mgsnake/"
+
 
 @pytest.fixture(name="mk_render")
 def fixture_mk_render() -> Generator[MagicMock, None, None]:
-    """Patch _render_command_reference so tests don't need a full CLI build."""
-    with patch("mega_snake.docs_gen.generate_skill._render_command_reference") as mock:
+    """Patch render_command_reference so tests don't need a full CLI build."""
+    with patch("mega_snake.docs_gen.generate_skill.render_command_reference") as mock:
         mock.return_value = SAMPLE_MARKDOWN
         yield mock
 
@@ -107,6 +122,54 @@ def test_skill_path_returns_skill_md_inside_dir() -> None:
 
 
 # ---------------------------------------------------------------------------
+# _skill_document
+# ---------------------------------------------------------------------------
+
+
+def test_skill_document_opens_with_yaml_frontmatter() -> None:
+    """The document must start with a frontmatter block carrying name and description.
+
+    Neither runtime registers a SKILL.md that opens with anything else, so a file starting with the
+    reference's own "# Available Commands" heading is never loaded as a skill at all.
+    """
+    lines = _skill_document(SAMPLE_MARKDOWN).splitlines()
+
+    assert lines[0] == "---", f"document opens with {lines[0]!r}, not a frontmatter fence"
+    assert lines[1] == f"name: {SKILL_NAME}", f"second line is {lines[1]!r}"
+    assert lines[2].startswith("description: "), f"third line is {lines[2]!r}"
+    assert lines[3] == "---", f"frontmatter is not closed on line 4, got {lines[3]!r}"
+
+
+def test_skill_document_keeps_the_reference_body_verbatim() -> None:
+    """Everything after the frontmatter is the rendered reference, unmodified."""
+    document = _skill_document(SAMPLE_MARKDOWN)
+
+    _, _, body = document.partition("\n---\n")
+    assert body.lstrip("\n") == SAMPLE_MARKDOWN
+    assert document.endswith(SAMPLE_MARKDOWN)
+
+
+def test_skill_document_quotes_the_description_scalar() -> None:
+    """The description is a quoted YAML scalar, and the wording stays quotable.
+
+    A plain scalar may not contain a colon followed by a space, which the description's prose can
+    easily reintroduce; quoting removes the trap, and a raw double quote inside would reopen it.
+    """
+    description_line = _skill_document(SAMPLE_MARKDOWN).splitlines()[2]
+
+    assert description_line == f'description: "{SKILL_DESCRIPTION}"'
+    assert '"' not in SKILL_DESCRIPTION, "an unescaped double quote would break the quoted scalar"
+    assert "\n" not in SKILL_DESCRIPTION, "a newline would break the single-line scalar"
+
+
+def test_skill_name_is_a_valid_skill_identifier() -> None:
+    """Both runtimes key a skill by its name, which must be a lowercase, hyphen-safe slug."""
+    assert SKILL_NAME == SKILL_NAME.lower()
+    assert SKILL_NAME.replace("-", "").isalnum(), f"{SKILL_NAME!r} is not a slug"
+    assert SKILL_NAME == "mgsnake"
+
+
+# ---------------------------------------------------------------------------
 # _apply_tracking
 # ---------------------------------------------------------------------------
 
@@ -132,8 +195,7 @@ def test_apply_tracking_exclude_calls_exclude_from_git(mk_exclude_from_git: Magi
     mk_exclude_from_git.assert_called_once()
     entries = mk_exclude_from_git.call_args[0][0]
     paths = [entry[0] for entry in entries]
-    assert str(SKILL_COPILOT_DIR) + "/" in paths
-    assert str(SKILL_CLAUDE_DIR) + "/" in paths
+    assert paths == [COPILOT_ENTRY, CLAUDE_ENTRY], f"unexpected exclude entries: {paths}"
 
 
 def test_apply_tracking_gitignore_calls_add_to_gitignore(mk_add_to_gitignore: MagicMock) -> None:
@@ -144,7 +206,76 @@ def test_apply_tracking_gitignore_calls_add_to_gitignore(mk_add_to_gitignore: Ma
     mk_add_to_gitignore.assert_called_once()
     entries = mk_add_to_gitignore.call_args[0][0]
     paths = [entry[0] for entry in entries]
-    assert str(SKILL_CLAUDE_DIR) + "/" in paths
+    assert paths == [CLAUDE_ENTRY], f"unexpected .gitignore entries: {paths}"
+
+
+def test_tracking_entries_uses_forward_slashes_on_a_windows_style_path() -> None:
+    """A Windows-shaped path must still yield a posix pattern git can actually match.
+
+    PureWindowsPath is what makes this test discriminate on any host: on Linux str() and as_posix()
+    agree, so only a genuinely Windows-flavoured path can tell a correct implementation from the
+    str() one, where git reads the backslashes as escapes and the pattern matches nothing.
+    """
+    windows_dir = PureWindowsPath(".github") / "skills" / "mgsnake"
+    assert "\\" in str(windows_dir), "fixture is not exercising a backslash-separated path"
+
+    with patch("mega_snake.docs_gen.generate_skill.SKILL_DIR_LABEL", {windows_dir: "GitHub Copilot skill folder"}):
+        entries = _tracking_entries([windows_dir])
+
+    assert entries == [(COPILOT_ENTRY, "GitHub Copilot skill folder")], f"got {entries}"
+    assert "\\" not in entries[0][0]
+
+
+@pytest.mark.parametrize("tracking", ["e", "g"])
+def test_apply_tracking_writes_posix_separators_only(
+    tracking: str,
+    mk_exclude_from_git: MagicMock,
+    mk_add_to_gitignore: MagicMock,
+) -> None:
+    """Every git entry must use forward slashes, whatever separator the host OS uses.
+
+    git reads a backslash inside an ignore pattern as an escape, so a Windows-shaped
+    ".github\\skills\\mgsnake/" silently matches nothing and the files stay tracked. Asserting the
+    literal posix string is what discriminates; comparing against str(SKILL_COPILOT_DIR) would
+    restate the very expression under test and pass on any platform.
+    """
+    _apply_tracking((SKILL_COPILOT_DIR, SKILL_CLAUDE_DIR), tracking)
+
+    helper = mk_exclude_from_git if tracking == "e" else mk_add_to_gitignore
+    entries = helper.call_args[0][0]
+    for entry, _ in entries:
+        assert "\\" not in entry, f"entry {entry!r} carries a backslash git would read as an escape"
+    assert [entry for entry, _ in entries] == [COPILOT_ENTRY, CLAUDE_ENTRY]
+
+
+@pytest.mark.parametrize("tracking", ["e", "g"])
+def test_apply_tracking_describes_the_folder_instead_of_repeating_the_path(
+    tracking: str,
+    mk_exclude_from_git: MagicMock,
+    mk_add_to_gitignore: MagicMock,
+) -> None:
+    """The description half of each pair is the human label, not a second copy of the path.
+
+    The helpers log "Excluded <description> in <file>", so repeating the path there produces a line
+    that names the same thing twice and tells the reader nothing.
+    """
+    _apply_tracking((SKILL_COPILOT_DIR, SKILL_CLAUDE_DIR), tracking)
+
+    helper = mk_exclude_from_git if tracking == "e" else mk_add_to_gitignore
+    entries = helper.call_args[0][0]
+    for entry, description in entries:
+        assert description != entry, f"description for {entry!r} is just the path again"
+        assert entry.rstrip("/") not in description, f"description {description!r} embeds the path"
+    assert [description for _, description in entries] == [
+        SKILL_DIR_LABEL[SKILL_COPILOT_DIR],
+        SKILL_DIR_LABEL[SKILL_CLAUDE_DIR],
+    ]
+
+
+def test_skill_dir_label_covers_every_selectable_directory() -> None:
+    """_apply_tracking looks the label up by directory, so every reachable target needs one."""
+    reachable = {skill_dir for dirs in SKILL_TARGET_OPT.values() for skill_dir in dirs}
+    assert reachable <= set(SKILL_DIR_LABEL), f"unlabelled skill directories: {reachable - set(SKILL_DIR_LABEL)}"
 
 
 # ---------------------------------------------------------------------------
@@ -243,7 +374,7 @@ def test_generate_skill_check_passes_when_files_match(mk_render: MagicMock, tmp_
     with runner.isolated_filesystem(temp_dir=tmp_path) as iso:
         skill_dir = Path(iso) / ".github" / "skills" / "mgsnake"
         skill_dir.mkdir(parents=True)
-        (skill_dir / SKILL_FILE).write_text(SAMPLE_MARKDOWN, encoding="utf-8")
+        (skill_dir / SKILL_FILE).write_text(SAMPLE_DOCUMENT, encoding="utf-8")
         result = runner.invoke(generate_skill, ["--check"])
 
     assert result.exit_code == 0, result.output
@@ -281,7 +412,7 @@ def test_generate_skill_copilot_only_exclude(
         result = runner.invoke(generate_skill, [])
         copilot_file = Path(iso) / ".github" / "skills" / "mgsnake" / SKILL_FILE
         assert copilot_file.is_file(), "Copilot SKILL.md should have been created"
-        assert copilot_file.read_text(encoding="utf-8") == SAMPLE_MARKDOWN
+        assert copilot_file.read_text(encoding="utf-8") == SAMPLE_DOCUMENT
         claude_file = Path(iso) / ".claude" / "skills" / "mgsnake" / SKILL_FILE
         assert not claude_file.exists(), "Claude SKILL.md should NOT have been created"
 
@@ -345,3 +476,117 @@ def test_generate_skill_target_prompt_shows_directories(mk_render: MagicMock) ->
 
     assert str(SKILL_COPILOT_DIR / SKILL_FILE) in first_call_prompt
     assert str(SKILL_CLAUDE_DIR / SKILL_FILE) in first_call_prompt
+
+
+def test_generate_skill_writes_the_frontmatter_to_disk(
+    mk_render: MagicMock,
+    mk_get_validated_input: MagicMock,
+    mk_exclude_from_git: MagicMock,
+    tmp_path: Path,
+) -> None:
+    """The file that lands on disk is the frontmatter document, not the bare reference."""
+    mk_get_validated_input.side_effect = ["c", "e"]
+    runner = CliRunner()
+
+    with runner.isolated_filesystem(temp_dir=tmp_path) as iso:
+        result = runner.invoke(generate_skill, [])
+        written = (Path(iso) / ".github" / "skills" / "mgsnake" / SKILL_FILE).read_text(encoding="utf-8")
+
+    assert result.exit_code == 0, result.output
+    assert written.startswith(f"---\nname: {SKILL_NAME}\n"), f"file opens with {written[:40]!r}"
+    assert not written.startswith("# Available Commands"), "the bare reference is not a loadable skill"
+
+
+def test_generate_skill_check_rejects_a_file_missing_its_frontmatter(
+    mk_render: MagicMock,
+    tmp_path: Path,
+) -> None:
+    """--check compares the frontmatter too, so a body-only file is reported stale.
+
+    This is the file every version of the command before the frontmatter existed produced, and the
+    one case that distinguishes a --check covering the whole document from one covering the body.
+    """
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path) as iso:
+        skill_dir = Path(iso) / ".claude" / "skills" / "mgsnake"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / SKILL_FILE).write_text(SAMPLE_MARKDOWN, encoding="utf-8")
+        result = runner.invoke(generate_skill, ["--check"])
+
+    assert result.exit_code == VALIDATION_ERROR_CODE, result.output
+    assert result.exit_code != 1
+
+
+def test_generate_skill_writes_nothing_when_the_target_prompt_is_abandoned(
+    mk_render: MagicMock,
+    mk_get_validated_input: MagicMock,
+    mk_exclude_from_git: MagicMock,
+    mk_add_to_gitignore: MagicMock,
+    tmp_path: Path,
+) -> None:
+    """Exhausting the retries on the first prompt leaves the working tree untouched."""
+    mk_get_validated_input.side_effect = KeyError("too many invalid inputs")
+    runner = CliRunner()
+
+    with runner.isolated_filesystem(temp_dir=tmp_path) as iso:
+        result = runner.invoke(generate_skill, [])
+        leftovers = sorted(str(path) for path in Path(iso).rglob(SKILL_FILE))
+
+    assert isinstance(result.exception, KeyError), f"expected the KeyError to propagate, got {result.exception!r}"
+    assert leftovers == [], f"the failed run left files behind: {leftovers}"
+    mk_exclude_from_git.assert_not_called()
+    mk_add_to_gitignore.assert_not_called()
+
+
+def test_generate_skill_writes_nothing_when_the_tracking_prompt_is_abandoned(
+    mk_render: MagicMock,
+    mk_get_validated_input: MagicMock,
+    mk_exclude_from_git: MagicMock,
+    mk_add_to_gitignore: MagicMock,
+    tmp_path: Path,
+) -> None:
+    """A valid target followed by a fumbled tracking answer must still leave nothing on disk.
+
+    Asking both questions before writing is what makes this true: writing first would strand
+    SKILL.md files that are neither excluded nor gitignored, with the command exiting non-zero.
+    """
+    mk_get_validated_input.side_effect = ["b", KeyError("too many invalid inputs")]
+    runner = CliRunner()
+
+    with runner.isolated_filesystem(temp_dir=tmp_path) as iso:
+        result = runner.invoke(generate_skill, [])
+        leftovers = sorted(str(path) for path in Path(iso).rglob(SKILL_FILE))
+
+    assert isinstance(result.exception, KeyError), f"expected the KeyError to propagate, got {result.exception!r}"
+    assert leftovers == [], f"the failed run left files behind: {leftovers}"
+    mk_exclude_from_git.assert_not_called()
+    mk_add_to_gitignore.assert_not_called()
+
+
+def test_generate_skill_prompts_for_both_answers_before_writing(
+    mk_render: MagicMock,
+    mk_exclude_from_git: MagicMock,
+    tmp_path: Path,
+) -> None:
+    """No SKILL.md exists yet at the moment the tracking prompt is answered.
+
+    Ordering is the whole point of the two tests above; this one pins it directly rather than
+    inferring it from a failure, so a refactor that reorders the calls fails here with a clear cause.
+    """
+    runner = CliRunner()
+    seen: list[list[str]] = []
+
+    with runner.isolated_filesystem(temp_dir=tmp_path) as iso:
+
+        def record(prompt: str, valid: list[str]) -> str:
+            """Answer each prompt while recording what was on disk when it was asked."""
+            seen.append(sorted(str(path) for path in Path(iso).rglob(SKILL_FILE)))
+            return "b" if "assistant" in prompt else "e"
+
+        with patch("mega_snake.docs_gen.generate_skill.get_validated_input", side_effect=record):
+            result = runner.invoke(generate_skill, [])
+        written = sorted(str(path) for path in Path(iso).rglob(SKILL_FILE))
+
+    assert result.exit_code == 0, result.output
+    assert seen == [[], []], f"a skill file already existed when a prompt was asked: {seen}"
+    assert len(written) == 2, f"both files should exist once the command finished, got {written}"

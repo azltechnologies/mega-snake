@@ -2,7 +2,12 @@
 
 ## 1. Project Overview & Philosophy
 
-`mega_snake` is a robust Python CLI tool designed to standardize the local development lifecycle. It acts as a "Swiss Army Knife" for developers, primarily automating the complex configuration of VS Code environments for Java/Gradle, but extending into Git workflows, release orchestration, dependency auditing and shell integration.
+`mega_snake` is a Python CLI tool that standardizes the local development lifecycle. It acts as a "Swiss Army
+Knife" for developers: configuring VS Code environments for Java/Gradle/Maven projects, and extending into Git
+workflows, release orchestration, dependency auditing and shell integration.
+
+Java/Gradle and VS Code are where it started and where its deepest support lives — they are **not** its boundary.
+The audience is every developer it can reach, whatever their language; see the second rule below.
 
 > ### ⚠️ THE FIRST RULE: `mgsnake` IS A PRODUCT FOR ITS USERS, NOT A SCRIPT FOR ITS AUTHOR
 >
@@ -28,19 +33,72 @@
 > a stranger installing `mega-snake` want this?" — if the answer is no, it does not belong in a user-facing
 > command group.
 >
-> #### ⚠️ Known violation — do not treat the current layout as the example to follow
+> #### The test is the audience, not the subject
 >
-> **`generate-docs` and `man` (§3.7) break this rule today.** They introspect **`mgsnake`'s own CLI**
-> (`from mega_snake.__main__ import cli`), so a user running `mgsnake generate-docs` in their project gets
-> a `COMMANDS.md` describing _mgsnake_, not their tool. This is **accepted technical debt, not a
-> precedent**; the agreed direction is to move every mega-snake-only command into a dedicated module.
-> Until that lands: do not add new repo-only commands to user-facing groups, do not cite `generate-docs`
-> as justification for doing so, do not "fix" a user-facing command by making it repo-aware, and keep
-> `docs_gen` self-contained so the eventual move stays mechanical.
+> Every command in `docs_gen` (§3.7) introspects **`mgsnake`'s own CLI**, which looks like a violation and
+> mostly is not. The question the rule asks is _who is this for_, never _what is it about_:
+>
+> - **`man` and `generate-skill` pass.** Their audience is the stranger who installed `mega-snake`. `man`
+>   pages mgsnake's reference for that person; `generate-skill` writes a `SKILL.md` that teaches _their_
+>   assistant to drive mgsnake inside _their_ project. Documenting mgsnake to an mgsnake user is the point,
+>   not a leak — no user expects `mgsnake man` to describe their own tool.
+> - **`generate-docs` is the real debt, and only in part.** Rendering the reference is as user-serviceable
+>   as `man`; what is repo-shaped is where it defaults to writing (`COMMANDS.md` in the current directory)
+>   and `--check`, which exists solely to gate the committed file in this repository's CI. That surface is
+>   this project's own workflow shipped as a public command. It is **accepted technical debt, not a
+>   precedent** — the fix is catalogued in §8.1.
+>
+> So: do not add a command whose audience is this repository to a user-facing group, do not cite
+> `generate-docs` as justification for doing so, do not "fix" a user-facing command by making it repo-aware,
+> and keep `docs_gen` self-contained so the eventual split stays mechanical.
 >
 > Everything outside `docs_gen` honours the rule: `dependency_audit` reads the _user's_ lockfiles through
 > ecosystem auto-detection, and `create-release` derives tags from the _user's_ GitHub releases — neither
 > reads this repository's `pyproject.toml` or `CHANGELOG.md`.
+
+> ### ⚠️ THE SECOND RULE: REACH EVERY DEVELOPER YOU CAN — AND ONLY BUILD WHAT PAYS FOR ITSELF
+>
+> These are one rule with two halves, and the halves check each other. The first sets how wide the tool
+> aims; the second stops that width from turning into a pile of features nobody needed.
+>
+> **Reach.** `mgsnake` is meant to help as many developers as it can, **independently of the language they
+> work in**, with a special — but never exclusive — emphasis on those who use VS Code. Java/Gradle support
+> is the deepest because that is where the tool grew up; it is not a fence. When a command _can_ be written
+> language-agnostically at no real cost, write it that way: `scan-dependencies` detecting the ecosystem from
+> marker files (§3.5) is the shape to copy, not an exception.
+>
+> **Prudence.** Width is not an excuse to build everything. Effort spent on a feature that adds no real
+> value to a developer is effort taken from one that does, and every command shipped is maintained,
+> documented, tested and supported forever. **Before building anything, decide which side of this it falls
+> on.**
+>
+> **Do NOT build it when:**
+>
+> - A common, popular, industry-standard tool already covers the need and we have nothing to add on top of
+>   it. Reimplementing it from scratch buys the user a second way to do what they already do.
+> - All we would offer is a _different_ way to reach the same result a popular tool or method already
+>   reaches. Novelty of route is not value.
+> - The need is met inside the user's `local_config.sh` / `.ps1` (§3.1) in **under about four lines**, using
+>   utilities a developer of that language already has. Promoting that to a command is overkill; the local
+>   config file exists precisely to absorb it.
+>
+> **DO build it when:**
+>
+> - Many developers want it and it exists only in insecure or dubious-reputation tooling, with no reliable
+>   way to get it easily and automatically. **That is the niche** — the strongest reason for a command to
+>   exist at all.
+> - A popular tool gets there, but we can go _palpably_ beyond it. Two honest routes, and the second is
+>   usually the right one: rebuild it and add the value on top, or — when the tool is genuinely popular —
+>   take it as a **runtime dependency** (invoked through `subprocess`, or fetched with `curl` where that
+>   applies) and build the added value on its output. This is already the house pattern: `create-release`
+>   drives `gh`, `scan-dependencies` drives `pip-audit`/`osv-scanner`, `expired-certs-jks` drives `keytool`.
+>   Python owns the control flow and the parsing; the external binary owns the action it is already good at.
+> - The only way, or the only well-known way, to get the result is a multi-line function in the local config
+>   **plus** libraries or packages that most developers of that language do not normally carry. The cost of
+>   that setup is exactly what a command should be absorbing.
+>
+> **When the answer is not obvious, it is a "do not build".** A command that has to be argued into existence
+> will have to be argued into every future refactor too.
 
 **Core Philosophy:**
 
@@ -390,44 +448,55 @@ Generates a visual tree representation of changed files.
   `directory_tree` library renders that tree as text.
 - The output directory is wiped (`shutil.rmtree`) and recreated (`os.makedirs`) on **every** run, so no file write
   depends on a directory left behind by a previous run.
-- No remote is required: `get_main_branch` falls back to the current local branch, so its wrapper only calls
-  `ensure_working_path()` + `complete_app_properties()`.
+- No remote is required, and the command never resolves the comparison ends itself: the main branch comes from
+  the `Repo` snapshot (`Repo().MAIN_BRANCH`, §4.4) and the far end from `Repo.resolve_head()`, both of which
+  cope with a repository that has no remote. That is why its wrapper only calls `ensure_working_path()` +
+  `complete_app_properties()`.
 
 ### 3.3 Remote Branch Management (`src/mega_snake/remote_branches/`)
 
-#### `remote-branches-details`
+Both commands report on **one inventory of logical branches**, and the user-facing behaviour of each is
+documented in its fragment (`resources/docs/remote-branches-*.md`) — do not restate it here. What follows is
+the architecture an agent has to know before editing the module.
 
-Analyzes remote branches to suggest cleanup candidates, filtered by merge status with `-f` (`M`/`U`/`A`).
+**The unit is the logical branch, not the reference.** `GitBranch` pairs a local branch with its remote
+counterpart (through its configured upstream) so a branch is judged and reported once, with both sides. This
+is the decision the whole module is shaped around: a branch may exist on one side only — never checked out,
+or its remote copy deleted on merge — and reporting per reference would describe the same work twice while
+hiding that the two sides disagree.
 
-**Merge detection (`RemoteBranch.from_branch`)** — a branch counts as merged when _any_ of these holds, checked in
-order and against `remotes/{remote}/{main_branch}` (never the possibly stale local branch):
+**Model layout (`remote_branches/remote_branch.py`)**, each layer adding exactly one thing:
 
-1. **Ancestry**: `git branch -a --contains <tip>` lists the main branch. Only catches real merges and fast-forwards.
-2. **Rebase merge** (`_is_rebase_merged`): `git cherry <main_ref> <branch>` marks **every** branch commit with `-`,
-   meaning each one is already applied on main by patch id under a different hash.
+| Class          | Adds                                                                                                      |
+| -------------- | --------------------------------------------------------------------------------------------------------- |
+| `Commit`       | The tip: hash, subject, author, dates. Subclasses `Repo`, which is what gives every model the snapshot.   |
+| `Branch`       | The reference plus its merge verdict and merge-base against main. Abstract: `_ref_prefix()` raises.       |
+| `LocalBranch` / `RemoteBranch` | Only the reference prefix (`refs/heads` / `refs/remotes`).                                 |
+| `GitBranch`    | The pairing of the two sides, the tracking columns, `fully_merged`, and the Markdown row rendering.        |
+| `BranchLoader` | `from_repository()` — the single entry point that enumerates and pairs everything.                        |
+
+**Merge detection lives on `Branch` and is per side** (`is_squash_or_rebase_merged`), always against
+`Repo.get_main_hash()` — the **remote** main hash when there is one, never the possibly stale local copy. A
+side counts as merged when _any_ of these holds:
+
+1. **Ancestry**: `git merge-base --is-ancestor <tip> <main_hash>`. Only catches real merges and fast-forwards.
+2. **Rebase merge** (`_is_rebase_merged`): `git cherry` marks **every** branch commit with `-`, meaning each one
+   is already applied on main by patch id under a different hash.
 3. **Squash merge** (`_is_squash_merged`): the branch tree is turned into a synthetic commit parented on the
-   merge-base (`git commit-tree`), so it carries the same combined patch id as the squashed commit, and `git cherry`
-   is asked about that one commit.
+   merge-base (`git commit-tree`), so it carries the same combined patch id as the squashed commit, and
+   `git cherry` is asked about that one commit.
 
 Steps 2 and 3 are **not** interchangeable: a rebase replays the commits individually, so no single commit on main
 matches the combined diff; a squash collapses them, so none of the originals matches. Checking only one of the two
 silently misses the other style. Both are skipped when there is no merge-base, and for the main branch itself.
+`GitBranch.fully_merged` then means _every side the branch exists on_ is merged — which is the only safe basis
+for a deletion prompt.
 
-It creates `workspace_temp/remote_branches.txt` containing detailed metadata (author, last commit date, ahead/behind count) for every branch.
-
-#### `remote-branches-cleanup`
-
-An interactive tool that consumes the output of `remote-branches-details`.
-
-**Logic:**
-
-1. Allows re-running `remote-branches-details` to refresh data.
-2. Reads `workspace_temp/remote_branches.txt`.
-3. Presents an interactive list to the user to select branches for deletion.
-4. Performs `git push origin --delete <branch>` and prunes local references.
-
-**Design Pattern: Pipeline via Files**
-Instead of passing complex objects between commands in memory, we use the filesystem (`remote_branches.txt`) as an intermediate buffer. This allows the user to inspect (and potentially edit) the list of candidates before running the destructive cleanup command.
+**The two commands share the inventory, not a file.** `remote-branches-details` writes it as a Markdown report
+(`workspace_temp/remote_branches.md`) for inspection; `remote-branches-cleanup` builds its own in memory and
+consumes it on the spot, so a destructive action never runs against a report generated hours ago. Reusing the
+report as the cleanup's input was the earlier design and was deliberately dropped: **an inventory that can go
+stale must not be the input to an irreversible operation.** Keep that property if the module is reworked again.
 
 **Pre-flight wrapper (`remote_branches/module.py`)**
 Both commands are light-weight (`skip`) but need a remote and the working path, so the wrapper runs
@@ -538,9 +607,16 @@ other, and two tests enforce it (§6.3).
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `docs_gen/introspect.py`      | Walks the CLI and normalizes it into `IntrospectedCommand` dataclasses. Owns `normalize_help()` and `normalize_epilog()`. |
 | `docs_gen/markdown_writer.py` | Pure rendering: dataclasses → Markdown. Owns the table-escaping helpers and `write_or_check_document()`.                  |
-| `docs_gen/generate_docs.py`   | The `generate-docs` Click command only.                                                                                   |
+| `docs_gen/generate_docs.py`   | The `generate-docs` Click command, plus `render_command_reference()` — the one composition of "walk the CLI" then "render it", shared with `generate-skill`. |
+| `docs_gen/generate_skill.py`  | The `generate-skill` Click command: target selection, `SKILL.md` writing, git-tracking choice.                            |
 | `docs_gen/man_page.py`        | The `man` Click command: alias resolution, terminal rendering, paging.                                                    |
 | `docs_gen/module.py`          | The `CliGroup`, the `wrapper` (carrying `docs_group="Documentation"`) and `add_wrapper`.                                  |
+
+**There is exactly one renderer, and no command may grow a second one.** `generate-docs` and `generate-skill`
+publish the identical document, so they share `render_command_reference()` outright; `man` needs to filter the
+command list first, so it composes `iter_introspected_commands()` with the same `render_markdown()` rather
+than reimplementing the rendering. A second pipeline would let two "generated" documents disagree, and a
+generated file that can drift buys nothing over a hand-written one.
 
 `generate-docs` is `@cli_metadata(flags={"no_init"})`: it needs no workspace, no git and no `MEGA_SNAKE_SHELL`, so it
 resolves the packaged fragments through `importlib.resources` and must never call `get_property()`. It imports the
@@ -590,6 +666,38 @@ Four details that are easy to get wrong when touching this command:
 
 Rendering reuses `render_markdown()` on a filtered command list rather than adding a second rendering path — a
 single-command page is the same document with one entry, which is what keeps the two outputs from drifting apart.
+
+#### `generate-skill`
+
+Writes `SKILL.md` into the agent-skill directories (`.github/skills/mgsnake/` for GitHub Copilot,
+`.claude/skills/mgsnake/` for Claude, or both) so the _user's_ assistant can drive mgsnake inside the user's
+own project — which is what makes it user-facing despite documenting mgsnake (§1). Also `no_init`, and its
+body renders through `render_command_reference()` so it cannot diverge from `COMMANDS.md`.
+
+Four properties a reader will otherwise misjudge:
+
+- **The YAML frontmatter is what makes the file a skill.** `_skill_document()` prepends `name` and
+  `description`; a `SKILL.md` opening with the reference's own `# Available Commands` heading is not
+  discovered by either runtime, so the command would write a file that achieves nothing. The description is
+  emitted as a **quoted** scalar — a plain YAML scalar may not contain `": "`, which that prose can easily
+  reacquire. The same pair serves both targets, which is why one rendered string still feeds every directory.
+- **Both answers are collected before the first byte is written.** Prompting after writing would strand
+  `SKILL.md` files that are neither excluded nor gitignored whenever the second prompt exhausts its retries.
+  Keep the order; two tests pin that nothing survives an abandoned prompt.
+- **The write path is unconditionally interactive.** It always prompts for the target and always prompts for
+  the tracking strategy — there is no "already up to date, skip the questions" branch. Never document or
+  script it as if there were: a bare `mgsnake generate-skill` in a hook or a CI step blocks on `input()`.
+- **`--check` only validates files that already exist.** Its purpose is "existing skill files are not stale",
+  not "skill files exist", so it passes on a checkout that has none — which is the accepted behaviour, stated
+  in the fragment, not a gap waiting to be closed. It compares the frontmatter like any other line.
+
+**Git entries are built with `as_posix()`, never `str(Path)`.** On Windows `str()` yields backslashes, and git
+reads a backslash inside an ignore pattern as an escape, so the pattern matches nothing and the files the user
+asked to untrack stay tracked with no error at all — while the idempotency regex, escaping the same string,
+appends a duplicate line on every re-run. This applies to **any** path this project writes into an
+ignore-pattern file, not just this command. `_tracking_entries()` exists as a separate function so the rule
+can be tested against a `PureWindowsPath`: on Linux `str()` and `as_posix()` agree, so nothing else
+discriminates.
 
 #### Document structure (heading levels)
 
@@ -873,6 +981,24 @@ if result.returncode != 0:
 | `ensure_working_path(decline_message=None)`             | Get `working_path`, offering to create it when missing (and excluding it from git right away), or raising `UserDeclinedError` when the user says no. Used by `working-env` and by every light-weight pre-flight wrapper.                                                                                                |
 | `exclude_from_git(entries)`                             | Append `(entry, description)` pairs to `.git/info/exclude`. Idempotent; skips with a warning outside a git repository and creates the exclude file when missing.                                                                                                                                                        |
 | `write_json_atomically(path, payload, sort_keys=False)` | Serialize JSON through a temporary file in the destination directory + `os.replace`. Leave `sort_keys` False when the key order is part of a published contract (the Jira projection). Used by the store and by `jira-issues`; never hand-roll a second one.                                                             |
+
+Both ignore-file helpers are thin wrappers over one private `_append_missing_entries()`, which owns the whole
+read-modify-write: the `.git` guard, the presence check, the unterminated-last-line guard, and the decision not
+to write at all. They differ only in the target file and the wording of three messages. **Keep it that way** —
+when the two were separate copies, every fix to the matching or the newline handling had to be applied twice,
+and the descriptions of what "idempotent" meant had already started to drift apart.
+
+Two behaviours of that shared implementation are contractual, not incidental:
+
+- **A run that adds nothing writes nothing.** The missing entries are computed before the text is touched, so
+  the file is not reopened at all — its bytes and its mtime survive. Appending the separator newline up front
+  would rewrite an unterminated file on every no-op run, which is what "idempotent" in the docstrings denies.
+- **A file whose last line has no newline gets a separator first.** Otherwise the first new entry is merged
+  onto the existing last pattern, producing a line that matches nothing and silently loses two exclusions.
+  `.gitignore` files edited by hand routinely end mid-line — this repository's own does.
+
+Entries handed to either helper must use forward slashes (`Path.as_posix()`), for the reason spelled out under
+`generate-skill` in §3.7: git reads a backslash in an ignore pattern as an escape.
 
 **Anything that creates a folder under the repo must exclude it from git in the same step** — that is what
 `ensure_working_path` does, and why nothing else should call `os.makedirs(working_path)` directly.
@@ -1201,6 +1327,10 @@ Two habits keep the decay slow: **never restate what is generated or enforced el
 `--help`, a named test), cite it instead; and **prefer the rule to the story of how it was learned** — a
 war story ages, an imperative does not.
 
+**And a third: unfinished work is not documentation.** A statement here describes how the project _is_. The
+moment a paragraph starts describing what someone intends to do, it belongs in §8 and nowhere else — see the
+rule at the top of that section.
+
 ---
 
 ## 7. Exit Codes & the Shell-Dispatch Signals
@@ -1355,11 +1485,8 @@ session. So the startup line passes the path explicitly
 `__mgsnake_load_env -Path (& $global:MegaSnakeExe local-env-path)` in PowerShell), and
 `test_scripts_resolve_the_env_file_explicitly_at_startup` pins it so it cannot regress to the bare call.
 
-**Open question for the persistence layer.** `init-local-config` writes a `LOAD_ENV_HELPER` line into the config
-file it generates, so the local environment file can be loaded **twice** per terminal: once when `__mgsnake_reload`
-sources that file, and again by the startup line. It is harmless (the parser is idempotent) but undocumented.
-Whichever toggle the persistence layer introduces has to decide between keeping the redundant call, skipping it
-when the config file already loaded the same path, or dropping the embedded line from newly generated files.
+Both the temporary status of that fallback and the double load it interacts with are open work, catalogued in
+§8.3 — do not re-argue them here.
 
 **Whenever you change how the CLI is invoked, re-check the wrapper.** The signal only works while something
 captures the executable's status; a wrapper that stops doing so leaves the Python side emitting codes into a void,
@@ -1441,3 +1568,162 @@ value, and tells the user to fix something they neither caused nor can reach.
 - **Catching it is legitimate where the "impossible" state is actually expected.** `resolve_tag_pattern` catches it
   around `get_property`, because `create-release` is light-weight and the properties singleton genuinely may not
   exist there. That is the mirror image of the rule: same condition, different flow, different verdict.
+
+---
+
+## 8. Pending Work — the single catalogue
+
+**Every TODO, accepted debt, deferred decision and open question about this project lives in this section, and
+nowhere else.** Sections 1–7 describe how the project _is_; this one is the only place that describes what it
+is not yet. That split is the point: mixing the two is how a plan gets read as a description and a
+half-finished intention gets cited as a convention.
+
+The one thing that may live outside it is a **user-facing** mention of a planned behaviour in a docs fragment
+(`remote-branches-details.md` says a `--format` option is planned, `load-env.md` says its fallback is
+temporary). Those are promises to users and belong where users read them — but they say only _that_ the work
+is planned. The plan itself, the reasoning and the shape of the fix are specified here and only here, and the
+entry names the fragment sentence that has to be deleted when the work lands.
+
+> ### ⚠️ MANDATORY: adding pending work
+>
+> **Anything you decide to leave undone gets an entry here, in the same change that leaves it undone.** Not a
+> `# TODO` alone, not a paragraph in the section it affects, not a PR comment — those disappear from view the
+> moment the branch merges. A `# TODO` in the code is allowed, but only as a **one-line pointer** to its entry
+> here (`# TODO (§8.x): …`); the reasoning lives in the entry.
+>
+> An entry is worth writing only if the next person can act on it **without redoing the investigation**. Give
+> all five:
+>
+> 1. **What is wrong or missing**, stated as the observable behaviour — not "improve X".
+> 2. **Where**, with file paths and symbols.
+> 3. **Why it was left** — the constraint or decision, so nobody re-litigates it from scratch.
+> 4. **The shape of the fix**, concretely enough to start typing: the data structure, the call site, the flag.
+> 5. **What has to be verified or torn down with it** — the test that must fail first, the state to reset, the
+>    documentation to fold back in.
+>
+> **Closing an entry means deleting it**, in the same change that fixes the thing, and folding whatever is
+> still true into the permanent sections (§6.4 rule 1). An entry that survives its own fix is worse than none:
+> it advertises a defect the code no longer has.
+
+### 8.1 `generate-docs` carries this repository's own workflow (§1, §3.7)
+
+**What.** `generate-docs` is a public command whose two defining surfaces exist for this repository:
+it defaults to writing `COMMANDS.md` into the current directory — a filename that means something
+here and nothing in a user's Java project — and `--check` exists only to fail this repository's CI
+when that committed file drifts. Rendering the reference is legitimate user-facing behaviour (`man`
+does the same thing to a pager, `generate-skill` to a `SKILL.md`); the default target and the check
+mode are the maintainer's workflow shipped to strangers.
+
+**Where.** `src/mega_snake/docs_gen/generate_docs.py` — the `--output` default (`DOCS_OUTPUT_FILE`)
+and the `--check` flag; registration in `docs_gen/module.py`.
+
+**Why it was left.** The command is genuinely needed for this repository's workflow, and the correct
+home — a mega-snake-only command group, hidden from an installed user — is a bigger change than any
+of the PRs that touched it. `man` and `generate-skill` were examined against the same rule and pass
+it (§1): their audience is the mgsnake user, so they must **not** be swept into this move.
+
+**Shape of the fix.** Move `generate-docs` into a module whose group is not registered in `MODULES`
+for a normal invocation — registered only when `mgsnake` runs from a source checkout of itself, or
+exposed under an explicitly internal group. `docs_gen` was deliberately kept self-contained so the
+move stays mechanical: nothing outside it imports its internals except `__main__`'s registration,
+and `render_command_reference()` is already the public seam the other two commands share. If the
+"export the reference to a file" half turns out to be worth keeping for users, it survives as an
+option on `man` rather than as a second command.
+
+**Verify.** `generate-docs` disappears from `mgsnake --help` for an installed user while `man` and
+`generate-skill` stay; `COMMANDS.md` no longer documents it (regenerate it — the fragment moves with
+the command, §6.3); the release workflow's `generate-docs --check` step still runs in this
+repository; §1's "the test is the audience" block and §3.7 are updated rather than reworded.
+
+### 8.2 The generated `SKILL.md` loads the whole reference eagerly (§3.7)
+
+**What.** `generate-skill` writes valid frontmatter followed by the entire ~900-line command
+reference as the skill body. Both runtimes load a skill's body eagerly once the skill triggers, and
+both are designed for progressive disclosure — a short body that points at reference files read on
+demand. So the file works, but it spends far more of the user's assistant context than it needs to.
+
+**Where.** `src/mega_snake/docs_gen/generate_skill.py`, `_skill_document()` and `_write_skill_files()`.
+
+**Why it was left.** The fix changes what lands in the user's repository (one file becomes a
+directory of them), which is a product decision, not a cleanup. Getting the file *loadable* was the
+defect worth fixing on its own.
+
+**Shape of the fix.** Keep `SKILL.md` as frontmatter plus a generated index — command name, aliases
+and `short_help`, which introspection already provides — and write the full reference beside it as
+`reference.md` that the body tells the agent to read when it needs detail. Note the constraint this
+runs into: §3.7 forbids a second renderer, and an index is a second projection of the same
+`IntrospectedCommand` list. Render it from that list, never from a second walk of the CLI, so the
+two documents cannot disagree.
+
+**Verify.** `--check` has to compare every file the command writes, not just `SKILL.md`, or the
+reference half drifts invisibly; the `## Output` section of `resources/docs/generate-skill.md` lists
+both files; `COMMANDS.md` regenerated (§6.3).
+
+### 8.3 `load-env`'s bare-invocation fallback and the double load (§7.4)
+
+**What.** `mgsnake load-env` with no argument falls back to `.env` in the current directory when the local
+environment file does not exist. It is deliberate but temporary: a terminal opened in an unrelated directory
+should not be one command away from exporting a stranger's `.env`. Separately, `init-local-config` embeds a
+`LOAD_ENV_HELPER` line in the file it generates, so the local environment file is loaded **twice** per
+terminal — once by `__mgsnake_reload` sourcing that file, once by the startup line. Harmless today (the parser
+is idempotent) and undocumented.
+
+**Why it was left.** Both wait on the same thing: a persistence layer that lets a user store a preference, so
+the fallback becomes a toggle rather than a hard-coded behaviour.
+
+**Shape of the fix.** When that layer lands, the fallback becomes opt-in and `load-env.md` loses its temporary
+note; the double load is settled by choosing one of — keep the redundant call, skip it when the config file
+already loaded that same path, or stop embedding the line in newly generated config files. Note that
+`config_setup.sh` / `config_setup.ps1` must **keep** passing the path explicitly at startup regardless of the
+outcome; `test_scripts_resolve_the_env_file_explicitly_at_startup` pins that and is not part of this decision.
+
+### 8.4 Merge verdicts are re-derived once per branch side (§3.3)
+
+**What.** `Branch.__post_init__` resolves the merge verdict per _side_, so a paired branch pays for the whole
+analysis twice — and for an in-sync branch (trackshort `=`, the majority) both sides hold the same tip hash,
+so the second run re-derives an answer from byte-identical inputs. Worst case per side is 6 git invocations
+(`merge-base --is-ancestor`, `merge-base`, `git cherry`, `rev-parse ^{tree}`, `commit-tree`, `git cherry`),
+each spawned through `run_operation` as a shell child, i.e. 2 processes apiece; `GitBranch._on_initialized`
+adds a seventh per logical branch. On a 200-branch repository that is on the order of 2500 git invocations,
+roughly half of them buying nothing.
+
+**Where.** `src/mega_snake/remote_branches/remote_branch.py`, `Branch.__post_init__`.
+
+**Why it was left.** Correctness first: the per-side derivation is what makes `local merged` / `remote merged`
+reportable at all. The cost only bites on large repositories.
+
+**Shape of the fix.** A class-level `dict[str, tuple[bool, str]]` keyed on the tip hash, holding
+`(merged_on_main, main_common_ancestor)`, consulted at the top of `__post_init__`. It is safe because both
+inputs — the tip hash and `Repo.get_main_hash()` — are fixed for the lifetime of the snapshot, so the cache
+cannot go stale within a run.
+
+**Verify.** It must be cleared in `Repo.reset()` alongside the rest of the snapshot state (§4.4), or tests leak
+verdicts between cases — and a test that asserts the second side reuses the verdict rather than re-running git.
+
+### 8.5 `remote-branches-details` has a fixed table shape (§3.3)
+
+**What.** The report's columns and layout are hard-coded in `GitBranch.MD_HEADER` and
+`details_remote_branches.render_markdown_report()`; a user who wants fewer columns, CSV, or JSON has no way to
+ask. Promised as "a `--format` option is planned" in `resources/docs/remote-branches-details.md`, so it is a
+commitment already made to users, not just an idea.
+
+**Shape of the fix.** A `--format` option on `remote-branches-details` selecting the columns and the output
+shape. `MD_HEADER` and the row rendering (`GitBranch.to_markdown_row`) have to move behind it together — they
+are two halves of one table definition and will silently disagree if only one is parameterized.
+
+**Verify.** The fragment's "planned; for now the table is fixed" sentence is deleted in the same change, and
+`COMMANDS.md` regenerated (§6.3).
+
+### 8.6 Docstring style is not uniform across the package (§6.1 rule 2)
+
+**What.** §6.1 mandates a summary line plus `Parameters:` / `Raises:` / `Returns:`, all three always present.
+Several older functions still carry the earlier `Args:` shape or omit sections — `remote_branches`'
+`remote_branches_details` / `execute`, parts of `util.load_json_with_comments`, and most of the shelved
+`offproject/` tree.
+
+**Why it was left.** A blanket rewrite would touch far more files than any single change needs to, and would
+bury real edits in reformatting noise.
+
+**Shape of the fix.** Opportunistic: **when you edit a function, bring its docstring to the mandated shape**,
+and do not start a repository-wide sweep for its own sake. Nothing enforces this mechanically — if it is ever
+worth enforcing, the check belongs next to the docs tests in `src/tests/docs_gen/`.

@@ -3,8 +3,8 @@ command reference to an assistant without embedding it in the system prompt. The
 `SKILL.md` from the configured skill directory and gains the same reference a human would find in
 `COMMANDS.md`, including every command synopsis, option table, and prose fragment.
 
-The file content is identical to what `generate-docs` would write to `COMMANDS.md`; both commands
-call the same underlying renderer. Keeping them in sync is therefore automatic — regenerate with
+The body is identical to what `generate-docs` would write to `COMMANDS.md`; both commands call the
+same underlying renderer. Keeping them in sync is therefore automatic — regenerate with
 `generate-skill` whenever you regenerate `COMMANDS.md`.
 
 ## Output
@@ -14,7 +14,13 @@ call the same underlying renderer. Keeping them in sync is therefore automatic �
 - `.github/skills/mgsnake/SKILL.md` — GitHub Copilot skill directory
 - `.claude/skills/mgsnake/SKILL.md` — Claude skill directory
 
-After writing the files the command asks how to track them in git:
+Each file opens with the YAML frontmatter both runtimes read to register the document as a skill —
+its `name` and the `description` that tells the assistant when the skill applies — followed by the
+command reference itself. A `SKILL.md` without that header is never loaded, so the frontmatter is
+part of the generated content and `--check` compares it like any other line.
+
+The command asks two questions before writing anything: which assistant to target, and how the
+resulting files should be tracked in git.
 
 - **exclude (e)** — appends the directory to `.git/info/exclude`, keeping it machine-local and
   uncommitted. Best for teams that do not all use the same AI assistant.
@@ -26,22 +32,26 @@ After writing the files the command asks how to track them in git:
 ## Examples
 
 ```bash
-# First-time setup: pick the target assistant and the git-tracking preference interactively
+# Write the files: pick the target assistant and the git-tracking preference at the prompts
 mgsnake generate-skill
 
-# Re-generate after updating command metadata (non-interactive if files already exist and match)
-mgsnake generate-skill
-
-# Verify that all existing skill files are up to date (CI-safe, exits non-zero if stale)
+# Verify that the skill files present on disk are up to date, without writing anything
 mgsnake generate-skill --check
 ```
 
 ## Notes
 
-`--check` only validates skill files that already exist on disk. If no skill files are present it
-exits successfully — the command does not mandate that skill files exist, only that existing ones
-are not stale.
+**Writing always asks.** Both questions are asked on every run, including a re-run that would
+rewrite an identical file. There is no non-interactive write mode, so this command cannot be put in
+a git hook or a CI step without something to answer the prompts; use `--check` there instead, which
+never prompts. Both answers are collected before the first file is written, so abandoning either
+prompt leaves the working tree untouched.
 
-The command requires no workspace or git repository (`no_init` flag). It can run anywhere `mgsnake`
-is installed, including CI environments, which makes `--check` suitable as a CI gate alongside the
-equivalent `generate-docs --check`.
+`--check` only validates skill files that already exist on disk. If none are present it exits
+successfully — the command does not mandate that skill files exist, only that the ones you keep are
+not stale. On a checkout where the skill files are excluded from git, that means the check has
+nothing to look at and always passes.
+
+The command requires no workspace and no git repository, so it runs anywhere `mgsnake` is installed.
+The git-tracking step is the exception: outside a repository it is skipped with a warning rather
+than failing.

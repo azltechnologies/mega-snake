@@ -127,20 +127,20 @@ def run_operation(
 ) -> subprocess.CompletedProcess[str]:
     """Runs the given command and retries on failure up to 3 times.
 
+    A timeout is retried like any other failure, and catching it takes a deliberate clause:
+    ``subprocess.TimeoutExpired`` is a ``SubprocessError`` but **not** a ``CalledProcessError``, so
+    an ``except`` written for the latter never sees it. Miss that and a single slow network call — a
+    cold fetch, a VPN, a credential prompt — aborts the whole command with a raw traceback while the
+    retries that exist precisely for transient failures never run. **Never narrow this to
+    ``CalledProcessError`` alone.** The two are caught together and reported the same way; only the
+    wording differs, since a timeout has no exit code to show.
+
     Parameters:
         cwd: The shell command to execute.
         description: Human-readable description of the operation, used in log messages.
         check: Whether a non-zero exit code should raise subprocess.CalledProcessError.
         timeout: Maximum number of seconds to wait for the command to finish, or None to wait
             indefinitely.
-
-    A timeout is retried like any other failure. It used to propagate on the first attempt instead,
-    because ``subprocess.TimeoutExpired`` is a ``SubprocessError`` but **not** a
-    ``CalledProcessError``, so the ``except`` clause never saw it — which meant a single slow network
-    call (a cold fetch, a VPN, a credential prompt) aborted the whole command with a raw traceback,
-    and the retries that exist precisely for transient failures never ran. The two are caught
-    together and reported the same way; only the wording differs, since a timeout has no exit code
-    to show.
 
     Raises:
         subprocess.SubprocessError: If the command still fails — or still times out — after 3
@@ -296,8 +296,78 @@ def get_validated_input(p_prompt: str, valid_values: list[str]) -> str:
             raise KeyError(f"Too many invalid inputs for '{p_prompt} —— {instructions}'. Exiting.")
 
 
+def _append_missing_entries(
+    target: str,
+    entries: list[Tuple[str, str]],
+    *,
+    skip_message: str,
+    present_message: str,
+    added_message: str,
+) -> None:
+    """Append every entry that is not already listed in a git ignore-pattern file.
+
+    The two public helpers below differ only in which file they write and how they word their
+    messages, so the whole read-modify-write lives here once: duplicating it means a later fix to
+    the matching, the newline handling or the write condition gets applied to one copy and forgotten
+    in the other.
+
+    Nothing is written when every entry is already present, so a no-op run leaves the file's bytes
+    untouched — which is what the "idempotent" in the public docstrings claims.
+
+    Parameters:
+        target: Path of the ignore-pattern file to update.
+        entries: Pairs of (entry, description); the entry is the literal line written to the file
+            (e.g. ``".vscode/"``) and the description is the human label used in the log messages.
+        skip_message: Warning emitted, with the descriptions appended, outside a git repository.
+        present_message: Advice template for an entry that is already listed; formatted with
+            ``description`` and ``target``.
+        added_message: Success template for an entry that was appended; same placeholders.
+
+    Raises:
+        None
+
+    Returns:
+        None
+    """
+    if not os.path.exists(".git"):
+        ws_warning(f"{skip_message}: {', '.join(description for _, description in entries)}")
+        return
+    content: str = ""
+    if os.path.exists(target):
+        with open(target, "r", encoding="utf-8") as file:
+            content = file.read()
+    missing: list[Tuple[str, str]] = []
+    for entry, description in entries:
+        regex = re.compile(rf"^\s*{re.escape(entry.rstrip('/'))}/?\s*$", re.MULTILINE)
+        if regex.search(content):
+            ws_advice(present_message.format(description=description, target=target))
+            continue
+        missing.append((entry, description))
+    # Deciding what is missing before touching the text is what makes a no-op run a true no-op: the
+    # file is not reopened for writing at all, so its bytes and its mtime are left alone.
+    if not missing:
+        return
+    # A hand-edited file may end mid-line; appending straight onto it would silently merge the first
+    # new entry into the existing last pattern instead of adding one. Done here rather than up front
+    # so a run that adds nothing does not rewrite the file just to normalize its final newline.
+    if content and not content.endswith("\n"):
+        content += "\n"
+    for entry, description in missing:
+        content += f"{entry}\n"
+        ws_success(added_message.format(description=description, target=target))
+    parent: str = os.path.dirname(target)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    with open(target, "w", encoding="utf-8") as file:
+        file.write(content)
+
+
 def exclude_from_git(entries: list[Tuple[str, str]]) -> None:
     """Add the given entries to the repository's local git exclude file when missing.
+
+    This is the machine-local exclusion: ``.git/info/exclude`` is never committed, so it hides the
+    entries from this clone only. Use it for folders a single developer generates; use
+    ``add_to_gitignore`` for an exclusion the whole team should get.
 
     Entries already present are left untouched, so the operation is idempotent. When the current
     directory is not a git repository the exclusions are skipped with a warning instead of failing,
@@ -313,33 +383,20 @@ def exclude_from_git(entries: list[Tuple[str, str]]) -> None:
     Returns:
         None
     """
-    if not os.path.exists(".git"):
-        ws_warning(
-            f"Not inside a git repository; skipping git exclusions for: "
-            f"{', '.join(description for _, description in entries)}"
-        )
-        return
-    exclude: str = ""
-    if os.path.exists(GIT_EXCLUDE_FILE):
-        with open(GIT_EXCLUDE_FILE, "r", encoding="utf-8") as file:
-            exclude = file.read()
-    else:
-        os.makedirs(os.path.dirname(GIT_EXCLUDE_FILE), exist_ok=True)
-    if exclude and not exclude.endswith("\n"):
-        exclude += "\n"
-    for entry, description in entries:
-        regex = re.compile(rf"^\s*{re.escape(entry.rstrip('/'))}/?\s*$", re.MULTILINE)
-        if regex.search(exclude):
-            ws_advice(f"{description} already excluded in {GIT_EXCLUDE_FILE}")
-            continue
-        exclude += f"{entry}\n"
-        ws_success(f"Excluded {description} in {GIT_EXCLUDE_FILE}")
-    with open(GIT_EXCLUDE_FILE, "w", encoding="utf-8") as file:
-        file.write(exclude)
+    _append_missing_entries(
+        GIT_EXCLUDE_FILE,
+        entries,
+        skip_message="Not inside a git repository; skipping git exclusions for",
+        present_message="{description} already excluded in {target}",
+        added_message="Excluded {description} in {target}",
+    )
 
 
-def add_to_gitignore(entries: list[tuple[str, str]]) -> None:
+def add_to_gitignore(entries: list[Tuple[str, str]]) -> None:
     """Add the given entries to the repository's .gitignore file when missing.
+
+    This is the committed exclusion: every clone of the repository gets it. Use ``exclude_from_git``
+    instead when the entries should stay local to one machine.
 
     Entries already present are left untouched, so the operation is idempotent. When the current
     directory is not a git repository the additions are skipped with a warning instead of failing.
@@ -355,27 +412,13 @@ def add_to_gitignore(entries: list[tuple[str, str]]) -> None:
     Returns:
         None
     """
-    if not os.path.exists(".git"):
-        ws_warning(
-            f"Not inside a git repository; skipping .gitignore additions for: "
-            f"{', '.join(description for _, description in entries)}"
-        )
-        return
-    content: str = ""
-    if os.path.exists(GITIGNORE_FILE):
-        with open(GITIGNORE_FILE, "r", encoding="utf-8") as file:
-            content = file.read()
-    if content and not content.endswith("\n"):
-        content += "\n"
-    for entry, description in entries:
-        regex = re.compile(rf"^\s*{re.escape(entry.rstrip('/'))}/?\s*$", re.MULTILINE)
-        if regex.search(content):
-            ws_advice(f"{description} already in {GITIGNORE_FILE}")
-            continue
-        content += f"{entry}\n"
-        ws_success(f"Added {description} to {GITIGNORE_FILE}")
-    with open(GITIGNORE_FILE, "w", encoding="utf-8") as file:
-        file.write(content)
+    _append_missing_entries(
+        GITIGNORE_FILE,
+        entries,
+        skip_message="Not inside a git repository; skipping .gitignore additions for",
+        present_message="{description} already in {target}",
+        added_message="Added {description} to {target}",
+    )
 
 
 def ensure_working_path(decline_message: Optional[str] = None) -> str:
