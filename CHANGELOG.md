@@ -16,6 +16,19 @@ lives in the GitHub Release body (`gh release create --generate-notes`); this fi
 **Releasing:** every release must have its own `## [X.Y.Z]` section here, matching the `version` field in
 `pyproject.toml` and the `vX.Y.Z` tag. `.github/workflows/release.yml` refuses to publish otherwise.
 
+## [Unreleased]
+
+### Added
+
+- **`generate-skill`.** Writes the command reference as `SKILL.md` into an AI assistant's skill directory —
+  `.github/skills/mgsnake/` for GitHub Copilot, `.claude/skills/mgsnake/` for Claude, or both — so the
+  assistant can answer about `mgsnake` from the real command metadata instead of guessing. The file carries
+  the YAML frontmatter both runtimes need in order to load it as a skill, over a body that comes from the same
+  renderer as `COMMANDS.md`, so the two cannot drift. It asks which assistant to target and how the files
+  should be tracked — excluded machine-locally, added to `.gitignore`, or committed — before writing anything,
+  so abandoning a prompt leaves nothing behind. `--check` validates the skill files already on disk without
+  writing.
+
 ## [0.1.7] - 2026-08-25
 
 ### Added

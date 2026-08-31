@@ -135,6 +135,14 @@ mgsnake generate-docs --check
 `generate-docs` runs anywhere: it needs no workspace, no Git repository and no shell setup. If you contribute a
 command or change its options, regenerate `COMMANDS.md` and commit it along with your change.
 
+The same reference can also be handed to an AI coding assistant, so it answers about `mgsnake` from the real
+command metadata instead of guessing:
+
+```bash
+# Write SKILL.md into the Copilot and/or Claude skill directory, and choose how to track it in git
+mgsnake generate-skill
+```
+
 ## Automated dependency vulnerability scanning
 
 This repository combines two free, open-source tools to keep dependencies up to date and flag vulnerabilities:

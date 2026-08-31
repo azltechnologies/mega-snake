@@ -567,6 +567,73 @@ def test_add_to_gitignore_is_idempotent(
     mk_util_ws_success.assert_not_called()
 
 
+def test_add_to_gitignore_separates_an_unterminated_last_line(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_util_ws_success: MagicMock,
+    mk_ws_advice: MagicMock,
+) -> None:
+    """A .gitignore whose last line has no newline keeps that line intact, entry on its own line.
+
+    This is the realistic shape of a hand-edited file, and the only one that distinguishes appending
+    from concatenating: with a trailing newline both behave identically.
+    """
+    from mega_snake.util.util import GITIGNORE_FILE, add_to_gitignore
+
+    monkeypatch.chdir(tmp_path)
+    gitignore = tmp_path / GITIGNORE_FILE
+    (tmp_path / ".git").mkdir()
+    gitignore.write_text("build/", encoding="utf-8")  # No trailing newline, on purpose.
+
+    add_to_gitignore(GITIGNORE_ENTRIES)
+
+    lines = gitignore.read_text(encoding="utf-8").splitlines()
+    assert lines == ["build/", ".github/skills/mgsnake/", ".claude/skills/mgsnake/"], (
+        f"the pre-existing last line must survive untouched, got {lines}"
+    )
+    assert "build/.github/skills/mgsnake/" not in lines, "the entry was concatenated onto the last line"
+    assert mk_util_ws_success.call_count == 2
+    mk_ws_advice.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("helper_name", "target_name"),
+    [("add_to_gitignore", "GITIGNORE_FILE"), ("exclude_from_git", "GIT_EXCLUDE_FILE")],
+)
+def test_appending_nothing_leaves_the_file_byte_identical(
+    helper_name: str,
+    target_name: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_util_ws_success: MagicMock,
+    mk_ws_advice: MagicMock,
+) -> None:
+    """A run where every entry is already listed must not rewrite the file at all.
+
+    The fixture deliberately omits the final newline: with one present, rewriting and not rewriting
+    produce identical bytes, so only an unterminated file distinguishes a real no-op from a
+    read-modify-write that happens to reproduce the same content plus a normalized ending.
+    """
+    import mega_snake.util.util as util_module
+
+    helper = getattr(util_module, helper_name)
+    target = getattr(util_module, target_name)
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".git").mkdir()
+    file_path = tmp_path / target
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    before = ".github/skills/mgsnake/\n.claude/skills/mgsnake/"  # No trailing newline, on purpose.
+    file_path.write_text(before, encoding="utf-8")
+
+    helper(GITIGNORE_ENTRIES)
+
+    after = file_path.read_text(encoding="utf-8")
+    assert after == before, f"{target} was rewritten although every entry was already present"
+    mk_util_ws_success.assert_not_called()
+    assert mk_ws_advice.call_count == len(GITIGNORE_ENTRIES)
+
+
 def test_add_to_gitignore_outside_a_git_repository(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
