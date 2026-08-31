@@ -158,6 +158,25 @@ and not `metadata` directly — `metadata` is the whole kwargs dict, `"flags"` i
 wrapping command, which is what makes a module-level `@cli_metadata(flags={"skip"})` apply to every command in the
 module.
 
+**Two things `cli()` validates before it hands over.** Both raise, and both resolve to a real status
+through `ERROR_CODES` (§7.1), so neither is a silent fallback:
+
+- `MEGA_SNAKE_SHELL` must be **set** (`EnvironmentError`, exit 112) and must be one of `SHELL_OPT`
+  (`ValueError`, exit 103). A shell the CLI does not model is refused up front rather than reaching the
+  code that writes `terminal.integrated.env.<os>` for it.
+- `init_app_properties` then requires the shell to be **on the PATH** (`shutil.which`), with one
+  substitution: `powershell` falls back to `pwsh` and vice versa when only the other one is installed.
+  That pair is the same shell to us, and a Windows profile exporting either name is common enough that
+  refusing it would be pedantry. Anything else missing from the PATH is a `ValueError`.
+
+**`--version` / `-v` answers before any of that.** It is declared on the root group as
+`is_eager=True, expose_value=False` with its own callback, so Click resolves it during parameter
+processing and `ctx.exit()`s **before the `cli()` body runs** — no metadata lookup, no
+`MEGA_SNAKE_SHELL` check, no `AppProperties`. It is effectively a `no_init` command without carrying
+the flag, and it follows the same rule: `click.echo`, one line, nothing else on stdout. The value
+comes from `importlib.metadata`, so it reads `mgsnake, version unknown` in a source checkout that was
+never installed — expected, not a defect.
+
 **When `no_init` is the only option**
 `no_init` exists for the **bootstrap problem**, not as a "lighter light-weight". Full and light-weight initialization
 both require `MEGA_SNAKE_SHELL`, and `cli()` raises `EnvironmentError` when it is unset. But that variable is exported
@@ -167,13 +186,17 @@ answer. Consequences for any `no_init` command:
 
 - `AppProperties` is never constructed: `get_property()`, `working_path`, `log_file` and the `.code-workspace` are all
   unavailable. Depend only on `importlib.resources` and the arguments.
-- Nothing is logged to file, and the `ws_*` helpers are pointless — `shell-path` deliberately uses `click.echo` because
-  its stdout is consumed by command substitution (`. "$(mgsnake shell-path bash)"`) and must stay clean.
+- **Nothing is logged to file, but the console still works.** Every `ws_*` helper prints before it logs (§4.1), so
+  `ws_info`/`ws_warning` reach the user normally; only the log record is dropped, and `ws_advice` stays silent
+  because the logger's level was never raised to `DEBUG`. `jira-board` and `jira-sprint` rely on exactly that for
+  their warnings.
+- The **payload** goes through `click.echo` — `shell-path`'s stdout is consumed by command substitution
+  (`. "$(mgsnake shell-path bash)"`) and must carry the path and nothing else.
 
-**Keep `no_init` stdout clean.** Anything a shell captures with `$(...)` must print _only_ the value. `ws_advice` is
-level-gated (it checks `logger.level`), so it is silent when logging was never configured — but that is a property of
-the current initialization order, not a guarantee. Never add unconditional `ws_*` output to a command whose stdout is
-consumed by a script.
+**Keep `no_init` stdout clean.** Anything a shell captures with `$(...)` must print _only_ the value. The `ws_*`
+helpers are safe next to it — every one of them writes to stderr (§4.1) — so the rule is not "print nothing", it is
+**print nothing else to stdout**: one `click.echo` carrying the value, and no second one carrying a status line, a
+prompt or a trailing hint.
 
 **What light-weight mode (`skip`) actually defers**
 When `working_path` (e.g. `workspace_temp`) is missing, `AppProperties.__init__` raises `FileNotFoundError` _after_ setting
@@ -215,10 +238,12 @@ command under the `aliases` attribute, and it registers one extra `click.Command
 - **rich-click reads the `aliases` attribute natively.** The alias column you see in `mgsnake --help` (the green one
   next to each command) is drawn by rich-click's `_get_command_aliases_help`, styled with `style_command_aliases`
   and positioned by `commands_table_column_types`. Nothing in this repo renders it. If you ever need to change how
-  that panel looks, the knobs are in the rich-click configuration, **not** in a `format_commands` override —
-  `RichGroup` overrides `format_help()` to call its own `rich_format_help()`, so Click's classic
+  that panel looks, the knobs are in the rich-click configuration, **not** in a `format_commands` override:
+  `RichGroup.format_commands` is an explicit no-op (`pass`), and `RichGroup.format_help()` renders the panels
+  itself through `format_usage` / `format_help_text` / `format_options` / `format_epilog`, so Click's classic
   `format_help → format_commands` path is never taken (and `RichHelpFormatter.write_dl` is a stub that only emits a
-  `RuntimeWarning`).
+  `RuntimeWarning`). Do not go looking for `rich_format_help()` either — in the pinned rich-click it survives only
+  as a deprecated alias in `rich_click.rich_click`'s `__getattr__`, and nothing on the render path calls it.
 - **Hidden alias commands must be skipped when enumerating commands.** A naive walk of `cli.commands` yields three
   entries for `diff-tree` (itself plus `dt` and `tree`). Use `iter_documented_commands()` (§3.7), which filters
   `cmd.hidden` and folds the aliases back in.
@@ -325,13 +350,14 @@ This is the most complex module, responsible for generating `.code-workspace` fi
 
 - **Logic**:
   1. Validates Git repository status, offering to continue without it rather than failing.
-  2. Secures the working path, and excludes it from Git when there is a repository.
+  2. Resolves the `.code-workspace` file and secures the working path.
   3. Resolves the **active stacks** — from `--stack`, or by detecting marker files in the current
      directory (`models/project_stack.py`, below).
-  4. Loads local developer overrides (`initial_load`).
-  5. Configures the tools of the active stacks only: `set-java`, `set-gradle` and `set-maven` each
+  4. Excludes the working path from Git, when there is a repository.
+  5. Loads local developer overrides (`initial_load`).
+  6. Configures the tools of the active stacks only: `set-java`, `set-gradle` and `set-maven` each
      run when their stack is active, and are reported as skipped otherwise.
-  6. Generates the VS Code tasks, launch configurations, log watchers and extension
+  7. Generates the VS Code tasks, launch configurations, log watchers and extension
      recommendations **belonging to the active stacks**.
 
 #### `models/project_stack.py` — the stack model
@@ -855,9 +881,24 @@ status has one message in `STATUS_MESSAGES`, which the tests compare by equality
 
 **Settings resolve through the store (§4.4); credentials never do.** `jira.domain` and `jira.email` come from
 `env var > repo > global`; `JIRA_API_TOKEN` is read from the environment only (`JIRA_MCP_TOKEN` still works as a
-deprecated fallback and warns **on stderr**). `jira.board_id`, `jira.field.story_points` and `jira.field.sprint`
-are caches written by the commands themselves — the board cache is only trusted when the resolved project key
-matches the stored one, so an explicit key can never be answered with another project's board.
+deprecated fallback and warns **on stderr**). `jira.board_id` is a cache the commands write themselves, and it is
+only trusted when the resolved project key matches the stored one, so an explicit key can never be answered with
+another project's board. `--refresh` (on `jira-board` and `jira-issues`) bypasses every cached lookup.
+
+**A pin and a cache are different keys, and the split is load-bearing.** For the custom field ids, the bare key
+(`jira.field.sprint`) is the **user's pin**: nothing in this codebase writes, deletes or second-guesses it. What
+the resolver writes is the `.cached` sibling (`jira.field.sprint.cached`, `CACHED_KEY_SUFFIX` in `constants.py`),
+and `FieldIds.resolve` answers each field independently from *pin > cache > lookup by name*. While the two shared
+one key, every way of pinning a field failed: a clean resolution overwrote the pin, `--refresh` deleted the one it
+could not confirm, and the all-or-nothing cache branch meant a pin was not read unless the *other* field happened
+to be cached too — so the remedy the ambiguity warning prints did nothing. Keep any new "the tool works this out,
+but the user may override it" setting on the same two-key shape.
+
+**A one-time migration cannot be decided from the shape of the data.** An earlier version wrote its cache under the
+bare key, so a leftover and a fresh pin are the same key holding the same kind of value. `Store` records
+`mgsnake.state_version` (`STATE_VERSION_KEY`) when it writes a scope under the current layout, and
+`FieldIds._migrate_legacy_cache` moves a bare key onto its `.cached` sibling only for a scope that predates the
+marker. A migration keyed on shape ate the pin it was meant to protect — do not reintroduce one.
 
 **The two endpoint families page differently, and mixing them up is silent.** `/rest/api/2/search/jql` sends
 `nextPageToken` and omits it on the last page → `paginate_tokens`. The whole Agile API (`/rest/agile/1.0/*`)
@@ -887,7 +928,18 @@ needs — `ensure_working_path()` + `complete_app_properties()` — lives in its
 flags win because `wrapper_decorator.update_flags` merges the module wrapper first and the callback second.
 That pre-flight is also **conditional on `--output` being absent**: with an explicit destination the run never
 touches the working path, so prompting to create `workspace_temp` (and exiting 114 when the user declines) would
-be a question about a folder it will not write to.
+be a question about a folder it will not write to. When the folder happens to exist anyway, the deferred
+initialization is still completed, so `--log-level` keeps working; when it does not, only the log file is lost —
+the console output never depended on it (§4.1).
+
+**`jira-issues` writes a file, so its three flags are about *where*, *how fresh* and *how loud*.** They are not
+interchangeable with the other two commands' surface, and the difference is the point:
+
+| Flag | Effect |
+| --- | --- |
+| `--output` / `-o` | The destination file. Defaults to `jira_board_issues.json` inside the working path — the only mode that needs the pre-flight above. |
+| `--refresh` / `-r` | Ignores **every** cached Jira lookup (the board id *and* the field ids) and resolves them from the instance again. It exists for the case the cache cannot detect: a board recreated, or a custom field re-created by a migration, which the cache would otherwise keep answering with a stale id **and no warning**. Pins survive it (see the pin/cache split above); only caches are discarded. |
+| `--quiet` / `-q` | Silences the progress messages. It touches stderr only — the JSON file is written either way — so it is never a way to make the command's output machine-readable. |
 
 **Rule for the `no_init` commands:** `click.echo` with the JSON, and nothing else, ever. Errors are
 `click.ClickException`, which Click writes to stderr with exit code 1. Warnings use the ordinary `ws_*` helpers,
@@ -900,14 +952,32 @@ when they printed to stdout; do not reintroduce one.
 
 ### 4.1 Output Formatting (`src/mega_snake/util/formatting.py`)
 
-** STRICT RULE**: NEVER use `print()`. Always use valid logging/formatting functions.
+** STRICT RULE**: NEVER use `print()` outside `formatting.py` itself. Everything a command tells the
+user goes through one of the helpers below; everything it *produces* goes through `click.echo`.
 
-- `ws_info(msg)`: ℹ️ Blue info message.
-- `ws_success(msg)`: ✅ Green success message.
-- `ws_warning(msg)`: ⚠️ Yellow warning.
-- `ws_error(msg)`: ❌ Red error.
-- `ws_advice(msg)`: 💡 Helpful tip/advice.
-- `ws_tip(dict)`: 🎨 Multi-colour tip.
+| Helper | Signature | Console | Log record |
+| --- | --- | --- | --- |
+| `ws_info` | `(message: str)` | white on blue | `INFO` |
+| `ws_success` | `(message: str)` | blue on cyan | `INFO` |
+| `ws_warning` | `(message: str)` | yellow on black | `WARNING`, only when the logger has handlers |
+| `ws_error` | `(message: str, exception: Optional[BaseException] = None)` | red on black | `ERROR`, with the file/function/line of the raise |
+| `ws_advice` | `(message: str, force: bool = False)` | green on black, **gated** — see below | `DEBUG`, or `INFO` when forced |
+| `ws_tip` | `(messages: dict[Color, str])` | one segment per entry, on black | `INFO` |
+
+Three details the signatures do not show:
+
+- **`ws_advice` is the only gated helper.** It prints nothing unless `logger.level` is `DEBUG` or
+  `force=True`. A forced advice is logged at **`INFO`**, not `DEBUG`, on purpose: `force` lifts the
+  console gate only, so a `DEBUG` record would still be dropped before dispatch at the default
+  `--log-level INFO` — leaving the log file with no trace of a message the user was shown on
+  screen, which is exactly the message a later troubleshooting session goes looking for.
+- **`ws_tip` is keyed by the `Color` enum** (`RED`/`GREEN`/`YELLOW`/`BLUE`), not by a string, and
+  renders its entries as one line. It is the only multi-colour helper.
+- **`ws_error` is the public door; `_ws_error` is the private one.** `ws_error` clears the
+  traceback before delegating, so the user gets the message without the noise. `_ws_error` keeps it
+  and is reserved for `WorkspaceError`, which is reporting a failure the process is about to exit
+  on. The `msg` command (§3.6) exposes the family to the shell through `MSG_OPT`
+  (`S`/`I`/`W`/`E`/`A`/`T`).
 
 #### ⚠️ Every `ws_*` helper writes to **stderr**. stdout belongs to the command's output.
 
@@ -919,12 +989,27 @@ works while a status line shares the stream with the result.
 The split has to be **uniform across the whole family**: one helper that still prints to stdout is
 enough to corrupt a captured value, and the corruption shows up at a distance, only for the commands
 and log levels that happen to reach it. Uniformity is what lets a command emit a value on stdout
-without auditing every helper it might call.
+without auditing every helper it might call — which is why a `ws_*` call is safe even inside a
+command a shell reads with `$(...)`. `test_every_ws_helper_writes_to_stderr_only` walks the whole
+family and fails naming any helper that regresses.
 
-**Writing to stdout is therefore a deliberate act**, and only `click.echo` does it, in the few
-commands whose output is consumed by a script (`shell-path`, `local-config-path`, `local-env-path`). The user sees
-no difference: a terminal shows both streams. `test_every_ws_helper_writes_to_stderr_only` walks the
-whole family and fails naming any helper that regresses.
+**Writing to stdout is therefore a deliberate act, and only `click.echo` does it.** The commands
+that do, and what each one puts there:
+
+| Command | On stdout | Consumed by |
+| --- | --- | --- |
+| `shell-path`, `local-config-path`, `local-env-path` | one path | `$(...)` in the shell profile / `config_setup.*` |
+| `config get` | the resolved value | `$(...)` |
+| `config export` | the `export` statements | `eval` from the shell profile |
+| `config list` | `key=value` lines | a human, or a pipe |
+| `jira-board`, `jira-sprint` | one JSON document | `jq`, or a script |
+| `man` | the rendered reference | a pager, or a human |
+| `generate-docs` | one `Generated <path>` line | a human |
+| `--version` | the version line | a human |
+
+The user sees no difference between the two streams: a terminal shows both. The rule matters for
+everyone else — and for the first three rows of that table it is not a preference, since a second
+line on stdout silently corrupts a path, a value or a shell statement.
 
 ### 4.2 Property Management (`src/mega_snake/util/props.py`)
 
@@ -982,7 +1067,8 @@ if result.returncode != 0:
 | `Repo.resolve_remote()`                                 | The repository's remote (`util/repo.py`). **Memoized on the class**: one `git remote`, and with several remotes the user is prompted only once no matter how many call sites ask. Returns `None` (with a warning) instead of raising when `git remote` fails, e.g. outside a repository. `Repo.reset()` exists for tests. |
 | `Repo.require_remote()`                                 | Same, for commands that cannot work without a remote: raises `EnvironmentError(NO_REMOTE_MESSAGE)`. A repository without a remote is not a misuse of the CLI, so it is not a `ClickException`. This is the **single** place that message lives — do not re-raise your own.                                               |
 | `ensure_working_path(decline_message=None)`             | Get `working_path`, offering to create it when missing (and excluding it from git right away), or raising `UserDeclinedError` when the user says no. Used by `working-env` and by every light-weight pre-flight wrapper.                                                                                                |
-| `exclude_from_git(entries)`                             | Append `(entry, description)` pairs to `.git/info/exclude`. Idempotent; skips with a warning outside a git repository and creates the exclude file when missing.                                                                                                                                                        |
+| `exclude_from_git(entries)`                             | Append `(entry, description)` pairs to `.git/info/exclude` — the **local** exclusion, private to one clone. Idempotent; skips with a warning outside a git repository and creates the exclude file when missing.                                                                                                        |
+| `add_to_gitignore(entries)`                             | The same, against `.gitignore` — the **committed** exclusion, which every clone inherits. Same signature, same idempotency, same skip-with-a-warning outside a repository. Choosing between the two is the whole decision: `working_path` is local (`exclude_from_git`), a generated `SKILL.md` directory is shared (`add_to_gitignore`). |
 | `write_json_atomically(path, payload, sort_keys=False)` | Serialize JSON through a temporary file in the destination directory + `os.replace`. Leave `sort_keys` False when the key order is part of a published contract (the Jira projection). Used by the store and by `jira-issues`; never hand-roll a second one.                                                             |
 
 Both ignore-file helpers are thin wrappers over one private `_append_missing_entries()`, which owns the whole
@@ -1038,9 +1124,47 @@ Non-negotiables when touching this file:
   and **nothing is written**. Tokens live in environment variables only: a plaintext credential in a state file
   is worse than an exported variable because it persists and is forgotten.
 - **Keys are validated** against `KEY_PATTERN` (lowercase, dotted namespace), so the file stays navigable.
-- **Corrupt JSON produces a message naming the path**, never a raw `json.JSONDecodeError`.
+  Anchored with `\Z` and matched with `re.fullmatch`, never `$` with `re.match`: `$` also matches *before* a
+  trailing newline, so `"jira.domain\n"` was a storable key — and `config export` then emitted a syntax error
+  into the profile that evaluates it, on every new terminal. A key arrives from `$(cat file)` often enough.
+- **The read path is guarded too, and separately.** `validate_readable_key` (used by `config get`, never by
+  `Store.get`) rejects a credential-shaped or malformed name *before* the lookup, because the first layer
+  `require` consults is `os.environ[env_var_name(key)]`: the guarded half was the half that never held a
+  secret, while `config get` happily printed `$JIRA_API_TOKEN`, and `mgsnake config get path` echoed `$PATH`.
+  The format check is what stops the second one — a bare word is not a dotted setting name. Internal callers
+  resolve fixed constants, so they are deliberately exempt.
 - `reset_instance()` exists for tests and after a `chdir` (both the paths and the contents are memoized), the
   same way `Repo.reset()` does.
+
+#### An unusable state file: recover, degrade, or fail — but never lose it
+
+The store is hand-editable and lives on disk, so it *will* arrive broken. Three checks in `_load` classify
+that, and **all three route to the same place**, `_recover_from_corruption`: invalid JSON, a root that is not
+an object, and a non-string **value**. The third one matters as much as the other two — every consumer treats
+values as text (`config export` reaches `value.replace(...)`, `resolve_board` reaches `int(value)`), so a
+hand-edited `{"jira.board_id": 123}` used to die with an unmapped `AttributeError`, exit 100 and a traceback
+blaming `mgsnake`, in the one command documented as `eval`'d from a shell profile. Bad values are **reported,
+never coerced**: `str(123)` would silently rewrite what the user typed.
+
+Four rules govern what happens next, and they are what make this safe:
+
+- **An unreadable file is not a corrupt one.** An `OSError` (permissions, I/O) raises `ValidationError`
+  directly and is never offered a reset: the contents are very likely intact and `chmod` fixes it, so renaming
+  it aside would destroy recoverable state to solve a problem the user did not have.
+- **Prompting is opt-in per call site, not decided by `isatty()`.** `sys.stdin.isatty()` answers "is a human
+  there", not "is this command's stdout a data channel". Only `set`, `unset` and an **explicit-scope** `list`
+  pass `interactive=True`; `get` and `export` never do, because a prompt inside
+  `eval "$(mgsnake config export …)"` hangs the shell's startup — the exact situation the mechanism exists to
+  avoid. A declined prompt is `UserDeclinedError` (114); no prompt available is `ValidationError` (113).
+- **Backup, never delete, and in that order.** `_backup_and_reset` writes the fresh empty file to a temporary
+  sibling *first*, then renames the broken original to `state.json.corrupted-<timestamp>`, then swaps the new
+  one in. At every instant the user's content resolves to exactly one of two paths, and the failure message
+  names whichever one it actually ended up at.
+- **A multi-scope read degrades; a single-scope operation fails loudly.** `get` and the merging branch of
+  `items` go through `_load_gracefully`, so a corrupt `repo` file does not stop a setting that only ever lived
+  in `global` from resolving — it warns on stderr and skips that scope. `set`, `unset` and a single-scope
+  `items` call `_load` directly, because they name the one scope they operate on and must not pretend to have
+  succeeded against a file they could not read.
 
 ---
 
@@ -1085,13 +1209,28 @@ be reused, even after deleting the file — so every check runs before the build
 
 | Fact                 | Source                                   | Enforced by                                                         |
 | -------------------- | ---------------------------------------- | ------------------------------------------------------------------- |
-| Tag shape `vX.Y.Z`   | The git tag                              | Regex; `v0.1.5-beta`, `0.1.5` and `v1.2` are all rejected           |
+| Tag shape `vX.Y.Z`   | The git tag                              | Regex; `0.1.5` and `v1.2` fail the job (see the skip case below)    |
 | The released version | `[project] version` in `pyproject.toml`  | Must equal the tag with the `v` stripped                            |
 | What changed         | A `## [X.Y.Z]` section in `CHANGELOG.md` | Must exist **and** carry content that is not the seeded placeholder |
 
+Everything after the tag check is gated on `PUBLISHABLE`, and the job **re-runs the full PR
+validation** before building: `pytest`, `ruff check`, `mypy` and `generate-docs --check`. A tag can
+point at any commit, so the PR's own green checks are not proof that *this* tree is releasable, and
+republishing is impossible.
+
+**Failing and skipping are different outcomes, and a build tag gets the second one.** A tag shaped
+`vX.Y.Z-<something>` is the legitimate product of `create-release r --tag-suffix beta`: there is
+simply no version to publish, so the job sets `PUBLISHABLE=false` and stops **green**, instead of
+reporting a failure for an intentional invocation. Only a tag that is neither a plain version nor a
+build tag (`0.1.5`, `v1.2`) fails the job. So "`l` and `r` reach PyPI" holds for `r` only without a
+suffix.
+
 **The trigger is `release: types: [released]`, not `push: tags`.** `released` fires only for
-non-prerelease publications, so `mgsnake create-release p` (prerelease) never reaches PyPI while
-`l` and `r` do. A tag-push trigger would publish prereleases.
+non-prerelease publications, so `mgsnake create-release p` (prerelease) never reaches PyPI. A
+tag-push trigger would publish prereleases. The job additionally gates on
+`!github.event.release.prerelease && !github.event.release.draft` — **on what GitHub itself
+recorded, never on the shape of the tag**: a project whose tags carry a hyphen (`rel-1_2_4`) is a
+pattern `create-release` supports, and a text filter would skip it forever.
 
 **`CHANGELOG.md` is hand-written, and that is the point.** Merge commit subjects in this repository read
 `Merge pull request #58 from azltechnologies/upgrade`, which tells a user nothing. The exhaustive commit
@@ -1236,8 +1375,14 @@ The test file mirrors the source path: `config_environment/java_set.py` → `src
 
 A line at 100% coverage has been **executed**, which says nothing about whether its result was **checked**. Before
 calling a test done, ask what incorrect value that line could produce with every assertion still green — if such a
-value exists, the assertion is too weak. See `.github/instructions/testing_principles.instructions.md` for the full
-checklist; it is binding, not advisory.
+value exists, the assertion is too weak. Two consequences are binding, not advisory:
+
+- **Assert over the right unit.** `x in <whole document>` passes for any superset of the value: `"### Output"` is a
+  substring of `"#### Output"`. Split the output into its natural unit (a line, a list element, a field) and compare
+  by equality, adding the negative assertion when the values are mutually exclusive.
+- **See the test fail before you keep it.** Break the production code it protects on purpose, confirm the red, then
+  restore. A test that has never been seen failing is a hypothesis, not a guard — and a suite that only describes
+  the happy path never executes the code written for when things go wrong.
 
 ### 6.3 Command Documentation Fragments (`resources/docs/`)
 
