@@ -540,7 +540,7 @@ Installs the agent assets mgsnake ships - skills into .github/skills/<name>/ or 
 
 | Option | Description |
 | --- | --- |
-| `--item [mgsnake\|jira-continue]` | Install this item instead of asking. Repeat the option to install several. Items required by the ones named are installed too, and reported. Accepts bundled items that the interactive list does not offer, so one can be refreshed without reinstalling what bundles it. |
+| `--item [mgsnake\|jira-continue\|jira-progress-comment\|create-progress-folder\|create-progress-file\|comment-killer-spotter\|comment-killer-playermaker\|comment-killer-hitman\|comment-killer-kingpin]` | Install this item instead of asking. Repeat the option to install several. Items required by the ones named are installed too, and reported. Accepts bundled items that the interactive list does not offer, so one can be refreshed without reinstalling what bundles it. |
 | `--target [c\|l\|b]` | Where to install, instead of asking: 'c' for GitHub Copilot, 'l' for Claude, 'b' for both. |
 | `--tracking [e\|g\|v]` | How to track the files in git, instead of asking: 'e' excludes them in .git/info/exclude, 'g' adds them to .gitignore, 'v' leaves them versioned. |
 | `--check` | Render in memory, compare with every installed file on disk, and exit with an error when any is stale. Never prompts and never writes. |
@@ -573,6 +573,12 @@ shows what comes bundled *before* you choose, and the run then prints which item
 selection asked for it. Files appearing in your working tree that you did not choose must be
 explainable.
 
+**Not every item fits every assistant.** An item whose header uses vocabulary only one runtime
+understands — a skill that is really a fork of another agent, one that takes arguments, one that runs
+a shell block — is declared for that runtime alone, and the selection list says so before you choose.
+Writing such a file where the runtime cannot read it would install cleanly and then behave nothing
+like what was written, which is worse than not installing it, because it looks installed.
+
 **Some items are bundled, not offered.** A component that only makes sense as part of something else
 is kept out of the selection list, so it cannot be installed on its own by accident. It is still
 reachable by name through `--item`, which is what leaves it an update path that does not require
@@ -599,6 +605,20 @@ Inside a skill directory:
 A `SKILL.md` without the frontmatter header is never loaded, so the frontmatter is part of the
 generated content and `--check` compares it like any other line. `--check` validates **every** file
 of every skill, so a stale `reference.md` is reported even when its `SKILL.md` is current.
+
+#### What ships today
+
+| Item | Kind | Assistants | What it is |
+| ---- | ---- | ---------- | ---------- |
+| `mgsnake` | skill | both | The command reference: an index, plus `reference.md` read on demand. |
+| `jira-continue` | skill | both | Resume a Jira story from one board download and `jq`, and record the plan. |
+| `jira-progress-comment` | skill | both | Draft a story's progress comment from the commit range since a baseline, and never publish it unapproved. |
+| `comment-killer-kingpin` | agent | Claude | Orchestrates a review-comment run: investigate, plan, implement, verify, report. Installs five bundled components with it. |
+
+The kingpin's five components — `create-progress-folder`, `create-progress-file`,
+`comment-killer-spotter`, `comment-killer-playermaker` and `comment-killer-hitman` — are not offered
+on their own, since each is handed its inputs by the kingpin and does nothing without it. They can
+still be named with `--item` to refresh one in place.
 
 #### Examples
 
@@ -644,7 +664,17 @@ If none are present it exits successfully — the command does not mandate that 
 that the ones you keep are not stale. It never prompts and never writes, so it is the mode to use in
 CI.
 
-The git-tracking choice applies to every directory written in that run:
+**What happens when an item does not fit the target** depends on what you asked for, not on how
+much was dropped:
+
+| Situation | Result |
+| --------- | ------ |
+| The item goes to some of the chosen assistants but not all | Installed where it fits, with a warning naming what was skipped. `both` means "wherever it fits", and the list already said so. |
+| You named the item yourself and no chosen assistant can take it | An error. You asked for something that cannot happen, and installing nothing while exiting 0 would read as success. |
+| It arrived as a dependency and no chosen assistant can take it | A warning. You asked for its parent, which still installs — the message names the component that did not come with it. |
+
+The git-tracking choice applies to every path written in that run, and only to those: a pattern is
+never added for a file the run did not install.
 
 - **exclude (e)** — appends them to `.git/info/exclude`, keeping them machine-local and uncommitted.
   Best for teams that do not all use the same AI assistant.

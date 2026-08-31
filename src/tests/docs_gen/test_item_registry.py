@@ -199,7 +199,7 @@ def test_render_task_skill_reads_the_packaged_fragment(tmp_path: Path) -> None:
         files = render_task_skill(built)
 
     assert set(files) == {SKILL_FILE}, "a task skill writes one file"
-    assert files[SKILL_FILE] == f'---\nname: {ALPHA}\ndescription: "When to use alpha."\n---\n\nBody of the task skill.'
+    assert files[SKILL_FILE] == f"---\nname: {ALPHA}\ndescription: When to use alpha.\n---\n\nBody of the task skill."
 
 
 def test_render_task_skill_fails_when_the_fragment_is_not_packaged(tmp_path: Path) -> None:
@@ -229,17 +229,38 @@ def test_every_declared_dependency_is_registered() -> None:
             assert required in catalogue(), f"{built.name!r} requires unregistered {required!r}"
 
 
-def test_every_task_skill_requires_the_cli_skill() -> None:
-    """A skill that drives mgsnake is useless without the reference that documents it.
+def test_every_offered_item_reaches_the_cli_skill() -> None:
+    """Anything a user can choose must bring the reference that documents mgsnake.
 
-    Iterated over the whole catalogue rather than sampled, so a task skill added later without the
-    dependency fails here instead of shipping an assistant that cannot read the commands it is told
-    to run.
+    Narrowed from "every item" to "every *offered* item" when the first bundled components arrived.
+    The original wording assumed every catalogue entry drives mgsnake, which stopped being true:
+    `comment-killer-spotter` reads a file it is handed and explores the codebase, and never runs a
+    command. Requiring the CLI skill of it would be a dependency invented to satisfy a test.
+
+    What still holds, and is what the invariant is really about, is the selectable set: an item a
+    user installs on purpose is something they will drive through mgsnake, so it must carry the
+    reference. Reached **transitively** on purpose -- the kingpin gets there through
+    `create-progress-folder`, which genuinely shells out to `mgsnake local-config-path`.
     """
-    for built in ITEMS:
-        if built.name == CLI_SKILL_NAME:
+    for name in item_names():
+        if name == CLI_SKILL_NAME or catalogue()[name].hidden:
             continue
-        assert CLI_SKILL_NAME in expand_items([built.name]), f"{built.name!r} does not pull in the CLI skill"
+        assert CLI_SKILL_NAME in expand_items([name]), f"{name!r} does not pull in the CLI skill"
+
+
+def test_every_hidden_item_is_reachable_from_something_offered() -> None:
+    """A bundled component nobody bundles can never be installed, and nothing else would say so.
+
+    It is exempt from the rule above precisely because its parent carries the dependency, so an
+    orphan would be a catalogue entry with no way in and no test complaining about it.
+    """
+    offered: list[str] = [name for name in item_names() if not catalogue()[name].hidden]
+    reachable: set[str] = {resolved for name in offered for resolved in expand_items([name])}
+
+    for name, item in catalogue().items():
+        if not item.hidden:
+            continue
+        assert name in reachable, f"{name!r} is hidden and nothing offered pulls it in"
 
 
 def test_item_names_are_valid_identifiers() -> None:
@@ -473,3 +494,126 @@ def test_bundled_with_excludes_the_item_itself() -> None:
 
     assert bundled_with(BETA, catalogue) == [ALPHA]
     assert bundled_with(ALPHA, catalogue) == []
+
+
+# ---------------------------------------------------------------------------
+# Frontmatter (layer A)
+# ---------------------------------------------------------------------------
+
+from mega_snake.docs_gen.item_registry import _frontmatter, _yaml_value  # noqa: E402
+
+
+def test_frontmatter_emits_the_declared_fields_after_name_and_description() -> None:
+    """The extra fields are what make an item behave as written, and they must survive verbatim.
+
+    Emitting only name and description installs a document the runtime happily registers and that
+    then behaves nothing like the one that was authored -- a skill that was a fork of another agent
+    becomes an ordinary skill, and one that took arguments silently stops receiving them.
+    """
+    built = spec(ALPHA, description="Does a thing.")
+    built = Item(
+        name=built.name,
+        summary=built.summary,
+        description=built.description,
+        render=built.render,
+        frontmatter={"agent": "Explore", "user-invocable": False, "arguments": ["contextfile"]},
+    )
+
+    lines = _frontmatter(built, "BODY").splitlines()
+
+    assert lines[:3] == ["---", f"name: {ALPHA}", "description: Does a thing."]
+    assert lines[3:7] == ["agent: Explore", "user-invocable: false", "arguments: [contextfile]", "---"]
+
+
+def test_frontmatter_keeps_the_declared_order() -> None:
+    """Header order is the author's; reordering it would rewrite every file on the next run."""
+    built = Item(
+        name=ALPHA,
+        summary="s",
+        description="d",
+        render=lambda item: {},
+        frontmatter={"zeta": "1", "alpha": "2"},
+    )
+
+    lines = _frontmatter(built, "BODY").splitlines()
+
+    assert lines[3:5] == ["zeta: 1", "alpha: 2"]
+
+
+def test_frontmatter_omits_the_extra_block_when_there_is_none() -> None:
+    """An item with no extra fields emits exactly the two required ones."""
+    lines = _frontmatter(spec(ALPHA, description="d"), "BODY").splitlines()
+
+    assert lines == ["---", f"name: {ALPHA}", "description: d", "---", "", "BODY"]
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("plain text", "plain text"),
+        # A colon followed by a space ends a plain scalar early, truncating the value.
+        ("Explores the codebase: is it valid?", '"Explores the codebase: is it valid?"'),
+        # These parse as booleans rather than strings.
+        ("no", '"no"'),
+        ("true", '"true"'),
+        # A leading indicator changes the node type.
+        ("- dash", '"- dash"'),
+        ("*star", '"*star"'),
+        # Trailing space is dropped by a plain scalar.
+        ("padded ", '"padded "'),
+        # A comment marker truncates the rest of the line.
+        ("tail # comment", '"tail # comment"'),
+        # Real values from the items this exists for, which must NOT be quoted needlessly.
+        ("Bash(uv run pytest) Bash(ruff check:*)", "Bash(uv run pytest) Bash(ruff check:*)"),
+        ("fork", "fork"),
+    ],
+)
+def test_yaml_value_quotes_only_what_a_plain_scalar_would_break(value: str, expected: str) -> None:
+    """Quoting everything would rewrite every header; quoting nothing changes types and truncates."""
+    assert _yaml_value(value) == expected
+
+
+def test_yaml_value_renders_booleans_and_numbers_unquoted() -> None:
+    """`user-invocable: false` must be a boolean, not the string "False"."""
+    assert _yaml_value(False) == "false"
+    assert _yaml_value(True) == "true"
+    assert _yaml_value(3) == "3"
+
+
+def test_yaml_value_renders_a_list_as_a_flow_sequence() -> None:
+    """Argument and tool lists are short and belong on one line."""
+    assert _yaml_value(["contextfile", "planfile"]) == "[contextfile, planfile]"
+    assert _yaml_value(("Read", "Write")) == "[Read, Write]"
+
+
+def test_yaml_value_escapes_a_quote_inside_a_quoted_scalar() -> None:
+    """A raw double quote inside a quoted scalar would end it early."""
+    assert _yaml_value('say "hi": now') == '"say \\"hi\\": now"'
+
+
+# ---------------------------------------------------------------------------
+# Runtime compatibility (layer B)
+# ---------------------------------------------------------------------------
+
+
+def test_an_item_runs_on_every_runtime_by_default() -> None:
+    """Nothing existing narrows, so the default must stay permissive."""
+    built = spec(ALPHA)
+
+    assert built.portable is True
+    assert all(built.runs_on(runtime) for runtime in ALL_RUNTIMES)
+
+
+def test_a_narrowed_item_reports_the_runtime_it_cannot_run_on() -> None:
+    """Both halves are asserted: the supported runtime and the refused one."""
+    built = Item(
+        name=ALPHA,
+        summary="s",
+        description="d",
+        render=lambda item: {},
+        runtimes=(RUNTIME_CLAUDE,),
+    )
+
+    assert built.runs_on(RUNTIME_CLAUDE) is True
+    assert built.runs_on(RUNTIME_COPILOT) is False
+    assert built.portable is False

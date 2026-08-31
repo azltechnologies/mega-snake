@@ -93,11 +93,15 @@ ITEM_LAYOUT: dict[ItemKind, ItemLayout] = {
 def _frontmatter(item: "Item", body: str) -> str:
     """Prepend the YAML frontmatter that makes a Markdown file a discoverable skill.
 
-    The description is emitted as a double-quoted scalar because a plain YAML scalar may not contain
-    a colon followed by a space, which this prose can easily reacquire the next time it is edited.
+    ``name`` and ``description`` are always present -- both runtimes key a document by them, and a
+    file without them is simply never registered. Anything else the item declares in ``frontmatter``
+    follows, in declaration order, because the fields that make an item *work* live there: a skill
+    that is really a fork of another agent, one that takes arguments, one that must not be offered to
+    the user directly. Emitting only the first two would install a document the runtime accepts and
+    then behaves nothing like the one that was written.
 
     Parameters:
-        item: The item whose name and description head the document.
+        item: The item whose header is being built.
         body: The Markdown body to place under the frontmatter.
 
     Raises:
@@ -106,7 +110,70 @@ def _frontmatter(item: "Item", body: str) -> str:
     Returns:
         str: The complete document, frontmatter first.
     """
-    return f'---\nname: {item.name}\ndescription: "{item.description}"\n---\n\n{body}'
+    lines: list[str] = ["---", f"name: {item.name}", f"description: {_yaml_value(item.description)}"]
+    lines.extend(f"{key}: {_yaml_value(value)}" for key, value in item.frontmatter.items())
+    lines.append("---")
+    return "\n".join(lines) + f"\n\n{body}"
+
+
+# YAML plain scalars are ambiguous for these: quoting is what keeps a value a string.
+_YAML_RESERVED: frozenset[str] = frozenset({"true", "false", "yes", "no", "on", "off", "null", "none", "~", ""})
+
+
+def _yaml_scalar(value: str) -> str:
+    """Render one string as a YAML scalar, quoting it only when a plain one would be wrong.
+
+    Quoting everything would work but would rewrite every header this project already emits; quoting
+    nothing silently changes types and truncates values. The conditions below are the ones that
+    actually bite: ``": "`` ends a plain scalar early, ``#`` starts a comment, a leading indicator
+    character changes the node type, and a word like ``no`` parses as a boolean.
+
+    Parameters:
+        value: The string to render.
+
+    Raises:
+        None
+
+    Returns:
+        str: The value, quoted when a plain scalar would not survive it.
+    """
+    needs_quotes: bool = (
+        value.strip() != value
+        or value.lower() in _YAML_RESERVED
+        or ": " in value
+        or value.endswith(":")
+        or " #" in value
+        or any(value.startswith(char) for char in "-?:,[]{}#&*!|>'\"%@`")
+        or "\n" in value
+    )
+    if not needs_quotes:
+        return value
+    escaped: str = value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    return f'"{escaped}"'
+
+
+def _yaml_value(value: object) -> str:
+    """Render one frontmatter value: a bool, a number, a list, or a string.
+
+    A flow sequence (``[a, b]``) is used for lists because every list these headers carry is short
+    and reads better on one line than as a block.
+
+    Parameters:
+        value: The value to render.
+
+    Raises:
+        None
+
+    Returns:
+        str: The YAML representation.
+    """
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, (list, tuple)):
+        return "[" + ", ".join(_yaml_scalar(str(entry)) for entry in value) + "]"
+    return _yaml_scalar(str(value))
 
 
 def _fragment_path(name: str) -> Path:
@@ -192,6 +259,16 @@ class Item:
             a dependency, and still reachable by name through the flag -- which is deliberate: a
             component that can only be refreshed by reinstalling its parent has no update path of
             its own.
+        frontmatter: Extra header fields, emitted after ``name`` and ``description`` in declaration
+            order. This is where the fields that make an item behave the way it was written live
+            (``agent``, ``context``, ``arguments``, ``allowed-tools``, ``user-invocable`` ...), and
+            they are runtime-specific vocabulary: an item declaring them is usually not portable, so
+            it should narrow ``runtimes`` to match.
+        runtimes: The runtimes this item can be installed to. Defaults to all of them. Narrow it when
+            the item depends on vocabulary only one runtime understands -- a fork of another agent,
+            argument substitution, an executable block. Writing such a file to a runtime that cannot
+            read it installs cleanly and then behaves nothing like what was written, which is worse
+            than refusing.
 
     Raises:
         None
@@ -207,6 +284,37 @@ class Item:
     kind: ItemKind = field(default=KIND_SKILL)
     requires: tuple[str, ...] = field(default=())
     hidden: bool = field(default=False)
+    frontmatter: dict[str, object] = field(default_factory=dict)
+    runtimes: tuple[str, ...] = field(default=ALL_RUNTIMES)
+
+    def runs_on(self, runtime: str) -> bool:
+        """Whether this item can be installed to the given runtime.
+
+        Parameters:
+            runtime: One of ``ALL_RUNTIMES``.
+
+        Raises:
+            None
+
+        Returns:
+            bool: True when the runtime is one this item supports.
+        """
+        return runtime in self.runtimes
+
+    @property
+    def portable(self) -> bool:
+        """Whether the item can be installed to every known runtime.
+
+        Parameters:
+            None
+
+        Raises:
+            None
+
+        Returns:
+            bool: True when nothing about the item restricts where it goes.
+        """
+        return set(self.runtimes) == set(ALL_RUNTIMES)
 
     @property
     def layout(self) -> ItemLayout:

@@ -764,6 +764,24 @@ Four more properties a reader will otherwise misjudge:
   `tracking_target` (what to hand git, at the right granularity: a folder for a skill, the file
   itself for an agent, since excluding `agents/` would hide every agent the user has). Never branch
   on `kind` outside that table.
+- **The header is the item, not decoration.** `_frontmatter` emits `name` and `description` — the
+  pair both runtimes key a document by — and then everything the item declares in `frontmatter`, in
+  declaration order. Those extra fields (`agent`, `context`, `arguments`, `allowed-tools`,
+  `user-invocable` …) are what make an item *behave* as written: drop them and a skill that was a
+  fork of the Explore agent installs as an ordinary skill, and one that took arguments silently
+  stops receiving them — registered, accepted, and wrong. `_yaml_value` quotes only what a plain
+  scalar would break (`": "`, a leading indicator, a reserved word like `no`); quoting everything
+  would rewrite every header on the next run, quoting nothing changes types and truncates values.
+- **An item declares which runtimes it fits, and an unfittable one is never written.** Those extra
+  header fields are runtime-specific vocabulary, so an item using them narrows `runtimes`.
+  `_resolve_compatibility` then decides by **what the user asked for**, never by how much was
+  dropped: a partial install warns (`both` means "wherever it fits"), an explicitly named item that
+  fits nowhere is a `ClickException` (installing zero files and exiting 0 would read as success),
+  and a *dependency* that fits nowhere warns instead — refusing there would block an install the
+  user did ask for because of a component they never named. The same filter runs in `_write_items`,
+  `_check_existing_files` and the tracking targets, so no pattern is ever added for a file that was
+  not installed, and `_describe_states` iterates `item.runtimes` alone — reporting "not installed:
+  GitHub Copilot" for an item that will never go there is a lie the user cannot act on.
 - **A hidden item is not offered, but stays addressable.** `selectable_names()` drives the
   interactive list, `item_names()` drives the `--skill` choices, and the two differ by exactly the
   `hidden` flag. Both halves are load-bearing: hiding a bundled component stops it being installed
@@ -2013,7 +2031,79 @@ their job; the coverage gate has to keep measuring the same set of tests, so int
 be what pushes it over the line; and the Windows job has to be *required*, not advisory, or it becomes
 a red badge everyone learns to ignore.
 
-### 8.8 `add_logger_args` mutates the enum member instead of building a value (§3.1)
+### 8.8 The comment-killer items are Claude-only, and a Copilot port has no design yet (§3.7)
+
+**What.** The `comment-killer` crew — the `comment-killer-kingpin` agent plus the five components it
+bundles (`create-progress-folder`, `create-progress-file`, `comment-killer-spotter`,
+`comment-killer-playermaker`, `comment-killer-hitman`) — is declared `runtimes=(RUNTIME_CLAUDE,)`, so
+`install-agent-items` refuses to write it for GitHub Copilot. That is correct today and it is not a
+fix: a Copilot user simply cannot have it.
+
+The reason is that the crew is built out of vocabulary Copilot has no equivalent for, and it is not
+a matter of renaming keys:
+
+| What it uses | What it does | Copilot |
+| --- | --- | --- |
+| `agent: Explore` / `agent: Plan` with `context: fork` | The spotter *is* a fork of the Explore agent; the playermaker *is* a fork of Plan | no equivalent found |
+| `arguments:` plus `$contextfile` substitution | The whole chain of custody — each stage is handed the previous stage's file | not available |
+| ` ```! ` executable blocks | `create-progress-folder` and `create-progress-file` are shell that runs on invocation and returns a path | not available |
+| `user-invocable: false` | Keeps the five henchmen out of the user's menu | unknown |
+
+**Why it was left.** The port is not a header translation, so it cannot be designed before the
+research is done. If Copilot has no way to fork a sub-agent, the answer is probably a **different
+decomposition** — one agent doing inline what five skills do here — and no "emit two headers per
+item" abstraction survives that. Building the abstraction first would be building it blind.
+
+**Shape of the fix.** In the order the questions have to be answered:
+
+1. **Establish what Copilot can actually express**: sub-agent delegation, argument passing between
+   stages, and whether anything can execute at invocation time. That answer decides everything else.
+2. **If the decomposition survives**, `frontmatter` becomes per-runtime. The natural shape is a
+   small typed header — a class or enum per runtime rather than a free `dict[str, object]` — so the
+   fields each runtime understands are known at type-check time instead of being a bag of strings
+   that silently means nothing on the other side. `Item.frontmatter` would then hold one entry per
+   runtime, and `_frontmatter` would render the one belonging to the runtime being written.
+3. **If it does not survive**, the honest answer is a separate Copilot-shaped item with the same
+   name and a different body, which the catalogue already supports — an item is free to render
+   whatever it likes per runtime.
+4. **Either way, `runtimes` stays.** It is not a workaround for this: there will always be items
+   that only make sense on one runtime, and it is what keeps that fact from becoming a broken file.
+
+**Verify.** The Claude install must keep working byte for byte, so whatever lands has to leave the
+existing headers unchanged — a regenerated `SKILL.md` that differs is a regression, not a port.
+`test_the_catalogue_is_exactly_what_is_documented_here` has to name the new items, and the
+compatibility table in `resources/docs/install-agent-items.md` has to stop describing them as
+Claude-only. Deleting this entry means a Copilot user can run the crew, not that the fields were
+renamed.
+
+### 8.9 `jira-progress-comment` works around the monolithic diff artifact (issue #85)
+
+**What.** The skill's cost rules tell an assistant to read `diff_commit.txt` and `diff_tree.txt`
+always, and to open `diff_changes.txt` only for a specific question and only through `grep`. That is
+a workaround, not a design: `diff-tree` writes the whole patch as one file — routinely over 100 KB —
+so the only way to keep it out of an assistant's context is to instruct the assistant not to look.
+An instruction is a weak guarantee; nothing enforces it, and the one run that ignores it costs the
+user a context window.
+
+**Where.** `resources/skills/jira-progress-comment.md`, the "Cost rules" section and the table under
+step 3. The artifact itself comes from `diff_tree/diff_tree.py`, `_create_files`.
+
+**Why it was left.** The fix is the tiered diff output tracked in issue #85 (a manifest plus
+progressive levels of detail), which is a change to `diff-tree` and its own piece of work. Writing
+the skill against today's artifact is what makes it usable now.
+
+**Shape of the fix.** Once #85 lands, rewrite the cost rules against whatever it produces: an
+assistant should read the manifest, decide from it which files are worth opening, and reach for the
+detailed levels only for those. The "never read this file whole" warning should disappear rather
+than be reworded — if it is still needed afterwards, the tiering did not solve the problem it was
+built for.
+
+**Verify.** The skill names the artifacts `diff-tree` actually writes, so the file table in step 3
+has to match the new set exactly; `test_the_catalogue_is_exactly_what_is_documented_here` does not
+cover fragment prose, so this is checked by reading it. Deleting this entry means the skill no longer
+tells the assistant to avoid a file, not that the sentence was softened.
+
+### 8.10 `add_logger_args` mutates the enum member instead of building a value (§3.1)
 
 **What.** `VscodeTask.add_logger_args` and `VscodeLaunch.add_logger_args` do
 `self.args.extend(...)`, and `self` is an enum member — a process-wide singleton. The redirect is

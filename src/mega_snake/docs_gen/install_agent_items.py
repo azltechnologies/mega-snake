@@ -19,7 +19,7 @@ from mega_snake.docs_gen.item_registry import (
     tracking_target,
 )
 from mega_snake.docs_gen.markdown_writer import write_or_check_document
-from mega_snake.util.formatting import ws_info, ws_success
+from mega_snake.util.formatting import ws_info, ws_success, ws_warning
 from mega_snake.util.util import (
     add_to_gitignore,
     cli_metadata,
@@ -157,7 +157,7 @@ def _describe_states(item: Item, files: dict[str, str]) -> str:
         str: A short annotation such as ``"installed: Claude | not installed: GitHub Copilot"``.
     """
     by_state: dict[str, list[str]] = {}
-    for runtime in ALL_RUNTIMES:
+    for runtime in item.runtimes:
         by_state.setdefault(item_state(item, runtime, files), []).append(RUNTIME_LABEL[runtime])
     return " | ".join(f"{state}: {', '.join(labels)}" for state, labels in by_state.items())
 
@@ -186,7 +186,10 @@ def _selection_prompt(rendered: Rendered) -> str:
         item: Item = get_item(name)
         bundle: list[str] = bundled_with(name)
         extra: str = f"  (installs with it: {', '.join(bundle)})" if bundle else ""
-        lines.append(f"  {name} [{item.kind}] - {item.summary}{extra}")
+        # Compatibility belongs *before* the choice. Learning after the fact that half a selection
+        # was skipped is the reactive shape this annotation exists to avoid.
+        only: str = "" if item.portable else f" - {', '.join(RUNTIME_LABEL[r] for r in item.runtimes)} only"
+        lines.append(f"  {name} [{item.kind}{only}] - {item.summary}{extra}")
         lines.append(f"      [{_describe_states(item, rendered[name])}]")
     return "\n".join(lines)
 
@@ -276,6 +279,55 @@ def _report_dependencies(selected: Sequence[str]) -> None:
         ws_info(f"Also installing '{name}': required by {', '.join(repr(reason) for reason in reasons)}.")
 
 
+def _resolve_compatibility(installing: Rendered, runtimes: Sequence[str], selected: Sequence[str]) -> None:
+    """Refuse an impossible request, and disclose a partial one, before anything is written.
+
+    Two situations, told apart by *what the user asked for* rather than by how much was dropped:
+
+    - **Nothing to install.** The item supports none of the chosen runtimes. When the user named it
+      themselves that is an invocation error: they asked for something that cannot happen, and
+      installing zero files while exiting 0 would read as success. When it arrived as a dependency
+      they asked for nothing of the sort, so it is a warning -- the parent still installs, and the
+      message says which component did not come with it.
+    - **Partial.** The item goes to some of the chosen runtimes but not all. Never an error: `both`
+      means "wherever it fits", and the interactive list said so before the choice was made. It is
+      still reported, because a file quietly not appearing is indistinguishable from a defect.
+
+    Parameters:
+        installing: Every item about to be installed, keyed by name.
+        runtimes: The runtimes the user chose.
+        selected: The names the user named or picked, before dependency expansion.
+
+    Raises:
+        click.ClickException: If an explicitly selected item supports none of the chosen runtimes.
+
+    Returns:
+        None
+    """
+    for name in installing:
+        item: Item = get_item(name)
+        supported: list[str] = [runtime for runtime in runtimes if item.runs_on(runtime)]
+        supports: str = ", ".join(RUNTIME_LABEL[runtime] for runtime in item.runtimes)
+        if supported:
+            skipped: list[str] = [RUNTIME_LABEL[runtime] for runtime in runtimes if not item.runs_on(runtime)]
+            if skipped:
+                ws_warning(
+                    f"'{name}' is not installable for {', '.join(skipped)}; installing it for "
+                    f"{', '.join(RUNTIME_LABEL[runtime] for runtime in supported)} only."
+                )
+            continue
+        if name in selected:
+            raise click.ClickException(
+                f"BAD REQUEST: '{name}' cannot be installed for "
+                f"{', '.join(RUNTIME_LABEL[runtime] for runtime in runtimes)}. It supports "
+                f"{supports} only. Choose a different target, or drop it from the selection."
+            )
+        ws_warning(
+            f"Skipping '{name}', which came in as a dependency: it supports {supports} only. "
+            "Whatever required it is installed without it."
+        )
+
+
 def _write_items(runtimes: Sequence[str], installing: Rendered) -> list[Path]:
     """Write every file of every selected item, for every selected runtime.
 
@@ -292,7 +344,10 @@ def _write_items(runtimes: Sequence[str], installing: Rendered) -> list[Path]:
     written: list[Path] = []
     for runtime in runtimes:
         for name, files in installing.items():
-            for path, content in item_targets(get_item(name), runtime, files).items():
+            item: Item = get_item(name)
+            if not item.runs_on(runtime):
+                continue
+            for path, content in item_targets(item, runtime, files).items():
                 write_or_check_document(path, content, check=False)
                 ws_success(f"Generated {path}")
                 written.append(path)
@@ -319,7 +374,10 @@ def _check_existing_files(rendered: Rendered) -> None:
     """
     for runtime in ALL_RUNTIMES:
         for name, files in rendered.items():
-            for path, content in item_targets(get_item(name), runtime, files).items():
+            item: Item = get_item(name)
+            if not item.runs_on(runtime):
+                continue
+            for path, content in item_targets(item, runtime, files).items():
                 if path.is_file():
                     write_or_check_document(path, content, check=True)
 
@@ -401,6 +459,7 @@ def install_agent_items(items: tuple[str, ...], target: Optional[str], tracking:
 
     _report_dependencies(selected)
     installing: Rendered = {name: rendered[name] for name in expand_items(selected)}
+    _resolve_compatibility(installing, runtimes, selected)
     _write_items(runtimes, installing)
     _apply_tracking(
         [
@@ -413,6 +472,9 @@ def install_agent_items(items: tuple[str, ...], target: Optional[str], tracking:
             )
             for runtime in runtimes
             for name in installing
+            # Only what was actually written. Excluding a path no file was installed at would leave
+            # a pattern in the user's git config for something that is never going to be there.
+            if get_item(name).runs_on(runtime)
         ],
         strategy,
     )

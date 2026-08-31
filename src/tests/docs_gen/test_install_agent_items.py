@@ -4,6 +4,7 @@ from pathlib import Path, PureWindowsPath
 from typing import Generator
 from unittest.mock import MagicMock, patch
 
+import click
 import pytest
 from click.testing import CliRunner
 
@@ -16,6 +17,7 @@ from mega_snake.docs_gen.install_agent_items import (
     _apply_tracking,
     _check_existing_files,
     _report_dependencies,
+    _resolve_compatibility,
     _selection_prompt,
     _tracking_entries,
     _write_items,
@@ -104,6 +106,13 @@ def fixture_mk_add_to_gitignore() -> Generator[MagicMock, None, None]:
 def fixture_mk_ws_success() -> Generator[MagicMock, None, None]:
     """Patch ws_success in the generate_skill module."""
     with patch("mega_snake.docs_gen.install_agent_items.ws_success") as mock:
+        yield mock
+
+
+@pytest.fixture(name="mk_ws_warning")
+def fixture_mk_ws_warning() -> Generator[MagicMock, None, None]:
+    """Patch ws_warning in the install_agent_items module."""
+    with patch("mega_snake.docs_gen.install_agent_items.ws_warning") as mock:
         yield mock
 
 
@@ -671,6 +680,80 @@ EXPECTED_CATALOGUE: dict[str, dict[str, object]] = {
         "requires": ("mgsnake",),
         "about": "Rebuilds a story's context from its comment history and records the agreed plan.",
     },
+    # Report a day's progress on a story: one `diff-tree` run, then judgement. Its prose lives in
+    # resources/skills/jira-progress-comment.md.
+    "jira-progress-comment": {
+        "kind": "skill",
+        "hidden": False,
+        "requires": ("mgsnake",),
+        "about": "Drafts a progress comment from the commit range, and never publishes unapproved.",
+    },
+    # --- the comment-killer crew: one agent and the five components it bundles ---
+    # All six are Claude-only: their headers fork other agents, take arguments and execute blocks,
+    # none of which GitHub Copilot understands. The port is catalogued in §8.8.
+    #
+    # The kingpin is the only one offered. The five below are hidden because each is handed its
+    # inputs by the kingpin and does nothing on its own.
+    "comment-killer-kingpin": {
+        "kind": "agent",
+        "hidden": False,
+        "requires": (
+            "create-progress-folder",
+            "create-progress-file",
+            "comment-killer-spotter",
+            "comment-killer-playermaker",
+            "comment-killer-hitman",
+        ),
+        "about": "Orchestrates a review-comment run: investigate, plan, implement, verify, report.",
+    },
+    # Shells out to `mgsnake local-config-path`, which is what carries the whole crew to the CLI
+    # skill transitively.
+    "create-progress-folder": {
+        "kind": "skill",
+        "hidden": True,
+        "requires": ("mgsnake",),
+        "about": "Creates the mission folder every report of a run is written into.",
+    },
+    # Takes the folder the skill above returns as its only argument.
+    "create-progress-file": {
+        "kind": "skill",
+        "hidden": True,
+        "requires": ("create-progress-folder",),
+        "about": "Creates one timestamped report file inside a mission folder.",
+    },
+    # A read-only fork of the Explore agent: decides whether the comment is still valid.
+    "comment-killer-spotter": {
+        "kind": "skill",
+        "hidden": True,
+        "requires": (),
+        "about": "Investigates whether a review comment still applies, and gathers the code context.",
+    },
+    # A read-only fork of the Plan agent: turns the spotter's findings into a plan.
+    "comment-killer-playermaker": {
+        "kind": "skill",
+        "hidden": True,
+        "requires": (),
+        "about": "Writes the implementation plan the hitman executes.",
+    },
+    # The only henchman that may write: applies the plan, verifies it, files its own report.
+    "comment-killer-hitman": {
+        "kind": "skill",
+        "hidden": True,
+        "requires": (),
+        "about": "Carries out the plan, runs the verification, and documents the outcome.",
+    },
+}
+
+# Items that cannot be installed for every runtime, and the runtimes each one supports. Kept beside
+# the catalogue so a new restriction has to be acknowledged here rather than discovered by a user
+# whose install came out half empty.
+EXPECTED_RUNTIME_LIMITS: dict[str, tuple[str, ...]] = {
+    "comment-killer-kingpin": (RUNTIME_CLAUDE,),
+    "create-progress-folder": (RUNTIME_CLAUDE,),
+    "create-progress-file": (RUNTIME_CLAUDE,),
+    "comment-killer-spotter": (RUNTIME_CLAUDE,),
+    "comment-killer-playermaker": (RUNTIME_CLAUDE,),
+    "comment-killer-hitman": (RUNTIME_CLAUDE,),
 }
 
 
@@ -712,3 +795,164 @@ def test_each_item_carries_a_usable_summary_and_description(name: str) -> None:
     assert item.summary.strip(), f"{name} has no summary for the selection list"
     assert item.description.strip(), f"{name} has no frontmatter description"
     assert '"' not in item.description, f"{name} would break its quoted YAML scalar"
+
+
+# ---------------------------------------------------------------------------
+# Runtime compatibility, at the command level
+# ---------------------------------------------------------------------------
+
+CLAUDE_ONLY = "claude-only-item"
+
+
+def claude_only_item() -> Item:
+    """Build an item that only one runtime can read.
+
+    Parameters:
+        None
+
+    Raises:
+        None
+
+    Returns:
+        Item: A Claude-only skill.
+    """
+    return Item(
+        name=CLAUDE_ONLY,
+        summary="Uses vocabulary only Claude understands.",
+        description="d",
+        render=lambda item: {SKILL_FILE: "CLAUDE ONLY BODY"},
+        runtimes=(RUNTIME_CLAUDE,),
+    )
+
+
+def test_write_items_skips_a_runtime_the_item_cannot_run_on(mk_ws_success: MagicMock, tmp_path: Path) -> None:
+    """Writing a Claude-only item for both runtimes must leave the Copilot tree untouched.
+
+    A file written where the runtime cannot read it installs cleanly and then behaves nothing like
+    what was authored — worse than not installing it, because it looks installed.
+    """
+    runner = CliRunner()
+    with (
+        patch("mega_snake.docs_gen.install_agent_items.get_item", return_value=claude_only_item()),
+        runner.isolated_filesystem(temp_dir=tmp_path) as iso,
+    ):
+        written = _write_items(ALL_RUNTIMES, {CLAUDE_ONLY: {SKILL_FILE: "CLAUDE ONLY BODY"}})
+
+    assert len(written) == 1, f"expected one file, got {written}"
+    assert (Path(iso) / ".claude" / "skills" / CLAUDE_ONLY / SKILL_FILE).is_file()
+    assert not (Path(iso) / ".github").exists(), "a file was written for the unsupported runtime"
+
+
+def test_describe_states_never_mentions_an_unsupported_runtime(tmp_path: Path) -> None:
+    """"not installed: GitHub Copilot" would be a lie for an item that never goes there."""
+    from mega_snake.docs_gen.install_agent_items import _describe_states
+
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        described = _describe_states(claude_only_item(), {SKILL_FILE: "CLAUDE ONLY BODY"})
+
+    assert "Claude" in described
+    assert "GitHub Copilot" not in described, f"an unsupported runtime was reported: {described!r}"
+
+
+def test_selection_prompt_marks_an_item_that_only_one_runtime_can_read(tmp_path: Path) -> None:
+    """Compatibility is disclosed before the choice, not after the write."""
+    runner = CliRunner()
+    with (
+        patch("mega_snake.docs_gen.install_agent_items.get_item", return_value=claude_only_item()),
+        patch("mega_snake.docs_gen.install_agent_items.selectable_names", return_value=[CLAUDE_ONLY]),
+        patch("mega_snake.docs_gen.install_agent_items.bundled_with", return_value=[]),
+        runner.isolated_filesystem(temp_dir=tmp_path),
+    ):
+        prompt = _selection_prompt({CLAUDE_ONLY: {SKILL_FILE: "CLAUDE ONLY BODY"}})
+
+    assert "Claude only" in prompt, f"the restriction is not disclosed: {prompt!r}"
+
+
+def test_a_partial_install_warns_but_succeeds(mk_ws_warning: MagicMock) -> None:
+    """'both' means 'wherever it fits', so dropping one runtime is reported, never an error."""
+    with patch("mega_snake.docs_gen.install_agent_items.get_item", return_value=claude_only_item()):
+        _resolve_compatibility({CLAUDE_ONLY: {}}, ALL_RUNTIMES, [CLAUDE_ONLY])
+
+    message = mk_ws_warning.call_args[0][0]
+    assert CLAUDE_ONLY in message
+    assert "GitHub Copilot" in message, f"the skipped runtime is not named: {message!r}"
+
+
+def test_an_explicitly_selected_item_that_fits_nowhere_is_an_invocation_error(
+    mk_ws_warning: MagicMock,
+) -> None:
+    """Asking for something impossible must fail, not install nothing and exit 0.
+
+    The discriminating pair with the test above: same item, same code path, and the only difference
+    is whether any chosen runtime can take it. Installing zero files while reporting success is the
+    outcome this refuses.
+    """
+    with (
+        patch("mega_snake.docs_gen.install_agent_items.get_item", return_value=claude_only_item()),
+        pytest.raises(click.ClickException, match=CLAUDE_ONLY),
+    ):
+        _resolve_compatibility({CLAUDE_ONLY: {}}, (RUNTIME_COPILOT,), [CLAUDE_ONLY])
+
+
+def test_an_incompatible_dependency_warns_instead_of_failing(mk_ws_warning: MagicMock) -> None:
+    """The user asked for the parent, not for this — so it is reported, not raised.
+
+    Told apart from the error above by whether the name is in the selection, never by how much was
+    dropped: failing here would refuse an install the user did ask for because of a component they
+    never named.
+    """
+    with patch("mega_snake.docs_gen.install_agent_items.get_item", return_value=claude_only_item()):
+        _resolve_compatibility({CLAUDE_ONLY: {}}, (RUNTIME_COPILOT,), ["some-other-item"])
+
+    message = mk_ws_warning.call_args[0][0]
+    assert CLAUDE_ONLY in message
+    assert "dependency" in message, f"the message does not say why it arrived: {message!r}"
+
+
+def test_a_portable_item_produces_no_compatibility_message(mk_ws_warning: MagicMock) -> None:
+    """The common case must stay silent; a warning on every run trains the user to ignore them."""
+    with patch("mega_snake.docs_gen.install_agent_items.get_item", return_value=cli_item()):
+        _resolve_compatibility({CLI_SKILL_NAME: {}}, ALL_RUNTIMES, [CLI_SKILL_NAME])
+
+    mk_ws_warning.assert_not_called()
+
+
+def test_check_ignores_a_file_sitting_where_the_item_cannot_run(tmp_path: Path) -> None:
+    """A leftover under an unsupported runtime is not this item's file, so --check must not judge it.
+
+    Without the skip, a directory left behind by an earlier version — or by a hand copy — would be
+    compared against content that is never written there, and `--check` would fail forever with no
+    way to make it pass short of deleting a file the command does not manage.
+    """
+    runner = CliRunner()
+    with (
+        patch("mega_snake.docs_gen.install_agent_items.get_item", return_value=claude_only_item()),
+        runner.isolated_filesystem(temp_dir=tmp_path) as iso,
+    ):
+        stray = Path(iso) / ".github" / "skills" / CLAUDE_ONLY
+        stray.mkdir(parents=True)
+        (stray / SKILL_FILE).write_text("whatever was left here", encoding="utf-8")
+
+        _check_existing_files({CLAUDE_ONLY: {SKILL_FILE: "CLAUDE ONLY BODY"}})  # Must not raise
+
+
+@pytest.mark.parametrize("name", sorted(EXPECTED_CATALOGUE))
+def test_each_item_supports_exactly_the_documented_runtimes(name: str) -> None:
+    """A narrowed item is documented as narrowed, and a portable one is not narrowed by accident.
+
+    Both directions matter. An undocumented restriction means a user's install silently comes out
+    half empty; a restriction that quietly disappears means a file is written where the runtime
+    cannot read it, which installs cleanly and behaves nothing like what was authored.
+    """
+    item = next(candidate for candidate in ITEMS if candidate.name == name)
+    expected = EXPECTED_RUNTIME_LIMITS.get(name, ALL_RUNTIMES)
+
+    assert item.runtimes == expected, f"{name} supports {item.runtimes}, documented as {expected}"
+
+
+def test_every_documented_runtime_limit_names_a_real_item() -> None:
+    """A leftover row would document a restriction on something that no longer exists."""
+    assert set(EXPECTED_RUNTIME_LIMITS) <= set(EXPECTED_CATALOGUE), (
+        f"unknown items in EXPECTED_RUNTIME_LIMITS: {set(EXPECTED_RUNTIME_LIMITS) - set(EXPECTED_CATALOGUE)}"
+    )
