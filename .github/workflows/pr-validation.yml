@@ -37,6 +37,23 @@ jobs:
         run: |
           uv run mypy --show-column-numbers --no-error-summary src/mega_snake
 
+      # A composite action is not a workflow: `secrets`, `needs` and `matrix` are
+      # contexts it does not have, and GitHub's template parser evaluates every
+      # `${…}` expression in the file *wherever it sits* -- a description string
+      # counts. A single `secrets.GITHUB_TOKEN` written into an input's prose made
+      # `restore-claude-session` fail to load outright with "Unrecognized
+      # named-value: 'secrets'", which took all three Claude workflows down and was
+      # only discoverable after the merge, since none of them can run from a pull
+      # request. Grepped as text rather than parsed, precisely because the position
+      # in the file makes no difference to the parser.
+      - name: Check composite actions use no workflow-only contexts
+        run: |
+          if grep -rnE '\$\{\{[^}]*\b(secrets|needs|matrix)\.' .github/actions; then
+            echo "::error::A composite action references a context it does not have (see the matches above). Pass the value in from the calling workflow as an input instead, and write it without the expression braces when you only mean to name it in prose."
+            exit 1
+          fi
+          echo "No workflow-only contexts referenced in .github/actions."
+
       # Catches a committed COMMANDS.md that no longer matches the code. This is a different failure
       # from the one the test suite catches: the tests fail when a command has no docs fragment, this
       # step fails when the generated file was not regenerated after changing command metadata.
