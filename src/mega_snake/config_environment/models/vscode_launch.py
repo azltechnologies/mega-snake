@@ -135,9 +135,10 @@ class VscodeLaunch(Enum):
             result[key] = value
         return result
 
-    # TODO(#55-followup): same in-place enum mutation as `VscodeTask.add_logger_args`; see the full
-    # note there. Fix both together -- this `to_dict` joins `args` with `" "` for the `debugpy` type,
-    # so the two call sites do not compose the value identically and cannot be changed in isolation.
+    # Same in-place enum mutation as `VscodeTask.add_logger_args`, and it must be fixed together with
+    # it: this `to_dict` joins `args` with `" "` for the `debugpy` type, so the two call sites do not
+    # compose the value identically and cannot be changed in isolation.
+    # TODO (copilot-instructions §8.7): compose the args in `to_dict` instead of mutating.
     def add_logger_args(self, working_path: str) -> None:
         """Adds the redirect arg to the task."""
         if self.watcher:

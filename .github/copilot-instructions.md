@@ -499,10 +499,13 @@ report as the cleanup's input was the earlier design and was deliberately droppe
 stale must not be the input to an irreversible operation.** Keep that property if the module is reworked again.
 
 **Pre-flight wrapper (`remote_branches/module.py`)**
-Both commands are light-weight (`skip`) but need a remote and the working path, so the wrapper runs
-`Repo.require_remote()` → `ensure_working_path()` → `complete_app_properties()`. The commands themselves still call
-`Repo.require_remote()`; because the resolution is memoized on the class, that costs no extra `git remote` and no
-second prompt.
+Both commands are light-weight (`skip`) and need the working path, so the wrapper runs
+`ensure_working_path()` → `complete_app_properties()` and nothing else. **A remote is deliberately not
+required up front**: the `Repo` snapshot resolves one when it exists and otherwise asks the user for the
+main branch, so a repository with no remote still gets its local branches reported and cleaned. Demanding
+one in the wrapper would refuse a workflow that works perfectly well. The remote is required only where a
+remote reference is about to be touched — `delete_branches` calls `Repo.require_remote()`, and only when at
+least one selected branch actually has a remote side, so a local-only cleanup never asks for it.
 
 ### 3.4 Release Management (`src/mega_snake/light_weight/create_release.py`)
 
@@ -1727,3 +1730,46 @@ bury real edits in reformatting noise.
 **Shape of the fix.** Opportunistic: **when you edit a function, bring its docstring to the mandated shape**,
 and do not start a repository-wide sweep for its own sake. Nothing enforces this mechanically — if it is ever
 worth enforcing, the check belongs next to the docs tests in `src/tests/docs_gen/`.
+
+### 8.7 `add_logger_args` mutates the enum member instead of building a value (§3.1)
+
+**What.** `VscodeTask.add_logger_args` and `VscodeLaunch.add_logger_args` do
+`self.args.extend(...)`, and `self` is an enum member — a process-wide singleton. The redirect is
+therefore not appended to a copy of the task, it is appended to *the* task, permanently, for
+everything that touches it afterwards:
+
+```pycon
+>>> VscodeTask.GRADLE_BUILD.args
+['clean', 'build']
+>>> VscodeTask.GRADLE_BUILD.to_dict("wp")["args"].count("2>&1")
+1
+>>> VscodeTask.GRADLE_BUILD.to_dict("wp")["args"].count("2>&1")
+2
+```
+
+Two consequences. In **production** a second `to_dict` on the same member would emit
+`... > log 2>&1 > log 2>&1`; no user has hit it only because `_update_vscode_tasks` and
+`_update_vscode_launch` iterate each member exactly once and the process then exits. In the **suite**
+it already bites: the mutation leaks across test modules, so a test's result depends on pytest's
+collection order — `test_launch_input_calls_stay_inside_their_own_stacks` once shipped green over an
+empty loop for exactly that reason. Nothing catches it, because the only assertion on the emitted
+args compares `result["args"]` against `member.args` *after* the mutation, which holds either way.
+
+**Where.** `src/mega_snake/config_environment/models/vscode_task.py` and
+`config_environment/models/vscode_launch.py`, both `add_logger_args`, plus both `to_dict`.
+
+**Why it was left.** It changes a model shared by every emitted task and launch configuration, and
+it surfaced inside a change set about stack detection that was already several review rounds deep.
+`reference_text.py` works around it in the meantime by asking the watcher for the rendered redirect
+rather than reading `args`.
+
+**Shape of the fix.** Leave `self.args` alone and let `to_dict` compose what it emits —
+`args = [*self.args, *self._logger_args(working_path)]` — turning the method into a pure builder.
+**Both classes must be changed together**: `VscodeLaunch.to_dict` joins the list with `" "` for the
+`debugpy` type, so the two call sites do not compose the value identically and cannot be fixed in
+isolation.
+
+**Verify.** A test that calls `to_dict` twice on the same member and asserts the redirect appears
+exactly once — the assertion nothing makes today, and the one that must fail before the fix. Any
+existing assertion that compares `result["args"]` against `member.args` has to be rewritten against
+an expected literal, since after the fix the two legitimately differ.
