@@ -5,13 +5,21 @@ from typing import Sequence
 
 import click
 
-from mega_snake.docs_gen.generate_docs import render_command_reference
-from mega_snake.docs_gen.markdown_writer import write_or_check_document
+from mega_snake.docs_gen.generate_docs import introspected_commands
+from mega_snake.docs_gen.markdown_writer import render_index, render_markdown, write_or_check_document
 from mega_snake.util.formatting import ws_success
 from mega_snake.util.util import add_to_gitignore, cli_metadata, exclude_from_git, get_validated_input
 
-# Output file name written into each skill directory.
+# Files written into each skill directory.
+#
+# The split is what keeps the skill cheap to load. Both runtimes read SKILL.md eagerly the moment the
+# skill triggers, so whatever sits in it is spent from the reader's context before it knows which
+# command it needs; both are also built for progressive disclosure, where a short body points at
+# reference files opened on demand. SKILL.md therefore carries the frontmatter and the index — every
+# command name, its aliases and its one-line description — and REFERENCE_FILE carries the full
+# reference the index points at.
 SKILL_FILE = "SKILL.md"
+REFERENCE_FILE = "reference.md"
 
 # YAML frontmatter identifying the document as a skill. Both runtimes this command targets discover
 # a skill by reading these two keys off the top of the file; a SKILL.md that opens with a heading is
@@ -25,6 +33,27 @@ SKILL_DESCRIPTION = (
     "command - VS Code workspace setup for Java, Gradle and Maven projects, git and release "
     "workflows, dependency vulnerability audits, GraphQL and keystore utilities, or shell "
     "integration."
+)
+
+# Body of SKILL.md above the index. Written here rather than in a packaged fragment because it
+# describes the *generated* pair of files and has to name REFERENCE_FILE, which only this module
+# defines: a fragment would restate a file name it cannot see, and §6.3's rule is that generated
+# facts are never hand-written twice.
+SKILL_PREAMBLE = (
+    f"Reference for the `{SKILL_NAME}` CLI (PyPI package `mega-snake`).\n"
+    "\n"
+    f"The table below lists every command with its aliases and a one-line description. It is an\n"
+    f"index, not the documentation: it carries no options, defaults, output files or caveats.\n"
+    "\n"
+    f"**Before running a command, read its full entry.** Two equivalent ways, cheapest first:\n"
+    "\n"
+    f"- `{SKILL_NAME} man <command>` — renders that one command's full reference in the terminal.\n"
+    f"- `{REFERENCE_FILE}`, next to this file — the same reference for every command, as a file.\n"
+    "\n"
+    f"Read only the entry you need. `{SKILL_NAME} man <command>` is preferred: it returns a single\n"
+    f"command instead of the whole document, and it always reflects the installed version.\n"
+    "\n"
+    f"Every command also accepts `-h`/`--help`, and `{SKILL_NAME} --help` lists the commands."
 )
 
 # Canonical skill directories, relative to the project root.
@@ -70,14 +99,54 @@ def _skill_path(skill_dir: Path) -> Path:
     return skill_dir / SKILL_FILE
 
 
-def _skill_document(markdown: str) -> str:
-    """Prepend the skill frontmatter to the rendered command reference.
+def _reference_path(skill_dir: Path) -> Path:
+    """Return the full path to the reference file inside a skill directory.
+
+    Parameters:
+        skill_dir: The skill directory.
+
+    Raises:
+        None
+
+    Returns:
+        Path: The full path to the reference file.
+    """
+    return skill_dir / REFERENCE_FILE
+
+
+def _skill_files(index: str, reference: str) -> dict[str, str]:
+    """Pair every file name the command writes with its rendered content.
+
+    Returned as one mapping so the write path and ``--check`` iterate the *same* set: a file added to
+    the skill and forgotten in the validation would drift with nothing reporting it, which is the
+    failure mode ``--check`` exists to prevent.
+
+    Parameters:
+        index: The rendered command index.
+        reference: The rendered full command reference.
+
+    Raises:
+        None
+
+    Returns:
+        dict[str, str]: File name to file content, for every file the skill is made of.
+    """
+    return {SKILL_FILE: _skill_document(index), REFERENCE_FILE: reference}
+
+
+def _skill_document(index: str) -> str:
+    """Assemble SKILL.md: the frontmatter, the pointer to the reference, and the command index.
 
     The description is emitted as a double-quoted YAML scalar because a plain one may not contain a
     colon followed by a space, which is easy to reintroduce the next time the wording is edited.
 
+    The pointer is the load-bearing sentence of the whole document: it is what makes the reference a
+    file the agent opens when it needs detail rather than ~900 lines it pays for on every trigger.
+    Without it the index reads as the complete documentation, and the agent answers from a table that
+    deliberately carries no options, defaults or caveats.
+
     Parameters:
-        markdown: The rendered Markdown command reference.
+        index: The rendered Markdown command index.
 
     Raises:
         None
@@ -85,7 +154,7 @@ def _skill_document(markdown: str) -> str:
     Returns:
         str: The complete SKILL.md document, frontmatter first.
     """
-    return f'---\nname: {SKILL_NAME}\ndescription: "{SKILL_DESCRIPTION}"\n---\n\n{markdown}'
+    return f'---\nname: {SKILL_NAME}\ndescription: "{SKILL_DESCRIPTION}"\n---\n\n{SKILL_PREAMBLE}\n\n{index}'
 
 
 def _tracking_entries(skill_dirs: Sequence[PurePath]) -> list[tuple[str, str]]:
@@ -135,14 +204,18 @@ def _apply_tracking(skill_dirs: tuple[Path, ...], tracking: str) -> None:
         add_to_gitignore(entries)
 
 
-def _check_all_existing_skill_files(document: str) -> None:
+def _check_all_existing_skill_files(files: dict[str, str]) -> None:
     """Validate every skill file that already exists on disk.
 
     Only files that are present are checked; missing ones are silently skipped so --check does not
     mandate that skill files exist, only that existing ones are up to date.
 
+    Every file of the skill is validated, not just SKILL.md: the reference half is the larger of the
+    two and the one a stale checkout is most likely to keep, so checking only the index would report
+    a skill as current while the document it points at describes commands that no longer exist.
+
     Parameters:
-        document: The freshly rendered SKILL.md document, frontmatter included, to compare against.
+        files: File name to rendered content, for every file the skill is made of.
 
     Raises:
         ValidationError: If any existing skill file is stale.
@@ -151,9 +224,10 @@ def _check_all_existing_skill_files(document: str) -> None:
         None
     """
     for skill_dir in ALL_SKILL_DIRS:
-        skill_file: Path = _skill_path(skill_dir)
-        if skill_file.is_file():
-            write_or_check_document(skill_file, document, check=True)
+        for file_name, content in files.items():
+            skill_file: Path = skill_dir / file_name
+            if skill_file.is_file():
+                write_or_check_document(skill_file, content, check=True)
 
 
 def _prompt_target() -> tuple[Path, ...]:
@@ -199,12 +273,12 @@ def _prompt_tracking() -> str:
     )
 
 
-def _write_skill_files(skill_dirs: tuple[Path, ...], document: str) -> list[Path]:
-    """Write the SKILL.md file into every selected skill directory.
+def _write_skill_files(skill_dirs: tuple[Path, ...], files: dict[str, str]) -> list[Path]:
+    """Write every file of the skill into every selected skill directory.
 
     Parameters:
         skill_dirs: The directories to write into.
-        document: The rendered SKILL.md content, frontmatter included.
+        files: File name to rendered content, for every file the skill is made of.
 
     Raises:
         None
@@ -214,29 +288,31 @@ def _write_skill_files(skill_dirs: tuple[Path, ...], document: str) -> list[Path
     """
     written: list[Path] = []
     for skill_dir in skill_dirs:
-        skill_file: Path = _skill_path(skill_dir)
-        write_or_check_document(skill_file, document, check=False)
-        ws_success(f"Generated {skill_file}")
-        written.append(skill_file)
+        for file_name, content in files.items():
+            skill_file: Path = skill_dir / file_name
+            write_or_check_document(skill_file, content, check=False)
+            ws_success(f"Generated {skill_file}")
+            written.append(skill_file)
     return written
 
 
 @click.command(
     name="generate-skill",
     short_help="Generate AI agent skill files (SKILL.md) from CLI metadata.",
-    help="Generates SKILL.md for AI agent skill discovery by introspecting the registered CLI"
-    " commands and rendering the same reference as generate-docs, behind the YAML frontmatter the"
-    " agent runtimes read. Asks which assistant to target — .github/skills/mgsnake/ for GitHub"
-    " Copilot, .claude/skills/mgsnake/ for Claude, or both — and how the files should be tracked in"
-    " git, then writes them.",
+    help="Generates the agent skill files by introspecting the registered CLI commands: SKILL.md,"
+    " carrying the YAML frontmatter the agent runtimes read plus a compact command index, and"
+    " reference.md beside it, carrying the same full reference as generate-docs for the agent to"
+    " open on demand. Asks which assistant to target — .github/skills/mgsnake/ for GitHub Copilot,"
+    " .claude/skills/mgsnake/ for Claude, or both — and how the files should be tracked in git,"
+    " then writes them.",
 )
 @cli_metadata(flags={"no_init"})
 @click.option(
     "--check",
     is_flag=True,
     default=False,
-    help="Render in memory, compare with every skill file that already exists on disk,"
-    " and exit with an error when any is stale.",
+    help="Render in memory, compare with every skill file that already exists on disk — SKILL.md"
+    " and reference.md alike — and exit with an error when any is stale.",
 )
 def generate_skill(check: bool) -> None:
     """Generate or validate the AI agent skill files.
@@ -251,16 +327,19 @@ def generate_skill(check: bool) -> None:
     Returns:
         None
     """
-    document: str = _skill_document(render_command_reference())
+    # One walk of the CLI, two projections of its result. Introspecting twice would let the index
+    # and the reference disagree about which commands exist.
+    commands = introspected_commands()
+    files: dict[str, str] = _skill_files(render_index(commands), render_markdown(commands))
 
     if check:
-        _check_all_existing_skill_files(document)
+        _check_all_existing_skill_files(files)
         return
 
     # Both questions are asked before anything is written, so exhausting the retries on either
-    # prompt leaves the working tree exactly as it was. Writing first would strand SKILL.md files on
+    # prompt leaves the working tree exactly as it was. Writing first would strand skill files on
     # disk, untracked and un-excluded, for a user who only fumbled the second answer.
     skill_dirs: tuple[Path, ...] = _prompt_target()
     tracking: str = _prompt_tracking()
-    _write_skill_files(skill_dirs, document)
+    _write_skill_files(skill_dirs, files)
     _apply_tracking(skill_dirs, tracking)

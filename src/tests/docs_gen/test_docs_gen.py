@@ -9,7 +9,14 @@ import pytest
 
 from mega_snake import __main__ as app_main
 from mega_snake.docs_gen.introspect import iter_introspected_commands, normalize_help
-from mega_snake.docs_gen.markdown_writer import _render_code_cell, _render_epilog, render_markdown
+from mega_snake.docs_gen.introspect import IntrospectedCommand
+from mega_snake.docs_gen.markdown_writer import (
+    INDEX_HEADING,
+    _render_code_cell,
+    _render_epilog,
+    render_index,
+    render_markdown,
+)
 from mega_snake.util.formatting import VALIDATION_ERROR_CODE
 
 # Shorter strings are too generic to prove a real duplication between an epilog and a fragment.
@@ -349,3 +356,140 @@ def test_synopsis_is_a_single_unpadded_line(monkeypatch: pytest.MonkeyPatch) -> 
         assert "\n" not in entry.synopsis, f"{entry.name} synopsis spans several lines: {entry.synopsis!r}"
         assert "  " not in entry.synopsis, f"{entry.name} synopsis carries wrap padding: {entry.synopsis!r}"
         assert entry.synopsis == entry.synopsis.strip(), f"{entry.name} synopsis is padded: {entry.synopsis!r}"
+
+
+# ---------------------------------------------------------------------------
+# render_index — the compact projection SKILL.md carries
+# ---------------------------------------------------------------------------
+
+# Placeholder written in the alias cell of a command that has none. An empty cell would still be a
+# valid row, so the constant is what a test can assert against.
+NO_ALIASES_CELL = "—"
+
+
+def introspected(
+    name: str = "some-command",
+    *,
+    group: str = "Some Group",
+    aliases: tuple[str, ...] = (),
+    short_help: str = "Does a thing.",
+    options: tuple = (),
+    fragment_body: str = "",
+) -> IntrospectedCommand:
+    """Build an IntrospectedCommand, defaulting every field the caller does not care about.
+
+    Every field a test asserts on is passed explicitly by that test, defaults included, so no
+    assertion is ever satisfied by a value the builder chose invisibly.
+
+    Parameters:
+        name: The command name.
+        group: The documentation group title.
+        aliases: The registered aliases.
+        short_help: The one-line description.
+        options: The option rows, which the index must never render.
+        fragment_body: The prose fragment, which the index must never render.
+
+    Raises:
+        None
+
+    Returns:
+        IntrospectedCommand: The built entry.
+    """
+    return IntrospectedCommand(
+        name=name,
+        group=group,
+        aliases=aliases,
+        short_help=short_help,
+        summary="The long help nobody should find in an index.",
+        synopsis=f"mgsnake {name}",
+        options=options,
+        epilog="",
+        fragment_path=Path(f"{name}.md"),
+        fragment_body=fragment_body,
+    )
+
+
+def test_render_index_row_is_name_aliases_and_short_help() -> None:
+    """A row carries exactly the three cells, compared as a whole line.
+
+    Compared by equality over the line rather than by containment in the document: "`js`" is a
+    substring of "`json`", and a containment check cannot tell a correct alias cell from a longer
+    wrong one.
+    """
+    rows = render_index([introspected("jira-sprint", aliases=("js",), short_help="Prints the active sprints.")])
+
+    assert "| `jira-sprint` | `js` | Prints the active sprints. |" in rows.splitlines()
+
+
+def test_render_index_marks_a_command_with_no_aliases() -> None:
+    """A command without aliases gets the placeholder, never an empty cell."""
+    lines = render_index([introspected("load-env", aliases=(), short_help="Loads an env file.")]).splitlines()
+
+    assert f"| `load-env` | {NO_ALIASES_CELL} | Loads an env file. |" in lines
+    assert "| `load-env` |  | Loads an env file. |" not in lines, "an empty alias cell was rendered"
+
+
+def test_render_index_keeps_a_multi_line_short_help_on_one_row() -> None:
+    """A Markdown row ends at the first newline, so a folded description is not optional.
+
+    A short help carrying a newline would otherwise split the row in two and tear the rest of the
+    table apart — the same failure the option table folds <br> to avoid.
+    """
+    lines = render_index([introspected("msg", short_help="Prints a message.\nSecond line.")]).splitlines()
+
+    row = [line for line in lines if line.startswith("| `msg` |")]
+    assert len(row) == 1, f"the description tore the row apart: {row}"
+    assert "Second line." in row[0], "the second line was dropped instead of folded"
+
+
+def test_render_index_omits_options_and_fragments_for_every_real_command() -> None:
+    """The index is a projection, not the reference: no option rows, no fragment sections.
+
+    Walked over the whole live CLI rather than one sampled command, because the property is
+    structural: a single entry leaking its options is enough to make the skill body expensive again,
+    which is the entire reason the split exists.
+    """
+    commands = list(iter_introspected_commands(app_main.cli))
+    index = render_index(commands)
+    reference = render_markdown(commands)
+
+    for command in commands:
+        assert f"| `{command.name}` |" in index, f"{command.name} is missing from the index"
+        for option in command.options:
+            assert option.name not in index, f"{command.name} leaked the option {option.name!r} into the index"
+        if command.fragment_body:
+            first_line = command.fragment_body.splitlines()[0]
+            assert first_line not in index, f"{command.name} leaked its fragment into the index"
+
+    assert len(index) < len(reference) // 5, "the index is not materially smaller than the reference"
+
+
+def test_render_index_lists_every_documented_command_exactly_once() -> None:
+    """One row per command — a duplicate would mean an alias was walked as a command."""
+    commands = list(iter_introspected_commands(app_main.cli))
+    lines = render_index(commands).splitlines()
+
+    for command in commands:
+        matches = [line for line in lines if line.startswith(f"| `{command.name}` |")]
+        assert len(matches) == 1, f"{command.name} appears {len(matches)} times: {matches}"
+
+
+def test_render_index_groups_commands_exactly_as_the_reference_does() -> None:
+    """Both projections come from one walk, so their group headings must agree.
+
+    If they diverge, the index sends a reader to a section of reference.md that is not there.
+    """
+    commands = list(iter_introspected_commands(app_main.cli))
+
+    index_groups = [line for line in render_index(commands).splitlines() if line.startswith("## ")]
+    reference_groups = [line for line in render_markdown(commands).splitlines() if line.startswith("## ")]
+
+    assert index_groups == reference_groups, "the index and the reference disagree on the group headings"
+
+
+def test_render_index_opens_with_its_own_heading_not_the_reference_one() -> None:
+    """The index is a distinct document; reusing the reference title would misname it."""
+    lines = render_index([introspected()]).splitlines()
+
+    assert lines[0] == INDEX_HEADING
+    assert lines[0] != "# Available Commands"

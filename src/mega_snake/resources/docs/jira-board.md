@@ -5,6 +5,15 @@ needed at all.
 
 ## Output
 
+One JSON object on stdout, and nothing else:
+
+```jsonc
+{
+  "boardId": 1,                           // number, the Agile board behind the project
+  "cloudDomain": "example.atlassian.net"  // string, the Jira Cloud domain it was resolved from
+}
+```
+
 Nothing on disk except the cache entry: `jira.board_id` is written to the repository scope of the
 state store (see `config`), but only when the resolved project matches the stored
 `jira.project_key`. Passing a different project key explicitly neither reads nor writes that cache,

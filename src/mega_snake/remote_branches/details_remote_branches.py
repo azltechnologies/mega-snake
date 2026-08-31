@@ -106,7 +106,7 @@ def render_markdown_report(branches: list[GitBranch], filter_by: str) -> str:
     Returns:
         str: The markdown document.
     """
-    # TODO (copilot-instructions §8.5): add a --format option, alongside GitBranch.MD_HEADER.
+    # TODO (copilot-instructions §8.4): add a --format option, alongside GitBranch.MD_HEADER.
     generated: str = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     header: str = (
         "# Branches Report\n\n"

@@ -703,13 +703,35 @@ Writes `SKILL.md` into the agent-skill directories (`.github/skills/mgsnake/` fo
 own project — which is what makes it user-facing despite documenting mgsnake (§1). Also `no_init`, and its
 body renders through `render_command_reference()` so it cannot diverge from `COMMANDS.md`.
 
-Four properties a reader will otherwise misjudge:
+**It writes two files, and the split is the whole design.** Both runtimes load a skill's body
+eagerly the moment the skill triggers, and both are built for progressive disclosure. So `SKILL.md`
+carries the frontmatter, the pointer, and the **index** — name, aliases and `short_help` per command,
+around 90 lines — while `reference.md` beside it carries the full reference, opened only on demand.
+Inlining the reference put ~900 lines into every trigger, which is what this replaced.
+
+Three rules hold that shape together, and breaking any one of them silently undoes it:
+
+- **One walk, two projections.** `introspected_commands()` walks the CLI once; `render_index()` and
+  `render_markdown()` both render *that list*. A second introspection pass would let the index and the
+  reference disagree about which commands exist — the one failure a generated document must not have.
+  This is not an exception to "exactly one renderer": the index is a different **document**, not a
+  second rendering of the reference.
+- **`--check` covers every file, not just `SKILL.md`.** `_skill_files()` returns the whole
+  `{name: content}` mapping precisely so the write path and the validation iterate the same set; the
+  reference half is the larger one and the likelier to go stale, and checking only the index would
+  report a current skill while the document it points at described commands that no longer exist.
+- **The pointer sentence is load-bearing.** Without it the index reads as the complete documentation
+  and an agent answers about options and defaults from a table that carries none. It names
+  `mgsnake man <command>` first — one command's entry, always matching the installed version — and
+  `reference.md` second.
+
+Four more properties a reader will otherwise misjudge:
 
 - **The YAML frontmatter is what makes the file a skill.** `_skill_document()` prepends `name` and
-  `description`; a `SKILL.md` opening with the reference's own `# Available Commands` heading is not
-  discovered by either runtime, so the command would write a file that achieves nothing. The description is
+  `description`; a `SKILL.md` opening with a bare Markdown heading is not discovered by either
+  runtime, so the command would write a file that achieves nothing. The description is
   emitted as a **quoted** scalar — a plain YAML scalar may not contain `": "`, which that prose can easily
-  reacquire. The same pair serves both targets, which is why one rendered string still feeds every directory.
+  reacquire. The same pair serves both targets, which is why one rendered document still feeds every directory.
 - **Both answers are collected before the first byte is written.** Prompting after writing would strand
   `SKILL.md` files that are neither excluded nor gitignored whenever the second prompt exhausts its retries.
   Keep the order; two tests pin that nothing survives an abandoned prompt.
@@ -718,7 +740,8 @@ Four properties a reader will otherwise misjudge:
   script it as if there were: a bare `mgsnake generate-skill` in a hook or a CI step blocks on `input()`.
 - **`--check` only validates files that already exist.** Its purpose is "existing skill files are not stale",
   not "skill files exist", so it passes on a checkout that has none — which is the accepted behaviour, stated
-  in the fragment, not a gap waiting to be closed. It compares the frontmatter like any other line.
+  in the fragment, not a gap waiting to be closed. It compares the frontmatter like any other line, and each
+  file independently, so one present file is validated even when its sibling is missing.
 
 **Git entries are built with `as_posix()`, never `str(Path)`.** On Windows `str()` yields backslashes, and git
 reads a backslash inside an ignore pattern as an escape, so the pattern matches nothing and the files the user
@@ -1634,7 +1657,7 @@ session. So the startup line passes the path explicitly
 `test_scripts_resolve_the_env_file_explicitly_at_startup` pins it so it cannot regress to the bare call.
 
 Both the temporary status of that fallback and the double load it interacts with are open work, catalogued in
-§8.3 — do not re-argue them here.
+§8.2 — do not re-argue them here.
 
 **Whenever you change how the CLI is invoked, re-check the wrapper.** The signal only works while something
 captures the executable's status; a wrapper that stops doing so leaves the Python side emitting codes into a void,
@@ -1783,31 +1806,7 @@ option on `man` rather than as a second command.
 the command, §6.3); the release workflow's `generate-docs --check` step still runs in this
 repository; §1's "the test is the audience" block and §3.7 are updated rather than reworded.
 
-### 8.2 The generated `SKILL.md` loads the whole reference eagerly (§3.7)
-
-**What.** `generate-skill` writes valid frontmatter followed by the entire ~900-line command
-reference as the skill body. Both runtimes load a skill's body eagerly once the skill triggers, and
-both are designed for progressive disclosure — a short body that points at reference files read on
-demand. So the file works, but it spends far more of the user's assistant context than it needs to.
-
-**Where.** `src/mega_snake/docs_gen/generate_skill.py`, `_skill_document()` and `_write_skill_files()`.
-
-**Why it was left.** The fix changes what lands in the user's repository (one file becomes a
-directory of them), which is a product decision, not a cleanup. Getting the file *loadable* was the
-defect worth fixing on its own.
-
-**Shape of the fix.** Keep `SKILL.md` as frontmatter plus a generated index — command name, aliases
-and `short_help`, which introspection already provides — and write the full reference beside it as
-`reference.md` that the body tells the agent to read when it needs detail. Note the constraint this
-runs into: §3.7 forbids a second renderer, and an index is a second projection of the same
-`IntrospectedCommand` list. Render it from that list, never from a second walk of the CLI, so the
-two documents cannot disagree.
-
-**Verify.** `--check` has to compare every file the command writes, not just `SKILL.md`, or the
-reference half drifts invisibly; the `## Output` section of `resources/docs/generate-skill.md` lists
-both files; `COMMANDS.md` regenerated (§6.3).
-
-### 8.3 `load-env`'s bare-invocation fallback and the double load (§7.4)
+### 8.2 `load-env`'s bare-invocation fallback and the double load (§7.4)
 
 **What.** `mgsnake load-env` with no argument falls back to `.env` in the current directory when the local
 environment file does not exist. It is deliberate but temporary: a terminal opened in an unrelated directory
@@ -1825,7 +1824,7 @@ already loaded that same path, or stop embedding the line in newly generated con
 `config_setup.sh` / `config_setup.ps1` must **keep** passing the path explicitly at startup regardless of the
 outcome; `test_scripts_resolve_the_env_file_explicitly_at_startup` pins that and is not part of this decision.
 
-### 8.4 Merge verdicts are re-derived once per branch side (§3.3)
+### 8.3 Merge verdicts are re-derived once per branch side (§3.3)
 
 **What.** `Branch.__post_init__` resolves the merge verdict per _side_, so a paired branch pays for the whole
 analysis twice — and for an in-sync branch (trackshort `=`, the majority) both sides hold the same tip hash,
@@ -1848,7 +1847,7 @@ cannot go stale within a run.
 **Verify.** It must be cleared in `Repo.reset()` alongside the rest of the snapshot state (§4.4), or tests leak
 verdicts between cases — and a test that asserts the second side reuses the verdict rather than re-running git.
 
-### 8.5 `remote-branches-details` has a fixed table shape (§3.3)
+### 8.4 `remote-branches-details` has a fixed table shape (§3.3)
 
 **What.** The report's columns and layout are hard-coded in `GitBranch.MD_HEADER` and
 `details_remote_branches.render_markdown_report()`; a user who wants fewer columns, CSV, or JSON has no way to
@@ -1862,7 +1861,7 @@ are two halves of one table definition and will silently disagree if only one is
 **Verify.** The fragment's "planned; for now the table is fixed" sentence is deleted in the same change, and
 `COMMANDS.md` regenerated (§6.3).
 
-### 8.6 Docstring style is not uniform across the package (§6.1 rule 2)
+### 8.5 Docstring style is not uniform across the package (§6.1 rule 2)
 
 **What.** §6.1 mandates a summary line plus `Parameters:` / `Raises:` / `Returns:`, all three always present.
 Several older functions still carry the earlier `Args:` shape or omit sections — `remote_branches`'
@@ -1876,7 +1875,7 @@ bury real edits in reformatting noise.
 and do not start a repository-wide sweep for its own sake. Nothing enforces this mechanically — if it is ever
 worth enforcing, the check belongs next to the docs tests in `src/tests/docs_gen/`.
 
-### 8.7 `add_logger_args` mutates the enum member instead of building a value (§3.1)
+### 8.6 `add_logger_args` mutates the enum member instead of building a value (§3.1)
 
 **What.** `VscodeTask.add_logger_args` and `VscodeLaunch.add_logger_args` do
 `self.args.extend(...)`, and `self` is an enum member — a process-wide singleton. The redirect is

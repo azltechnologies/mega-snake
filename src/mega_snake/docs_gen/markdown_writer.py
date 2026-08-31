@@ -10,6 +10,7 @@ from mega_snake.docs_gen.introspect import IntrospectedCommand
 from mega_snake.util.formatting import ValidationError
 
 GROUP_HEADING = "# Available Commands"
+INDEX_HEADING = "# mgsnake Command Index"
 CELL_LINE_BREAK = "<br>"
 BACKTICK = "`"
 
@@ -157,6 +158,41 @@ def render_markdown(commands: Iterable[IntrospectedCommand]) -> str:
                 lines.extend([_render_epilog(command.epilog), ""])
             if command.fragment_body:
                 lines.extend([_render_fragment(command.fragment_body), ""])
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_index(commands: Iterable[IntrospectedCommand]) -> str:
+    """Render the compact command index: one table row per command, no options and no fragments.
+
+    This is a **second projection of the same ``IntrospectedCommand`` list**, never a second walk of
+    the CLI. Both agent runtimes load a skill body eagerly, so a skill that inlines the full
+    reference spends the reader's context on ~900 lines before it knows which command it needs; the
+    index is what the body carries instead, and the reference is read on demand. Rendering it from a
+    separate introspection pass would let the two documents disagree about which commands exist,
+    which is the one failure a generated document must not have.
+
+    Parameters:
+        commands: The introspected command entries to render.
+
+    Raises:
+        None
+
+    Returns:
+        str: The rendered Markdown index.
+    """
+    grouped_commands: dict[str, list[IntrospectedCommand]] = defaultdict(list)
+    for command in commands:
+        grouped_commands[command.group].append(command)
+
+    lines: list[str] = [INDEX_HEADING, ""]
+    for group_name in sorted(grouped_commands, key=str.casefold):
+        lines.extend([f"## {group_name}", "", "| Command | Aliases | Description |", "| --- | --- | --- |"])
+        for command in grouped_commands[group_name]:
+            aliases: str = ", ".join(f"`{alias}`" for alias in command.aliases) if command.aliases else "—"
+            lines.append(
+                f"| `{command.name}` | {aliases} | {_escape_markdown_cell(_to_single_cell_line(command.short_help))} |"
+            )
+        lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
 

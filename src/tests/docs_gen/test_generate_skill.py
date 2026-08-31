@@ -9,17 +9,21 @@ from click.testing import CliRunner
 
 from mega_snake.docs_gen.generate_skill import (
     ALL_SKILL_DIRS,
+    REFERENCE_FILE,
     SKILL_CLAUDE_DIR,
     SKILL_COPILOT_DIR,
     SKILL_DESCRIPTION,
     SKILL_DIR_LABEL,
     SKILL_FILE,
     SKILL_NAME,
+    SKILL_PREAMBLE,
     SKILL_TARGET_OPT,
     SKILL_TRACKING_KEYS,
     _apply_tracking,
     _check_all_existing_skill_files,
+    _reference_path,
     _skill_document,
+    _skill_files,
     _skill_path,
     _tracking_entries,
     _write_skill_files,
@@ -28,10 +32,15 @@ from mega_snake.docs_gen.generate_skill import (
 from mega_snake.util.formatting import VALIDATION_ERROR_CODE
 
 SAMPLE_MARKDOWN = "# Available Commands\n\n## Documentation\n\n### generate-skill\n"
+SAMPLE_INDEX = "# mgsnake Command Index\n\n## Documentation\n\n| Command | Aliases | Description |\n"
 
-# What the command actually writes: the frontmatter plus the rendered reference. Spelled out here
-# rather than reusing _skill_document() so a change in the composition has to be acknowledged.
-SAMPLE_DOCUMENT = f'---\nname: mgsnake\ndescription: "{SKILL_DESCRIPTION}"\n---\n\n{SAMPLE_MARKDOWN}'
+# What the command actually writes into SKILL.md: the frontmatter, the preamble, then the index --
+# never the full reference, which now lives in its own file. Spelled out here rather than reusing
+# _skill_document() so a change in the composition has to be acknowledged.
+SAMPLE_DOCUMENT = f'---\nname: mgsnake\ndescription: "{SKILL_DESCRIPTION}"\n---\n\n{SKILL_PREAMBLE}\n\n{SAMPLE_INDEX}'
+
+# The two files a completed run leaves in every selected directory.
+SAMPLE_FILES = {SKILL_FILE: SAMPLE_DOCUMENT, REFERENCE_FILE: SAMPLE_MARKDOWN}
 
 # The literal directory entries the tracking helpers must receive. Written out instead of derived
 # from SKILL_*_DIR so the expectation cannot restate the expression under test: on Windows
@@ -42,10 +51,14 @@ CLAUDE_ENTRY = ".claude/skills/mgsnake/"
 
 @pytest.fixture(name="mk_render")
 def fixture_mk_render() -> Generator[MagicMock, None, None]:
-    """Patch render_command_reference so tests don't need a full CLI build."""
-    with patch("mega_snake.docs_gen.generate_skill.render_command_reference") as mock:
-        mock.return_value = SAMPLE_MARKDOWN
-        yield mock
+    """Patch the introspection and both renderers so tests don't need a full CLI build."""
+    with (
+        patch("mega_snake.docs_gen.generate_skill.introspected_commands") as mk_commands,
+        patch("mega_snake.docs_gen.generate_skill.render_index", return_value=SAMPLE_INDEX),
+        patch("mega_snake.docs_gen.generate_skill.render_markdown", return_value=SAMPLE_MARKDOWN),
+    ):
+        mk_commands.return_value = []
+        yield mk_commands
 
 
 @pytest.fixture(name="mk_get_validated_input")
@@ -86,6 +99,12 @@ def test_skill_file_constant() -> None:
     assert SKILL_FILE == "SKILL.md"
 
 
+def test_reference_file_constant() -> None:
+    """REFERENCE_FILE is a sibling of SKILL.md, never SKILL.md itself."""
+    assert REFERENCE_FILE == "reference.md"
+    assert REFERENCE_FILE != SKILL_FILE
+
+
 def test_all_skill_dirs_contains_both_targets() -> None:
     """ALL_SKILL_DIRS must contain the Copilot and Claude directories in a deterministic order."""
     assert SKILL_COPILOT_DIR in ALL_SKILL_DIRS
@@ -121,6 +140,14 @@ def test_skill_path_returns_skill_md_inside_dir() -> None:
     assert p.name == SKILL_FILE
 
 
+def test_reference_path_returns_reference_md_inside_dir() -> None:
+    """_reference_path should append REFERENCE_FILE to the given directory, beside SKILL.md."""
+    p = _reference_path(SKILL_COPILOT_DIR)
+    assert p == SKILL_COPILOT_DIR / REFERENCE_FILE
+    assert p.name == REFERENCE_FILE
+    assert p.parent == _skill_path(SKILL_COPILOT_DIR).parent
+
+
 # ---------------------------------------------------------------------------
 # _skill_document
 # ---------------------------------------------------------------------------
@@ -140,13 +167,41 @@ def test_skill_document_opens_with_yaml_frontmatter() -> None:
     assert lines[3] == "---", f"frontmatter is not closed on line 4, got {lines[3]!r}"
 
 
-def test_skill_document_keeps_the_reference_body_verbatim() -> None:
-    """Everything after the frontmatter is the rendered reference, unmodified."""
-    document = _skill_document(SAMPLE_MARKDOWN)
+def test_skill_document_carries_the_index_and_not_the_reference() -> None:
+    """The body is the preamble plus the index; the full reference must not be inlined.
+
+    This is the whole point of the split: both runtimes load SKILL.md eagerly, so a body carrying the
+    reference spends the reader's context before it knows which command it needs. Asserting the index
+    is present is not enough -- the defect being guarded against is the reference being present *too*.
+    """
+    document = _skill_document(SAMPLE_INDEX)
 
     _, _, body = document.partition("\n---\n")
-    assert body.lstrip("\n") == SAMPLE_MARKDOWN
-    assert document.endswith(SAMPLE_MARKDOWN)
+    assert body.lstrip("\n") == f"{SKILL_PREAMBLE}\n\n{SAMPLE_INDEX}"
+    assert document.endswith(SAMPLE_INDEX)
+    assert SAMPLE_MARKDOWN not in document, "the full reference was inlined into the eagerly loaded body"
+
+
+def test_skill_document_points_at_a_way_to_read_the_full_entry() -> None:
+    """The body must name both routes to the detail the index deliberately omits.
+
+    Without the pointer the index reads as the complete documentation, and an agent answers about
+    options and defaults from a table that carries none.
+    """
+    document = _skill_document(SAMPLE_INDEX)
+
+    assert REFERENCE_FILE in document, "the body never names the reference file"
+    assert f"{SKILL_NAME} man <command>" in document, "the body never names the man command"
+
+
+def test_skill_files_pairs_each_file_with_its_own_content() -> None:
+    """The write path and --check share one mapping, so both cover exactly the same files."""
+    files = _skill_files(SAMPLE_INDEX, SAMPLE_MARKDOWN)
+
+    assert set(files) == {SKILL_FILE, REFERENCE_FILE}, f"unexpected file set: {sorted(files)}"
+    assert files[REFERENCE_FILE] == SAMPLE_MARKDOWN
+    assert files[SKILL_FILE] != SAMPLE_MARKDOWN, "SKILL.md must not hold the reference"
+    assert files[SKILL_FILE].startswith("---\n"), "SKILL.md lost its frontmatter"
 
 
 def test_skill_document_quotes_the_description_scalar() -> None:
@@ -283,28 +338,31 @@ def test_skill_dir_label_covers_every_selectable_directory() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_write_skill_files_creates_files(tmp_path: Path, mk_ws_success_skill: MagicMock) -> None:
-    """_write_skill_files should write SKILL.md into each chosen directory."""
+def test_write_skill_files_creates_every_file_in_each_chosen_directory(
+    tmp_path: Path, mk_ws_success_skill: MagicMock
+) -> None:
+    """Both files land in every selected directory, each with its own content."""
     dirs = (tmp_path / ".github" / "skills" / "mgsnake", tmp_path / ".claude" / "skills" / "mgsnake")
 
-    written = _write_skill_files(dirs, SAMPLE_MARKDOWN)
+    written = _write_skill_files(dirs, SAMPLE_FILES)
 
     for skill_dir in dirs:
-        skill_file = skill_dir / SKILL_FILE
-        assert skill_file.is_file(), f"Expected {skill_file} to be written"
-        assert skill_file.read_text(encoding="utf-8") == SAMPLE_MARKDOWN
+        for file_name, expected in SAMPLE_FILES.items():
+            target = skill_dir / file_name
+            assert target.is_file(), f"Expected {target} to be written"
+            assert target.read_text(encoding="utf-8") == expected, f"{target} holds the wrong document"
 
-    assert len(written) == 2
-    assert mk_ws_success_skill.call_count == 2
+    assert len(written) == 4, f"expected two files per directory, got {written}"
+    assert mk_ws_success_skill.call_count == 4
 
 
 def test_write_skill_files_returns_paths(tmp_path: Path, mk_ws_success_skill: MagicMock) -> None:
     """_write_skill_files should return the list of Path objects that were written."""
     dirs = (tmp_path / ".github" / "skills" / "mgsnake",)
 
-    written = _write_skill_files(dirs, SAMPLE_MARKDOWN)
+    written = _write_skill_files(dirs, SAMPLE_FILES)
 
-    assert written == [dirs[0] / SKILL_FILE]
+    assert written == [dirs[0] / SKILL_FILE, dirs[0] / REFERENCE_FILE]
 
 
 # ---------------------------------------------------------------------------
@@ -318,40 +376,44 @@ def test_check_all_existing_skill_files_skips_missing(tmp_path: Path) -> None:
         "mega_snake.docs_gen.generate_skill.ALL_SKILL_DIRS",
         (tmp_path / ".github" / "skills" / "mgsnake", tmp_path / ".claude" / "skills" / "mgsnake"),
     ):
-        _check_all_existing_skill_files(SAMPLE_MARKDOWN)  # Must not raise
+        _check_all_existing_skill_files(SAMPLE_FILES)  # Must not raise
 
 
 def test_check_all_existing_skill_files_passes_when_up_to_date(tmp_path: Path) -> None:
     """_check_all_existing_skill_files should pass when existing skill files match the rendered output."""
     skill_dir = tmp_path / ".github" / "skills" / "mgsnake"
-    skill_file = skill_dir / SKILL_FILE
-    skill_file.parent.mkdir(parents=True)
-    skill_file.write_text(SAMPLE_MARKDOWN, encoding="utf-8")
+    skill_dir.mkdir(parents=True)
+    for file_name, content in SAMPLE_FILES.items():
+        (skill_dir / file_name).write_text(content, encoding="utf-8")
 
     with patch(
         "mega_snake.docs_gen.generate_skill.ALL_SKILL_DIRS",
         (skill_dir, tmp_path / ".claude" / "skills" / "mgsnake"),
     ):
-        _check_all_existing_skill_files(SAMPLE_MARKDOWN)  # Must not raise
+        _check_all_existing_skill_files(SAMPLE_FILES)  # Must not raise
 
 
-def test_check_all_existing_skill_files_fails_when_stale(tmp_path: Path) -> None:
-    """_check_all_existing_skill_files should raise ValidationError when a skill file is stale."""
+@pytest.mark.parametrize("stale_file", [SKILL_FILE, REFERENCE_FILE])
+def test_check_all_existing_skill_files_fails_when_any_file_is_stale(stale_file: str, tmp_path: Path) -> None:
+    """A stale file is reported whichever of the two it is.
+
+    Parametrized over both names on purpose: a --check that only looked at SKILL.md would pass on a
+    checkout whose reference.md still describes commands that no longer exist, and the index -- the
+    half that does get checked -- would look perfectly current while it did.
+    """
     from mega_snake.util.formatting import ValidationError
 
     skill_dir = tmp_path / ".github" / "skills" / "mgsnake"
-    skill_file = skill_dir / SKILL_FILE
-    skill_file.parent.mkdir(parents=True)
-    skill_file.write_text("stale content", encoding="utf-8")
+    skill_dir.mkdir(parents=True)
+    for file_name, content in SAMPLE_FILES.items():
+        (skill_dir / file_name).write_text(content, encoding="utf-8")
+    (skill_dir / stale_file).write_text("stale content", encoding="utf-8")
 
     with (
-        patch(
-            "mega_snake.docs_gen.generate_skill.ALL_SKILL_DIRS",
-            (skill_dir,),
-        ),
-        pytest.raises(ValidationError),
+        patch("mega_snake.docs_gen.generate_skill.ALL_SKILL_DIRS", (skill_dir,)),
+        pytest.raises(ValidationError, match=stale_file),
     ):
-        _check_all_existing_skill_files(SAMPLE_MARKDOWN)
+        _check_all_existing_skill_files(SAMPLE_FILES)
 
 
 # ---------------------------------------------------------------------------
@@ -374,7 +436,8 @@ def test_generate_skill_check_passes_when_files_match(mk_render: MagicMock, tmp_
     with runner.isolated_filesystem(temp_dir=tmp_path) as iso:
         skill_dir = Path(iso) / ".github" / "skills" / "mgsnake"
         skill_dir.mkdir(parents=True)
-        (skill_dir / SKILL_FILE).write_text(SAMPLE_DOCUMENT, encoding="utf-8")
+        for file_name, content in SAMPLE_FILES.items():
+            (skill_dir / file_name).write_text(content, encoding="utf-8")
         result = runner.invoke(generate_skill, ["--check"])
 
     assert result.exit_code == 0, result.output
@@ -410,11 +473,11 @@ def test_generate_skill_copilot_only_exclude(
 
     with runner.isolated_filesystem(temp_dir=tmp_path) as iso:
         result = runner.invoke(generate_skill, [])
-        copilot_file = Path(iso) / ".github" / "skills" / "mgsnake" / SKILL_FILE
-        assert copilot_file.is_file(), "Copilot SKILL.md should have been created"
-        assert copilot_file.read_text(encoding="utf-8") == SAMPLE_DOCUMENT
-        claude_file = Path(iso) / ".claude" / "skills" / "mgsnake" / SKILL_FILE
-        assert not claude_file.exists(), "Claude SKILL.md should NOT have been created"
+        copilot_dir = Path(iso) / ".github" / "skills" / "mgsnake"
+        assert (copilot_dir / SKILL_FILE).read_text(encoding="utf-8") == SAMPLE_DOCUMENT
+        assert (copilot_dir / REFERENCE_FILE).read_text(encoding="utf-8") == SAMPLE_MARKDOWN
+        claude_dir = Path(iso) / ".claude" / "skills" / "mgsnake"
+        assert not claude_dir.exists(), "the Claude skill folder should NOT have been created"
 
     assert result.exit_code == 0, result.output
     mk_exclude_from_git.assert_called_once()
@@ -432,10 +495,11 @@ def test_generate_skill_claude_only_gitignore(
 
     with runner.isolated_filesystem(temp_dir=tmp_path) as iso:
         result = runner.invoke(generate_skill, [])
-        claude_file = Path(iso) / ".claude" / "skills" / "mgsnake" / SKILL_FILE
-        assert claude_file.is_file(), "Claude SKILL.md should have been created"
-        copilot_file = Path(iso) / ".github" / "skills" / "mgsnake" / SKILL_FILE
-        assert not copilot_file.exists(), "Copilot SKILL.md should NOT have been created"
+        claude_dir = Path(iso) / ".claude" / "skills" / "mgsnake"
+        assert (claude_dir / SKILL_FILE).is_file(), "Claude SKILL.md should have been created"
+        assert (claude_dir / REFERENCE_FILE).is_file(), "Claude reference.md should have been created"
+        copilot_dir = Path(iso) / ".github" / "skills" / "mgsnake"
+        assert not copilot_dir.exists(), "the Copilot skill folder should NOT have been created"
 
     assert result.exit_code == 0, result.output
     mk_add_to_gitignore.assert_called_once()
@@ -455,8 +519,9 @@ def test_generate_skill_both_versioned(
     with runner.isolated_filesystem(temp_dir=tmp_path) as iso:
         result = runner.invoke(generate_skill, [])
         for sub in [".github/skills/mgsnake", ".claude/skills/mgsnake"]:
-            f = Path(iso) / sub / SKILL_FILE
-            assert f.is_file(), f"{sub}/SKILL.md should have been created"
+            for file_name in SAMPLE_FILES:
+                f = Path(iso) / sub / file_name
+                assert f.is_file(), f"{sub}/{file_name} should have been created"
 
     assert result.exit_code == 0, result.output
     mk_exclude_from_git.assert_not_called()
@@ -495,6 +560,7 @@ def test_generate_skill_writes_the_frontmatter_to_disk(
     assert result.exit_code == 0, result.output
     assert written.startswith(f"---\nname: {SKILL_NAME}\n"), f"file opens with {written[:40]!r}"
     assert not written.startswith("# Available Commands"), "the bare reference is not a loadable skill"
+    assert SAMPLE_MARKDOWN not in written, "the eagerly loaded body must not carry the full reference"
 
 
 def test_generate_skill_check_rejects_a_file_missing_its_frontmatter(
@@ -510,7 +576,7 @@ def test_generate_skill_check_rejects_a_file_missing_its_frontmatter(
     with runner.isolated_filesystem(temp_dir=tmp_path) as iso:
         skill_dir = Path(iso) / ".claude" / "skills" / "mgsnake"
         skill_dir.mkdir(parents=True)
-        (skill_dir / SKILL_FILE).write_text(SAMPLE_MARKDOWN, encoding="utf-8")
+        (skill_dir / SKILL_FILE).write_text(SAMPLE_INDEX, encoding="utf-8")
         result = runner.invoke(generate_skill, ["--check"])
 
     assert result.exit_code == VALIDATION_ERROR_CODE, result.output
@@ -530,7 +596,7 @@ def test_generate_skill_writes_nothing_when_the_target_prompt_is_abandoned(
 
     with runner.isolated_filesystem(temp_dir=tmp_path) as iso:
         result = runner.invoke(generate_skill, [])
-        leftovers = sorted(str(path) for path in Path(iso).rglob(SKILL_FILE))
+        leftovers = sorted(str(path) for path in Path(iso).rglob('*.md'))
 
     assert isinstance(result.exception, KeyError), f"expected the KeyError to propagate, got {result.exception!r}"
     assert leftovers == [], f"the failed run left files behind: {leftovers}"
@@ -555,7 +621,7 @@ def test_generate_skill_writes_nothing_when_the_tracking_prompt_is_abandoned(
 
     with runner.isolated_filesystem(temp_dir=tmp_path) as iso:
         result = runner.invoke(generate_skill, [])
-        leftovers = sorted(str(path) for path in Path(iso).rglob(SKILL_FILE))
+        leftovers = sorted(str(path) for path in Path(iso).rglob('*.md'))
 
     assert isinstance(result.exception, KeyError), f"expected the KeyError to propagate, got {result.exception!r}"
     assert leftovers == [], f"the failed run left files behind: {leftovers}"
@@ -580,13 +646,13 @@ def test_generate_skill_prompts_for_both_answers_before_writing(
 
         def record(prompt: str, valid: list[str]) -> str:
             """Answer each prompt while recording what was on disk when it was asked."""
-            seen.append(sorted(str(path) for path in Path(iso).rglob(SKILL_FILE)))
+            seen.append(sorted(str(path) for path in Path(iso).rglob('*.md')))
             return "b" if "assistant" in prompt else "e"
 
         with patch("mega_snake.docs_gen.generate_skill.get_validated_input", side_effect=record):
             result = runner.invoke(generate_skill, [])
-        written = sorted(str(path) for path in Path(iso).rglob(SKILL_FILE))
+        written = sorted(str(path) for path in Path(iso).rglob('*.md'))
 
     assert result.exit_code == 0, result.output
     assert seen == [[], []], f"a skill file already existed when a prompt was asked: {seen}"
-    assert len(written) == 2, f"both files should exist once the command finished, got {written}"
+    assert len(written) == 4, f"both files should exist in both folders once finished, got {written}"
