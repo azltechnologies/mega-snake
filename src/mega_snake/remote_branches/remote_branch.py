@@ -116,7 +116,7 @@ class Branch(Commit):
         """
         self.short_name = self.name.removeprefix(f"{self._ref_prefix()}/")
         # The verdict is derived once per *side*, so a paired branch pays for the analysis twice.
-        # TODO (copilot-instructions §8.3): memoize it on the tip hash.
+        # TODO (copilot-instructions §8.4): memoize it on the tip hash.
         main_hash: str = self.get_main_hash()
         merged_on_main: bool = (
             get_command_return_code(
@@ -333,7 +333,7 @@ class GitBranch:
     SHORT_NA: ClassVar[str] = "-"
     HASH_ABBREV: ClassVar[int] = 12
     # Half of the table definition; to_markdown_row() is the other half, and the two must stay in
-    # step. TODO (copilot-instructions §8.4): put both behind a --format option.
+    # step. TODO (copilot-instructions §8.5): put both behind a --format option.
     MD_HEADER: ClassVar[str] = (
         "| Branch | Status | Track | Sync | Local hash | Remote hash | Last commit (UTC) "
         "| Author | Subject | Main ancestor |\n"

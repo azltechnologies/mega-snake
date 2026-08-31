@@ -233,21 +233,149 @@ def get_typed_validated_input(p_prompt: str, warn: str, valid_values: list[str],
     Returns:
         str: The accepted value, exactly as the user typed it.
     """
+
+    def parse(answer: str) -> str:
+        """Accept the answer only when it is listed, matched verbatim.
+
+        Parameters:
+            answer: The raw answer as typed.
+
+        Raises:
+            ValueError: If the answer is not one of ``valid_values``.
+
+        Returns:
+            str: The accepted value, exactly as the user typed it.
+        """
+        if answer not in valid_values:
+            raise ValueError(answer)
+        return answer
+
+    return _prompt_with_retries(
+        p_prompt,
+        parse,
+        warn=warn,
+        fail_message=f"Too many invalid inputs for '{p_prompt}'. Exiting. {fail_msg if fail_msg is not None else ''}",
+    )
+
+
+# Rejected answers allowed before a prompt gives up. Shared by every prompt helper below so the
+# three of them cannot drift into offering different numbers of attempts for the same kind of
+# question.
+MAX_PROMPT_TRIES: int = 3
+
+# Separator accepted by `get_validated_selection` between the entries of a multiple choice.
+SELECTION_SEPARATOR: str = ","
+
+
+def _prompt_with_retries(
+    p_prompt: str,
+    parse: Callable[[str], Any],
+    *,
+    instructions: str = "",
+    warn: str,
+    fail_message: str,
+) -> Any:
+    """Ask a question until ``parse`` accepts the answer, or the attempts run out.
+
+    The retry loop lives here once. Every prompt helper in this module is the same loop wrapped
+    around a different notion of "valid", and while each carried its own copy every fix to the
+    attempt counting, the banner or the give-up message had to be applied in each of them — which is
+    how they came to disagree about whether the instructions are repeated on a retry.
+
+    ``parse`` signals rejection with ``ValueError`` and returns the accepted value otherwise, so a
+    helper can validate, normalize and convert in one place rather than validating here and
+    converting at the call site.
+
+    Parameters:
+        p_prompt: The question shown to the user.
+        parse: Converts a raw answer into the accepted value, raising ``ValueError`` to reject it.
+        instructions: Guidance appended to the first prompt and to every retry banner. Empty when the
+            question is self-explanatory, which is what keeps the banner identical to what the
+            verbatim-matching helper has always printed.
+        warn: Message shown after a rejected answer.
+        fail_message: Message carried by the error raised once the attempts run out.
+
+    Raises:
+        KeyError: If the user fails to give an accepted answer within ``MAX_PROMPT_TRIES`` retries.
+
+    Returns:
+        Any: Whatever ``parse`` returned for the accepted answer.
+    """
     tries: int = 0
-    prompt = p_prompt
+    prompt: str = p_prompt
+    suffix: str = f"{instructions}\n" if instructions else ""
     while True:
-        user_input = input(f"\n{prompt}\n")
-        if user_input in valid_values:
-            return user_input
-        prompt = (
-            f"{Back.BLACK}{Fore.YELLOW}{p_prompt}\ttry again\t—\t{Fore.RED}{3 - tries} attempts left\n{Style.RESET_ALL}"
-        )
-        ws_warning(warn)
-        tries += 1
-        if tries > 3:
-            raise KeyError(
-                f"Too many invalid inputs for '{p_prompt}'. Exiting. {fail_msg if fail_msg is not None else ''}"
+        raw: str = input(f"\n{prompt}\n{suffix}") if tries == 0 else input(f"\n{prompt}\n")
+        try:
+            return parse(raw)
+        except ValueError:
+            prompt = (
+                f"{Back.BLACK}{Fore.YELLOW}{p_prompt}\ttry again\t—\t"
+                f"{Fore.RED}{MAX_PROMPT_TRIES - tries} attempts left\n{suffix}{Style.RESET_ALL}"
             )
+            ws_warning(warn)
+            tries += 1
+            if tries > MAX_PROMPT_TRIES:
+                raise KeyError(fail_message) from None
+
+
+def get_validated_selection(p_prompt: str, valid_values: list[str], all_key: str = "all") -> list[str]:
+    """Ask the user to pick several of the given values, as one comma-separated answer.
+
+    A single unrecognised entry rejects the **whole** answer, and the warning names it. Silently
+    dropping it would act on a selection the user did not make, and acting on the recognised half is
+    worse still: the user reads the success message for the entries that worked and never learns the
+    rest were ignored. Nothing is applied until the answer is accepted in full.
+
+    Duplicates collapse and order is preserved, so ``b, a, b`` selects ``[b, a]`` — the answer is a
+    set of choices, and a caller iterating it must not act on one of them twice.
+
+    Parameters:
+        p_prompt: The question shown to the user.
+        valid_values: The selectable values, matched case-insensitively.
+        all_key: Answer that selects everything, offered alongside the values themselves.
+
+    Raises:
+        KeyError: If the user fails to give an accepted answer within ``MAX_PROMPT_TRIES`` retries.
+
+    Returns:
+        list[str]: The selected values, lowercased, without duplicates, in the order given.
+    """
+    allowed: list[str] = [value.lower() for value in valid_values]
+    instructions: str = (
+        f"Please enter one or more of:\n {' | '.join(valid_values)}\n"
+        f"Separate them with '{SELECTION_SEPARATOR}', or enter '{all_key}' for all of them."
+    )
+
+    def parse(answer: str) -> list[str]:
+        """Split, normalize and validate a comma-separated answer.
+
+        Parameters:
+            answer: The raw answer as typed.
+
+        Raises:
+            ValueError: If the answer is empty or names anything that is not selectable.
+
+        Returns:
+            list[str]: The selected values, deduplicated and in the order given.
+        """
+        entries: list[str] = [item.strip().lower() for item in answer.split(SELECTION_SEPARATOR) if item.strip()]
+        if not entries:
+            raise ValueError(answer)
+        if all_key.lower() in entries:
+            return list(allowed)
+        unknown: list[str] = [entry for entry in entries if entry not in allowed]
+        if unknown:
+            raise ValueError(SELECTION_SEPARATOR.join(unknown))
+        return list(dict.fromkeys(entries))
+
+    return _prompt_with_retries(
+        p_prompt,
+        parse,
+        instructions=instructions,
+        warn=f"Invalid selection; nothing has been applied. {instructions}",
+        fail_message=f"Too many invalid selections for '{p_prompt} —— {instructions}'. Exiting.",
+    )
 
 
 def get_input_or_default(p_prompt: str, default: Any) -> str:
@@ -269,31 +397,45 @@ def get_input_or_default(p_prompt: str, default: Any) -> str:
 
 
 def get_validated_input(p_prompt: str, valid_values: list[str]) -> str:
-    """
-    Get user input and validate against allowed values
+    """Ask the user for one of the given values, matching the answer case-insensitively.
 
-    Args:
-        prompt: str
-        valid_values: set[str]
+    Parameters:
+        p_prompt: The question shown to the user.
+        valid_values: The accepted answers; both they and the answer are lowercased before matching.
+
+    Raises:
+        KeyError: If the user fails to give an accepted value within the allowed attempts.
+
+    Returns:
+        str: The accepted value, lowercased.
     """
     instructions: str = f"Please enter one of:\n {' | '.join(valid_values)}"
-    warn: str = f"Invalid input. {instructions}"
-    tries: int = 0
-    prompt = p_prompt
-    while True:
-        user_input = input(f"\n{prompt}\n").lower() if tries > 0 else input(f"\n{prompt}\n{instructions}\n").lower()
-        # convert to lowercase all the values in valid_values
-        valid_values = [value.lower() for value in valid_values]
-        if user_input in valid_values:
-            return user_input
-        prompt = (
-            f"{Back.BLACK}{Fore.YELLOW}{p_prompt}\ttry again\t—\t{Fore.RED}{3 - tries} "
-            f"attempts left\n{instructions}\n{Style.RESET_ALL}"
-        )
-        ws_warning(warn)
-        tries += 1
-        if tries > 3:
-            raise KeyError(f"Too many invalid inputs for '{p_prompt} —— {instructions}'. Exiting.")
+    allowed: list[str] = [value.lower() for value in valid_values]
+
+    def parse(answer: str) -> str:
+        """Accept the answer only when it is listed, compared in lower case.
+
+        Parameters:
+            answer: The raw answer as typed.
+
+        Raises:
+            ValueError: If the answer is not one of ``valid_values``.
+
+        Returns:
+            str: The accepted value, lowercased.
+        """
+        chosen: str = answer.lower()
+        if chosen not in allowed:
+            raise ValueError(answer)
+        return chosen
+
+    return _prompt_with_retries(
+        p_prompt,
+        parse,
+        instructions=instructions,
+        warn=f"Invalid input. {instructions}",
+        fail_message=f"Too many invalid inputs for '{p_prompt} —— {instructions}'. Exiting.",
+    )
 
 
 def _append_missing_entries(

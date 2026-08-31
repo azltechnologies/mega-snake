@@ -15,6 +15,8 @@ INTERPRETER_PATH: str = ".venv/bin/python3.13"
 # Packaged documentation fragments and the generated command reference
 RESOURCES_DIR: str = "resources"
 DOCS_DIR: str = "docs"
+# Packaged prose bodies of the task skills `generate-skill` installs, one file per skill.
+SKILLS_DIR: str = "skills"
 DOCS_FILE_SUFFIX: str = ".md"
 DOCS_OUTPUT_FILE: str = "COMMANDS.md"
 

@@ -38,8 +38,8 @@ The audience is every developer it can reach, whatever their language; see the s
 > Every command in `docs_gen` (§3.7) introspects **`mgsnake`'s own CLI**, which looks like a violation and
 > mostly is not. The question the rule asks is _who is this for_, never _what is it about_:
 >
-> - **`man` and `generate-skill` pass.** Their audience is the stranger who installed `mega-snake`. `man`
->   pages mgsnake's reference for that person; `generate-skill` writes a `SKILL.md` that teaches _their_
+> - **`man` and `install-agent-items` pass.** Their audience is the stranger who installed `mega-snake`. `man`
+>   pages mgsnake's reference for that person; `install-agent-items` writes the items that teach _their_
 >   assistant to drive mgsnake inside _their_ project. Documenting mgsnake to an mgsnake user is the point,
 >   not a leak — no user expects `mgsnake man` to describe their own tool.
 > - **`generate-docs` is the real debt, and only in part.** Rendering the reference is as user-serviceable
@@ -636,12 +636,14 @@ other, and two tests enforce it (§6.3).
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `docs_gen/introspect.py`      | Walks the CLI and normalizes it into `IntrospectedCommand` dataclasses. Owns `normalize_help()` and `normalize_epilog()`. |
 | `docs_gen/markdown_writer.py` | Pure rendering: dataclasses → Markdown. Owns the table-escaping helpers and `write_or_check_document()`.                  |
-| `docs_gen/generate_docs.py`   | The `generate-docs` Click command, plus `render_command_reference()` — the one composition of "walk the CLI" then "render it", shared with `generate-skill`. |
-| `docs_gen/generate_skill.py`  | The `generate-skill` Click command: target selection, `SKILL.md` writing, git-tracking choice.                            |
+| `docs_gen/generate_docs.py`   | The `generate-docs` Click command, plus `render_command_reference()` — the one composition of "walk the CLI" then "render it", shared with `install-agent-items`. |
+| `docs_gen/install_agent_items.py` | The `install-agent-items` Click command: item/target/tracking resolution, state reporting, writing, git tracking.     |
+| `docs_gen/item_registry.py`   | The model: `Item`, the on-disk layouts, path resolution, the renderers and the dependency closure. Never changes when an item is added. |
+| `docs_gen/item_catalog.py`    | The content: the `ITEMS` tuple and the prose that belongs to it. This is the file adding an item touches.                 |
 | `docs_gen/man_page.py`        | The `man` Click command: alias resolution, terminal rendering, paging.                                                    |
 | `docs_gen/module.py`          | The `CliGroup`, the `wrapper` (carrying `docs_group="Documentation"`) and `add_wrapper`.                                  |
 
-**There is exactly one renderer, and no command may grow a second one.** `generate-docs` and `generate-skill`
+**There is exactly one renderer, and no command may grow a second one.** `generate-docs` and `install-agent-items`
 publish the identical document, so they share `render_command_reference()` outright; `man` needs to filter the
 command list first, so it composes `iter_introspected_commands()` with the same `render_markdown()` rather
 than reimplementing the rendering. A second pipeline would let two "generated" documents disagree, and a
@@ -696,7 +698,7 @@ Four details that are easy to get wrong when touching this command:
 Rendering reuses `render_markdown()` on a filtered command list rather than adding a second rendering path — a
 single-command page is the same document with one entry, which is what keeps the two outputs from drifting apart.
 
-#### `generate-skill`
+#### `install-agent-items`
 
 Writes `SKILL.md` into the agent-skill directories (`.github/skills/mgsnake/` for GitHub Copilot,
 `.claude/skills/mgsnake/` for Claude, or both) so the _user's_ assistant can drive mgsnake inside the user's
@@ -735,13 +737,47 @@ Four more properties a reader will otherwise misjudge:
 - **Both answers are collected before the first byte is written.** Prompting after writing would strand
   `SKILL.md` files that are neither excluded nor gitignored whenever the second prompt exhausts its retries.
   Keep the order; two tests pin that nothing survives an abandoned prompt.
-- **The write path is unconditionally interactive.** It always prompts for the target and always prompts for
-  the tracking strategy — there is no "already up to date, skip the questions" branch. Never document or
-  script it as if there were: a bare `mgsnake generate-skill` in a hook or a CI step blocks on `input()`.
+- **Every prompt has a flag that answers it, and that is what makes the command scriptable.**
+  `--skill`, `--target` and `--tracking` each replace one question; a run supplying all three asks
+  nothing. Only what is missing is prompted for. This is not a convenience: while the write path was
+  unconditionally interactive, a bare `mgsnake install-agent-items` in a hook blocked on `input()`, and
+  under CI it raised `EOFError` — unmapped in `ERROR_CODES`, so exit **100** with a traceback
+  blaming mgsnake for a perfectly legitimate invocation. Keep every future question flag-answerable.
+- **Every skill is always offered, annotated with its state.** `skill_state` classifies a skill in a
+  root as absent, current or stale, and a skill is current only when *every* file it owns is. Hiding
+  installed skills would remove the only path to an update: the run would report "everything is
+  installed" and leave a stale file behind with a successful exit — the same silent-staleness defect
+  §3.9 describes for a cached Jira field id.
+- **The selection is all-or-nothing.** `get_validated_selection` (§4.3) rejects the whole answer when
+  one entry is unknown, and says nothing was applied. Keeping the recognised half would install a
+  selection the user never made and print success for it.
 - **`--check` only validates files that already exist.** Its purpose is "existing skill files are not stale",
   not "skill files exist", so it passes on a checkout that has none — which is the accepted behaviour, stated
   in the fragment, not a gap waiting to be closed. It compares the frontmatter like any other line, and each
-  file independently, so one present file is validated even when its sibling is missing.
+  file independently, so one present file is validated even when its sibling is missing. It is also the one
+  mode that never prompts, which is what a CI step runs.
+- **An item is a skill or an agent, and the kind decides its shape on disk, not just its folder.**
+  `ITEM_LAYOUT` is the only place that knows a skill owns a directory while an agent is a single
+  file — and that the file is `<name>.agent.md` for Copilot but `<name>.md` for Claude. That
+  asymmetry is real, comes from the runtimes, and getting it wrong writes a file the runtime never
+  reads, with a zero exit and nothing to see. Callers ask `item_targets` (what to write, where) and
+  `tracking_target` (what to hand git, at the right granularity: a folder for a skill, the file
+  itself for an agent, since excluding `agents/` would hide every agent the user has). Never branch
+  on `kind` outside that table.
+- **A hidden item is not offered, but stays addressable.** `selectable_names()` drives the
+  interactive list, `item_names()` drives the `--skill` choices, and the two differ by exactly the
+  `hidden` flag. Both halves are load-bearing: hiding a bundled component stops it being installed
+  alone by accident, and keeping it addressable is what leaves it an update path that does not mean
+  reinstalling its parent.
+- **An item may require another, and the closure is never applied silently.** `expand_items` resolves
+  `requires` **transitively** — the same shape, and the same reasoning, as `ProjectStack.expand` (§3.1):
+  keeping the depth in one function is what stops a future two-level dependency from arriving
+  half-resolved. `required_by` then names what was added and which selection asked for it, and the
+  command reports it before writing; `bundled_with` is the forward view the selection list shows
+  *before* the choice, while it can still change it. Installing an item the user did not pick is
+  correct — a task skill is useless to an assistant that does not know the commands it drives, and an
+  agent's components are meaningless alone — but files appearing in a working tree unexplained are
+  indistinguishable from a defect.
 
 **Git entries are built with `as_posix()`, never `str(Path)`.** On Windows `str()` yields backslashes, and git
 reads a backslash inside an ignore pattern as an escape, so the pattern matches nothing and the files the user
@@ -1070,6 +1106,28 @@ Shared literals live here; **never hardcode these strings**. Relevant to package
 Command-local literals (e.g. `CONFIG_SCRIPT` in `shell_init.py`, `GROUP_HEADING` in `markdown_writer.py`) stay in
 their own module — `constants.py` is for values shared across modules.
 
+#### ⚠️ Before writing any constant, read `constants.py` first
+
+This is the mistake this project makes most often, and it is invisible once merged: a second
+literal holding a value that already has a name somewhere else. Both copies are correct on the day
+they are written, and nothing fails when one of them later changes — the two simply stop agreeing,
+in whichever direction the reader happens not to be looking.
+
+Two rules, and the second decides where a constant lives:
+
+1. **Check `constants.py` before declaring anything.** If the value is already there, import it. If
+   it is there under a name that reads wrong for your use, alias it (`CLI_SKILL_NAME = APP_NAME`)
+   rather than retyping the literal — the alias names your idea while keeping one source for the
+   value.
+2. **A value used by more than one command belongs in `constants.py`.** A value shared only between
+   the files of a _single_ command stays with that command: `SKILL_FILE` is read by both
+   `item_registry.py` and `install_agent_items.py`, and that is fine, because they are two halves of
+   `install-agent-items`. The moment a second command needs it, it moves.
+
+The same applies in reverse: do not push a command-local literal into `constants.py` "in case"
+something else needs it. That file is the shared vocabulary, and everything added to it is read by
+everyone forever.
+
 ### 4.3 Shell Execution (`src/mega_snake/util/util.py`)
 
 Use `run_operation` for ALL shell commands. It handles logging, error capturing, and return codes.
@@ -1110,7 +1168,7 @@ Two behaviours of that shared implementation are contractual, not incidental:
   `.gitignore` files edited by hand routinely end mid-line — this repository's own does.
 
 Entries handed to either helper must use forward slashes (`Path.as_posix()`), for the reason spelled out under
-`generate-skill` in §3.7: git reads a backslash in an ignore pattern as an escape.
+`install-agent-items` in §3.7: git reads a backslash in an ignore pattern as an escape.
 
 **Anything that creates a folder under the repo must exclude it from git in the same step** — that is what
 `ensure_working_path` does, and why nothing else should call `os.makedirs(working_path)` directly.
@@ -1423,6 +1481,15 @@ and the caveats.
    its Click metadata, and update whichever no longer matches the code. A logic change is not complete while the
    fragment or the help text still describes the old behavior.
 
+**Item prose lives under `resources/skills/`, and the same three rules apply to it.** An item
+registered in `item_catalog.py` (§3.7) whose body is hand-written reads it from
+`resources/skills/<item-name>.md`, so a new item needs its file in the same change, a renamed one
+needs the file renamed, and a behaviour change needs the prose updated. Three tests walk the
+catalogue and fail naming the item: `test_every_task_skill_has_its_fragment_packaged`,
+`test_every_task_skill_renders_a_non_empty_body` (frontmatter over an empty body still registers and
+teaches the assistant nothing), and `test_the_catalogue_is_exactly_what_is_documented_here`, which
+pins the catalogue against the documented list in `test_install_agent_items.py`.
+
 **Fragment format:**
 
 - Body only: no `#` title, no synopsis, no option table.
@@ -1657,7 +1724,7 @@ session. So the startup line passes the path explicitly
 `test_scripts_resolve_the_env_file_explicitly_at_startup` pins it so it cannot regress to the bare call.
 
 Both the temporary status of that fallback and the double load it interacts with are open work, catalogued in
-§8.2 — do not re-argue them here.
+§8.3 — do not re-argue them here.
 
 **Whenever you change how the CLI is invoked, re-check the wrapper.** The signal only works while something
 captures the executable's status; a wrapper that stops doing so leaves the Python side emitting codes into a void,
@@ -1782,7 +1849,7 @@ entry names the fragment sentence that has to be deleted when the work lands.
 it defaults to writing `COMMANDS.md` into the current directory — a filename that means something
 here and nothing in a user's Java project — and `--check` exists only to fail this repository's CI
 when that committed file drifts. Rendering the reference is legitimate user-facing behaviour (`man`
-does the same thing to a pager, `generate-skill` to a `SKILL.md`); the default target and the check
+does the same thing to a pager, `install-agent-items` to the user's own skill folder); the default target and the check
 mode are the maintainer's workflow shipped to strangers.
 
 **Where.** `src/mega_snake/docs_gen/generate_docs.py` — the `--output` default (`DOCS_OUTPUT_FILE`)
@@ -1790,7 +1857,7 @@ and the `--check` flag; registration in `docs_gen/module.py`.
 
 **Why it was left.** The command is genuinely needed for this repository's workflow, and the correct
 home — a mega-snake-only command group, hidden from an installed user — is a bigger change than any
-of the PRs that touched it. `man` and `generate-skill` were examined against the same rule and pass
+of the PRs that touched it. `man` and `install-agent-items` were examined against the same rule and pass
 it (§1): their audience is the mgsnake user, so they must **not** be swept into this move.
 
 **Shape of the fix.** Move `generate-docs` into a module whose group is not registered in `MODULES`
@@ -1802,11 +1869,40 @@ and `render_command_reference()` is already the public seam the other two comman
 option on `man` rather than as a second command.
 
 **Verify.** `generate-docs` disappears from `mgsnake --help` for an installed user while `man` and
-`generate-skill` stay; `COMMANDS.md` no longer documents it (regenerate it — the fragment moves with
+`install-agent-items` stay; `COMMANDS.md` no longer documents it (regenerate it — the fragment moves with
 the command, §6.3); the release workflow's `generate-docs --check` step still runs in this
 repository; §1's "the test is the audience" block and §3.7 are updated rather than reworded.
 
-### 8.2 `load-env`'s bare-invocation fallback and the double load (§7.4)
+### 8.2 An abandoned prompt on a closed stdin exits 100 (§7.1, §7.6)
+
+**What.** Every interactive prompt reaches `input()`, which raises `EOFError` when stdin is closed —
+a CI step, a git hook, a `docker build`, anything piping from `/dev/null`. `EOFError` derives from
+`Exception` and nothing on its MRO is registered, so `resolve_error_code` falls through to
+`INTERNAL_ERROR_CODE`: the run exits **100** and prints a traceback, which by the §7.1 contract
+means "a bug in mgsnake". It is not one — the invocation is legitimate, there is simply nobody to
+answer. The user is sent hunting for a defect that does not exist, and a CI job cannot tell this
+apart from a genuine internal error.
+
+**Where.** `util/util.py`, `_prompt_with_retries` — the single loop every prompt helper shares, so
+there is exactly one place to catch it; and `ERROR_CODES` in `util/formatting.py`.
+
+**Why it was left.** It changes the exit-code contract, which §7 treats as public interface, so it
+deserves its own change rather than riding along inside a feature. `install-agent-items` reduced the
+exposure in the meantime by making every one of its questions answerable with a flag (§3.7), but
+that is a workaround for one command, not the fix.
+
+**Shape of the fix.** Catch `EOFError` in `_prompt_with_retries` and re-raise a dedicated exception
+registered in `ERROR_CODES` with its own status. The meaning is "this command needed an answer and
+nobody could give one", which is neither a bug (100) nor a declined prompt (`UserDeclinedError`,
+114) — nothing was declined. It is not a `ClickException` subclass, so it needs a table entry like
+every other custom exception (§7.3).
+
+**Verify.** A row in `src/tests/test_exit_codes.py` asserting the exact status **and** `!= 1` and
+`!= 100`, driven through `subprocess` with stdin closed, because the translation happens outside the
+click group (§7.5). `test_every_custom_exception_in_the_package_has_a_registered_exit_code` covers
+the registration on its own.
+
+### 8.3 `load-env`'s bare-invocation fallback and the double load (§7.4)
 
 **What.** `mgsnake load-env` with no argument falls back to `.env` in the current directory when the local
 environment file does not exist. It is deliberate but temporary: a terminal opened in an unrelated directory
@@ -1824,7 +1920,7 @@ already loaded that same path, or stop embedding the line in newly generated con
 `config_setup.sh` / `config_setup.ps1` must **keep** passing the path explicitly at startup regardless of the
 outcome; `test_scripts_resolve_the_env_file_explicitly_at_startup` pins that and is not part of this decision.
 
-### 8.3 Merge verdicts are re-derived once per branch side (§3.3)
+### 8.4 Merge verdicts are re-derived once per branch side (§3.3)
 
 **What.** `Branch.__post_init__` resolves the merge verdict per _side_, so a paired branch pays for the whole
 analysis twice — and for an in-sync branch (trackshort `=`, the majority) both sides hold the same tip hash,
@@ -1847,7 +1943,7 @@ cannot go stale within a run.
 **Verify.** It must be cleared in `Repo.reset()` alongside the rest of the snapshot state (§4.4), or tests leak
 verdicts between cases — and a test that asserts the second side reuses the verdict rather than re-running git.
 
-### 8.4 `remote-branches-details` has a fixed table shape (§3.3)
+### 8.5 `remote-branches-details` has a fixed table shape (§3.3)
 
 **What.** The report's columns and layout are hard-coded in `GitBranch.MD_HEADER` and
 `details_remote_branches.render_markdown_report()`; a user who wants fewer columns, CSV, or JSON has no way to
@@ -1861,7 +1957,7 @@ are two halves of one table definition and will silently disagree if only one is
 **Verify.** The fragment's "planned; for now the table is fixed" sentence is deleted in the same change, and
 `COMMANDS.md` regenerated (§6.3).
 
-### 8.5 Docstring style is not uniform across the package (§6.1 rule 2)
+### 8.6 Docstring style is not uniform across the package (§6.1 rule 2)
 
 **What.** §6.1 mandates a summary line plus `Parameters:` / `Raises:` / `Returns:`, all three always present.
 Several older functions still carry the earlier `Args:` shape or omit sections — `remote_branches`'
@@ -1875,7 +1971,49 @@ bury real edits in reformatting noise.
 and do not start a repository-wide sweep for its own sake. Nothing enforces this mechanically — if it is ever
 worth enforcing, the check belongs next to the docs tests in `src/tests/docs_gen/`.
 
-### 8.6 `add_logger_args` mutates the enum member instead of building a value (§3.1)
+### 8.7 Nothing verifies mgsnake on Windows, or against the tools it shells out to (§6.2)
+
+**What.** The suite is entirely unit-level and runs on one platform. Two whole classes of defect are
+therefore invisible until a user hits them:
+
+- **Platform.** CI runs `ubuntu-latest` only, and every maintainer is on macOS or Linux, yet the
+  package claims Windows support and carries a lot of Windows-specific code: `terminal.integrated.env.<os>`,
+  the `powershell`/`pwsh` substitution (§2.1), `config_setup.ps1` and its wrapper (§7.4), the
+  `%APPDATA%` store path (§4.4), the pager fallback in `man` (§3.7), and every ignore-pattern
+  `as_posix()` call. The last one is the sharpest illustration: the *only* thing standing between a
+  backslash pattern and silently untracked files is a test using `PureWindowsPath` — a simulation, not
+  Windows.
+- **External tools.** `git`, `gh`, `uv`, `keytool`, `pip-audit`, `osv-scanner` and the Jira API are
+  mocked everywhere. Nothing checks that the flags we pass still exist, so an upstream CLI change
+  breaks users while the suite stays green.
+
+**Why it was left.** Both need CI work, not just test code, and the second needs credentials and a
+policy for flakiness. Neither belongs inside a feature change.
+
+**Shape of the fix.** Explore and choose, rather than adopting all of it:
+
+1. **Matrix the existing job.** `strategy.matrix.os: [ubuntu-latest, macos-latest, windows-latest]`
+   in `pr-validation.yml` is the cheapest first step by a wide margin, and it runs the suite we
+   already have on the platform we never test. Expect real failures: path separators, `shutil.which`,
+   and the `bash`-driven `test_shell_wrapper.py`, which needs a pwsh twin or a skip marker.
+2. **Integration tests** — the module against the *real* subprocess and filesystem, no mocks, marked
+   with `@pytest.mark.integration` and deselected by default (`-m "not integration"` in `addopts`), so
+   the fast suite stays fast. `tmp_path` plus a real `git init` covers most of what matters.
+3. **Live-dependency tests** — the smallest possible set that actually calls `gh`, `osv-scanner` or
+   Jira, marked separately again, gated on secrets being present, and run on a schedule rather than
+   per PR. Their job is to catch an upstream contract change, so they must be allowed to fail without
+   blocking a merge.
+4. **A packaging smoke test** — `uv build`, install the wheel in a clean environment, run
+   `mgsnake --version` and `mgsnake man`. This is the only thing that exercises the installed entry
+   point and the packaged resources, which is where §7.2 says the exit-code contract actually lives,
+   and where `man` reading a non-packaged `COMMANDS.md` would have been caught.
+
+**Verify.** The default `uv run pytest` must stay as fast as it is now, or the markers are not doing
+their job; the coverage gate has to keep measuring the same set of tests, so integration runs must not
+be what pushes it over the line; and the Windows job has to be *required*, not advisory, or it becomes
+a red badge everyone learns to ignore.
+
+### 8.8 `add_logger_args` mutates the enum member instead of building a value (§3.1)
 
 **What.** `VscodeTask.add_logger_args` and `VscodeLaunch.add_logger_args` do
 `self.args.extend(...)`, and `self` is an enum member — a process-wide singleton. The redirect is
