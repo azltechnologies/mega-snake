@@ -20,10 +20,11 @@ def main() -> None:
 def wrapper(ctx: click.Context, *_args, **_kwargs) -> None:
     """Ask the shell to reload its local environment files, for the commands that rewrite them.
 
-    The signal used to be set for every command in this module, which was wrong in both directions:
-    `graphql-schema` and `maven-project-setup` never touch the local environment files, and nothing
-    guarantees a future command that does will live here. Each command therefore declares it, with
-    ``@cli_metadata(reloads_environment=True)``, and this wrapper only relays what it finds.
+    The signal is declared per command, with ``@cli_metadata(reloads_environment=True)``, and this
+    wrapper only relays what it finds. Setting it for every command in this module would be wrong in
+    both directions: `graphql-schema` and `maven-project-setup` never touch the local environment
+    files, and nothing guarantees a future command that does will live here. Living in
+    `config_environment` is not what makes a command change the environment; touching those files is.
 
     The metadata is read off ``ctx.command.callback`` because by this point the command has been
     rebuilt by ``wrapper_decorator``, which merges the original callback's metadata onto the

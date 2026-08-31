@@ -3,9 +3,13 @@
 import os
 from typing import Optional
 import click
-from mega_snake.constants import GCLOUD_LOGGIN_OPT
 from mega_snake.util.formatting import ws_info, ws_success, ws_tip, Color
 from mega_snake.util.util import run_operation, cli_metadata, get_command_return_code
+
+# Lives here rather than in mega_snake.constants: this module is shelved and is the only consumer,
+# so the shipped package should not carry the constant. constants.py is for values shared across
+# modules of the distribution.
+GCLOUD_LOGGIN_OPT: dict[str, str] = {"U": "user", "A": "application", "B": "both"}
 
 
 @click.command(

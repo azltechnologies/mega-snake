@@ -20,14 +20,14 @@ from mega_snake.config_environment.util import get_local_file
 )
 @cli_metadata(reloads_environment=True)
 @click.option("--override", "-o", is_flag=True, help="Override the current local configuration file with a new one")
-def initial_load(override: bool) -> None:  # previously initialLoad
+def initial_load(override: bool) -> None:
     """
     Calls the execute function to initialize the configuration system.
     """
     execute(override)
 
 
-def execute(override: bool) -> None:  # previously initialLoad
+def execute(override: bool) -> None:
     """
     Initializes the configuration system by creating the local environment file and the
     shell-specific local config file when they don't exist (or when override is set).
@@ -47,8 +47,8 @@ def execute(override: bool) -> None:  # previously initialLoad
     if not os.path.exists(local_file) or override:
         shell = get_property("shell")
         env_name = os.path.basename(env_file)
-        # The shell init script no longer announces its helpers on every new terminal, so this
-        # header is where a user finds out how to reload the file they are looking at.
+        # The shell init script deliberately stays silent on every new terminal, so this header is
+        # the one place a user finds out how to reload the file they are looking at.
         contents = "# This file is used to store local configurations for the project.\n"
         contents += f"# Reload it in your current terminal with: {APP_NAME} {RELOAD_CONFIG_COMMAND}\n"
         contents += f"# See every available command with: {APP_NAME} --help\n"

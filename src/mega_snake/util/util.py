@@ -30,6 +30,7 @@ from mega_snake.util.props import get_property
 OS = platform.system()
 
 GIT_EXCLUDE_FILE = os.path.join(".git", "info", "exclude")
+GITIGNORE_FILE = ".gitignore"
 
 REMOTE_PREFIX = "refs/remotes"
 LOCAL_PREFIX = "refs/heads"
@@ -126,20 +127,20 @@ def run_operation(
 ) -> subprocess.CompletedProcess[str]:
     """Runs the given command and retries on failure up to 3 times.
 
+    A timeout is retried like any other failure, and catching it takes a deliberate clause:
+    ``subprocess.TimeoutExpired`` is a ``SubprocessError`` but **not** a ``CalledProcessError``, so
+    an ``except`` written for the latter never sees it. Miss that and a single slow network call — a
+    cold fetch, a VPN, a credential prompt — aborts the whole command with a raw traceback while the
+    retries that exist precisely for transient failures never run. **Never narrow this to
+    ``CalledProcessError`` alone.** The two are caught together and reported the same way; only the
+    wording differs, since a timeout has no exit code to show.
+
     Parameters:
         cwd: The shell command to execute.
         description: Human-readable description of the operation, used in log messages.
         check: Whether a non-zero exit code should raise subprocess.CalledProcessError.
         timeout: Maximum number of seconds to wait for the command to finish, or None to wait
             indefinitely.
-
-    A timeout is retried like any other failure. It used to propagate on the first attempt instead,
-    because ``subprocess.TimeoutExpired`` is a ``SubprocessError`` but **not** a
-    ``CalledProcessError``, so the ``except`` clause never saw it — which meant a single slow network
-    call (a cold fetch, a VPN, a credential prompt) aborted the whole command with a raw traceback,
-    and the retries that exist precisely for transient failures never ran. The two are caught
-    together and reported the same way; only the wording differs, since a timeout has no exit code
-    to show.
 
     Raises:
         subprocess.SubprocessError: If the command still fails — or still times out — after 3
@@ -232,21 +233,149 @@ def get_typed_validated_input(p_prompt: str, warn: str, valid_values: list[str],
     Returns:
         str: The accepted value, exactly as the user typed it.
     """
+
+    def parse(answer: str) -> str:
+        """Accept the answer only when it is listed, matched verbatim.
+
+        Parameters:
+            answer: The raw answer as typed.
+
+        Raises:
+            ValueError: If the answer is not one of ``valid_values``.
+
+        Returns:
+            str: The accepted value, exactly as the user typed it.
+        """
+        if answer not in valid_values:
+            raise ValueError(answer)
+        return answer
+
+    return _prompt_with_retries(
+        p_prompt,
+        parse,
+        warn=warn,
+        fail_message=f"Too many invalid inputs for '{p_prompt}'. Exiting. {fail_msg if fail_msg is not None else ''}",
+    )
+
+
+# Rejected answers allowed before a prompt gives up. Shared by every prompt helper below so the
+# three of them cannot drift into offering different numbers of attempts for the same kind of
+# question.
+MAX_PROMPT_TRIES: int = 3
+
+# Separator accepted by `get_validated_selection` between the entries of a multiple choice.
+SELECTION_SEPARATOR: str = ","
+
+
+def _prompt_with_retries(
+    p_prompt: str,
+    parse: Callable[[str], Any],
+    *,
+    instructions: str = "",
+    warn: str,
+    fail_message: str,
+) -> Any:
+    """Ask a question until ``parse`` accepts the answer, or the attempts run out.
+
+    The retry loop lives here once. Every prompt helper in this module is the same loop wrapped
+    around a different notion of "valid", and while each carried its own copy every fix to the
+    attempt counting, the banner or the give-up message had to be applied in each of them — which is
+    how they came to disagree about whether the instructions are repeated on a retry.
+
+    ``parse`` signals rejection with ``ValueError`` and returns the accepted value otherwise, so a
+    helper can validate, normalize and convert in one place rather than validating here and
+    converting at the call site.
+
+    Parameters:
+        p_prompt: The question shown to the user.
+        parse: Converts a raw answer into the accepted value, raising ``ValueError`` to reject it.
+        instructions: Guidance appended to the first prompt and to every retry banner. Empty when the
+            question is self-explanatory, which is what keeps the banner identical to what the
+            verbatim-matching helper has always printed.
+        warn: Message shown after a rejected answer.
+        fail_message: Message carried by the error raised once the attempts run out.
+
+    Raises:
+        KeyError: If the user fails to give an accepted answer within ``MAX_PROMPT_TRIES`` retries.
+
+    Returns:
+        Any: Whatever ``parse`` returned for the accepted answer.
+    """
     tries: int = 0
-    prompt = p_prompt
+    prompt: str = p_prompt
+    suffix: str = f"{instructions}\n" if instructions else ""
     while True:
-        user_input = input(f"\n{prompt}\n")
-        if user_input in valid_values:
-            return user_input
-        prompt = (
-            f"{Back.BLACK}{Fore.YELLOW}{p_prompt}\ttry again\t—\t{Fore.RED}{3 - tries} attempts left\n{Style.RESET_ALL}"
-        )
-        ws_warning(warn)
-        tries += 1
-        if tries > 3:
-            raise KeyError(
-                f"Too many invalid inputs for '{p_prompt}'. Exiting. {fail_msg if fail_msg is not None else ''}"
+        raw: str = input(f"\n{prompt}\n{suffix}") if tries == 0 else input(f"\n{prompt}\n")
+        try:
+            return parse(raw)
+        except ValueError:
+            prompt = (
+                f"{Back.BLACK}{Fore.YELLOW}{p_prompt}\ttry again\t—\t"
+                f"{Fore.RED}{MAX_PROMPT_TRIES - tries} attempts left\n{suffix}{Style.RESET_ALL}"
             )
+            ws_warning(warn)
+            tries += 1
+            if tries > MAX_PROMPT_TRIES:
+                raise KeyError(fail_message) from None
+
+
+def get_validated_selection(p_prompt: str, valid_values: list[str], all_key: str = "all") -> list[str]:
+    """Ask the user to pick several of the given values, as one comma-separated answer.
+
+    A single unrecognised entry rejects the **whole** answer, and the warning names it. Silently
+    dropping it would act on a selection the user did not make, and acting on the recognised half is
+    worse still: the user reads the success message for the entries that worked and never learns the
+    rest were ignored. Nothing is applied until the answer is accepted in full.
+
+    Duplicates collapse and order is preserved, so ``b, a, b`` selects ``[b, a]`` — the answer is a
+    set of choices, and a caller iterating it must not act on one of them twice.
+
+    Parameters:
+        p_prompt: The question shown to the user.
+        valid_values: The selectable values, matched case-insensitively.
+        all_key: Answer that selects everything, offered alongside the values themselves.
+
+    Raises:
+        KeyError: If the user fails to give an accepted answer within ``MAX_PROMPT_TRIES`` retries.
+
+    Returns:
+        list[str]: The selected values, lowercased, without duplicates, in the order given.
+    """
+    allowed: list[str] = [value.lower() for value in valid_values]
+    instructions: str = (
+        f"Please enter one or more of:\n {' | '.join(valid_values)}\n"
+        f"Separate them with '{SELECTION_SEPARATOR}', or enter '{all_key}' for all of them."
+    )
+
+    def parse(answer: str) -> list[str]:
+        """Split, normalize and validate a comma-separated answer.
+
+        Parameters:
+            answer: The raw answer as typed.
+
+        Raises:
+            ValueError: If the answer is empty or names anything that is not selectable.
+
+        Returns:
+            list[str]: The selected values, deduplicated and in the order given.
+        """
+        entries: list[str] = [item.strip().lower() for item in answer.split(SELECTION_SEPARATOR) if item.strip()]
+        if not entries:
+            raise ValueError(answer)
+        if all_key.lower() in entries:
+            return list(allowed)
+        unknown: list[str] = [entry for entry in entries if entry not in allowed]
+        if unknown:
+            raise ValueError(SELECTION_SEPARATOR.join(unknown))
+        return list(dict.fromkeys(entries))
+
+    return _prompt_with_retries(
+        p_prompt,
+        parse,
+        instructions=instructions,
+        warn=f"Invalid selection; nothing has been applied. {instructions}",
+        fail_message=f"Too many invalid selections for '{p_prompt} —— {instructions}'. Exiting.",
+    )
 
 
 def get_input_or_default(p_prompt: str, default: Any) -> str:
@@ -268,35 +397,119 @@ def get_input_or_default(p_prompt: str, default: Any) -> str:
 
 
 def get_validated_input(p_prompt: str, valid_values: list[str]) -> str:
-    """
-    Get user input and validate against allowed values
+    """Ask the user for one of the given values, matching the answer case-insensitively.
 
-    Args:
-        prompt: str
-        valid_values: set[str]
+    Parameters:
+        p_prompt: The question shown to the user.
+        valid_values: The accepted answers; both they and the answer are lowercased before matching.
+
+    Raises:
+        KeyError: If the user fails to give an accepted value within the allowed attempts.
+
+    Returns:
+        str: The accepted value, lowercased.
     """
     instructions: str = f"Please enter one of:\n {' | '.join(valid_values)}"
-    warn: str = f"Invalid input. {instructions}"
-    tries: int = 0
-    prompt = p_prompt
-    while True:
-        user_input = input(f"\n{prompt}\n").lower() if tries > 0 else input(f"\n{prompt}\n{instructions}\n").lower()
-        # convert to lowercase all the values in valid_values
-        valid_values = [value.lower() for value in valid_values]
-        if user_input in valid_values:
-            return user_input
-        prompt = (
-            f"{Back.BLACK}{Fore.YELLOW}{p_prompt}\ttry again\t—\t{Fore.RED}{3 - tries} "
-            f"attempts left\n{instructions}\n{Style.RESET_ALL}"
-        )
-        ws_warning(warn)
-        tries += 1
-        if tries > 3:
-            raise KeyError(f"Too many invalid inputs for '{p_prompt} —— {instructions}'. Exiting.")
+    allowed: list[str] = [value.lower() for value in valid_values]
+
+    def parse(answer: str) -> str:
+        """Accept the answer only when it is listed, compared in lower case.
+
+        Parameters:
+            answer: The raw answer as typed.
+
+        Raises:
+            ValueError: If the answer is not one of ``valid_values``.
+
+        Returns:
+            str: The accepted value, lowercased.
+        """
+        chosen: str = answer.lower()
+        if chosen not in allowed:
+            raise ValueError(answer)
+        return chosen
+
+    return _prompt_with_retries(
+        p_prompt,
+        parse,
+        instructions=instructions,
+        warn=f"Invalid input. {instructions}",
+        fail_message=f"Too many invalid inputs for '{p_prompt} —— {instructions}'. Exiting.",
+    )
+
+
+def _append_missing_entries(
+    target: str,
+    entries: list[Tuple[str, str]],
+    *,
+    skip_message: str,
+    present_message: str,
+    added_message: str,
+) -> None:
+    """Append every entry that is not already listed in a git ignore-pattern file.
+
+    The two public helpers below differ only in which file they write and how they word their
+    messages, so the whole read-modify-write lives here once: duplicating it means a later fix to
+    the matching, the newline handling or the write condition gets applied to one copy and forgotten
+    in the other.
+
+    Nothing is written when every entry is already present, so a no-op run leaves the file's bytes
+    untouched — which is what the "idempotent" in the public docstrings claims.
+
+    Parameters:
+        target: Path of the ignore-pattern file to update.
+        entries: Pairs of (entry, description); the entry is the literal line written to the file
+            (e.g. ``".vscode/"``) and the description is the human label used in the log messages.
+        skip_message: Warning emitted, with the descriptions appended, outside a git repository.
+        present_message: Advice template for an entry that is already listed; formatted with
+            ``description`` and ``target``.
+        added_message: Success template for an entry that was appended; same placeholders.
+
+    Raises:
+        None
+
+    Returns:
+        None
+    """
+    if not os.path.exists(".git"):
+        ws_warning(f"{skip_message}: {', '.join(description for _, description in entries)}")
+        return
+    content: str = ""
+    if os.path.exists(target):
+        with open(target, "r", encoding="utf-8") as file:
+            content = file.read()
+    missing: list[Tuple[str, str]] = []
+    for entry, description in entries:
+        regex = re.compile(rf"^\s*{re.escape(entry.rstrip('/'))}/?\s*$", re.MULTILINE)
+        if regex.search(content):
+            ws_advice(present_message.format(description=description, target=target))
+            continue
+        missing.append((entry, description))
+    # Deciding what is missing before touching the text is what makes a no-op run a true no-op: the
+    # file is not reopened for writing at all, so its bytes and its mtime are left alone.
+    if not missing:
+        return
+    # A hand-edited file may end mid-line; appending straight onto it would silently merge the first
+    # new entry into the existing last pattern instead of adding one. Done here rather than up front
+    # so a run that adds nothing does not rewrite the file just to normalize its final newline.
+    if content and not content.endswith("\n"):
+        content += "\n"
+    for entry, description in missing:
+        content += f"{entry}\n"
+        ws_success(added_message.format(description=description, target=target))
+    parent: str = os.path.dirname(target)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    with open(target, "w", encoding="utf-8") as file:
+        file.write(content)
 
 
 def exclude_from_git(entries: list[Tuple[str, str]]) -> None:
     """Add the given entries to the repository's local git exclude file when missing.
+
+    This is the machine-local exclusion: ``.git/info/exclude`` is never committed, so it hides the
+    entries from this clone only. Use it for folders a single developer generates; use
+    ``add_to_gitignore`` for an exclusion the whole team should get.
 
     Entries already present are left untouched, so the operation is idempotent. When the current
     directory is not a git repository the exclusions are skipped with a warning instead of failing,
@@ -312,29 +525,42 @@ def exclude_from_git(entries: list[Tuple[str, str]]) -> None:
     Returns:
         None
     """
-    if not os.path.exists(".git"):
-        ws_warning(
-            f"Not inside a git repository; skipping git exclusions for: "
-            f"{', '.join(description for _, description in entries)}"
-        )
-        return
-    exclude: str = ""
-    if os.path.exists(GIT_EXCLUDE_FILE):
-        with open(GIT_EXCLUDE_FILE, "r", encoding="utf-8") as file:
-            exclude = file.read()
-    else:
-        os.makedirs(os.path.dirname(GIT_EXCLUDE_FILE), exist_ok=True)
-    if exclude and not exclude.endswith("\n"):
-        exclude += "\n"
-    for entry, description in entries:
-        regex = re.compile(rf"^\s*{re.escape(entry.rstrip('/'))}/?\s*$", re.MULTILINE)
-        if regex.search(exclude):
-            ws_advice(f"{description} already excluded in {GIT_EXCLUDE_FILE}")
-            continue
-        exclude += f"{entry}\n"
-        ws_success(f"Excluded {description} in {GIT_EXCLUDE_FILE}")
-    with open(GIT_EXCLUDE_FILE, "w", encoding="utf-8") as file:
-        file.write(exclude)
+    _append_missing_entries(
+        GIT_EXCLUDE_FILE,
+        entries,
+        skip_message="Not inside a git repository; skipping git exclusions for",
+        present_message="{description} already excluded in {target}",
+        added_message="Excluded {description} in {target}",
+    )
+
+
+def add_to_gitignore(entries: list[Tuple[str, str]]) -> None:
+    """Add the given entries to the repository's .gitignore file when missing.
+
+    This is the committed exclusion: every clone of the repository gets it. Use ``exclude_from_git``
+    instead when the entries should stay local to one machine.
+
+    Entries already present are left untouched, so the operation is idempotent. When the current
+    directory is not a git repository the additions are skipped with a warning instead of failing.
+    The .gitignore file is created when it does not exist yet.
+
+    Parameters:
+        entries: Pairs of (entry, description); the entry is the literal line written to .gitignore
+            (e.g. ``".github/skills/mgsnake/"``), the description is used in the log messages.
+
+    Raises:
+        None
+
+    Returns:
+        None
+    """
+    _append_missing_entries(
+        GITIGNORE_FILE,
+        entries,
+        skip_message="Not inside a git repository; skipping .gitignore additions for",
+        present_message="{description} already in {target}",
+        added_message="Added {description} to {target}",
+    )
 
 
 def ensure_working_path(decline_message: Optional[str] = None) -> str:

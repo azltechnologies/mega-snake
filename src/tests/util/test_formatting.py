@@ -1,6 +1,7 @@
 """Test cases for formatting.py"""
 
 import logging
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 from typing import Generator, Callable
 from types import SimpleNamespace

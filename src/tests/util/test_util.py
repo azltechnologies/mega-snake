@@ -18,7 +18,9 @@ from mega_snake.util.util import (
     get_command_return_code,
     get_input_or_default,
     get_validated_input,
+    get_validated_selection,
     get_typed_validated_input,
+    MAX_PROMPT_TRIES,
     cli_metadata,
     wrapper_decorator,
     write_json_atomically,
@@ -507,6 +509,149 @@ def test_exclude_from_git_outside_a_git_repository(
     mk_ws_warning.assert_called_once()
 
 
+# ---------------------------------------------------------------------------
+# add_to_gitignore
+# ---------------------------------------------------------------------------
+
+GITIGNORE_ENTRIES: list[tuple[str, str]] = [
+    (".github/skills/mgsnake/", ".github/skills/mgsnake/ folder"),
+    (".claude/skills/mgsnake/", ".claude/skills/mgsnake/ folder"),
+]
+
+
+def test_add_to_gitignore_creates_missing_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_util_ws_success: MagicMock,
+    mk_ws_advice: MagicMock,
+) -> None:
+    """A missing .gitignore file is created when entries are added for the first time."""
+    from mega_snake.util.util import GITIGNORE_FILE, add_to_gitignore
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".git").mkdir()
+
+    add_to_gitignore(GITIGNORE_ENTRIES)
+
+    content = (tmp_path / GITIGNORE_FILE).read_text(encoding="utf-8")
+    assert ".github/skills/mgsnake/" in content.splitlines()
+    assert ".claude/skills/mgsnake/" in content.splitlines()
+    assert mk_util_ws_success.call_count == 2
+    mk_ws_advice.assert_not_called()
+
+
+def test_add_to_gitignore_is_idempotent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_util_ws_success: MagicMock,
+    mk_ws_advice: MagicMock,
+) -> None:
+    """Entries already present in .gitignore are not duplicated."""
+    from mega_snake.util.util import GITIGNORE_FILE, add_to_gitignore
+
+    monkeypatch.chdir(tmp_path)
+    gitignore = tmp_path / GITIGNORE_FILE
+    (tmp_path / ".git").mkdir()
+    gitignore.write_text(".github/skills/mgsnake/\n", encoding="utf-8")
+
+    add_to_gitignore(GITIGNORE_ENTRIES)
+
+    lines = gitignore.read_text(encoding="utf-8").splitlines()
+    assert lines.count(".github/skills/mgsnake/") == 1
+    assert ".claude/skills/mgsnake/" in lines
+    mk_util_ws_success.assert_called_once()
+    mk_ws_advice.assert_called_once()
+
+    # Second full run changes nothing
+    mk_util_ws_success.reset_mock()
+    add_to_gitignore(GITIGNORE_ENTRIES)
+    assert gitignore.read_text(encoding="utf-8").splitlines() == lines
+    mk_util_ws_success.assert_not_called()
+
+
+def test_add_to_gitignore_separates_an_unterminated_last_line(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_util_ws_success: MagicMock,
+    mk_ws_advice: MagicMock,
+) -> None:
+    """A .gitignore whose last line has no newline keeps that line intact, entry on its own line.
+
+    This is the realistic shape of a hand-edited file, and the only one that distinguishes appending
+    from concatenating: with a trailing newline both behave identically.
+    """
+    from mega_snake.util.util import GITIGNORE_FILE, add_to_gitignore
+
+    monkeypatch.chdir(tmp_path)
+    gitignore = tmp_path / GITIGNORE_FILE
+    (tmp_path / ".git").mkdir()
+    gitignore.write_text("build/", encoding="utf-8")  # No trailing newline, on purpose.
+
+    add_to_gitignore(GITIGNORE_ENTRIES)
+
+    lines = gitignore.read_text(encoding="utf-8").splitlines()
+    assert lines == ["build/", ".github/skills/mgsnake/", ".claude/skills/mgsnake/"], (
+        f"the pre-existing last line must survive untouched, got {lines}"
+    )
+    assert "build/.github/skills/mgsnake/" not in lines, "the entry was concatenated onto the last line"
+    assert mk_util_ws_success.call_count == 2
+    mk_ws_advice.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("helper_name", "target_name"),
+    [("add_to_gitignore", "GITIGNORE_FILE"), ("exclude_from_git", "GIT_EXCLUDE_FILE")],
+)
+def test_appending_nothing_leaves_the_file_byte_identical(
+    helper_name: str,
+    target_name: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_util_ws_success: MagicMock,
+    mk_ws_advice: MagicMock,
+) -> None:
+    """A run where every entry is already listed must not rewrite the file at all.
+
+    The fixture deliberately omits the final newline: with one present, rewriting and not rewriting
+    produce identical bytes, so only an unterminated file distinguishes a real no-op from a
+    read-modify-write that happens to reproduce the same content plus a normalized ending.
+    """
+    import mega_snake.util.util as util_module
+
+    helper = getattr(util_module, helper_name)
+    target = getattr(util_module, target_name)
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".git").mkdir()
+    file_path = tmp_path / target
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    before = ".github/skills/mgsnake/\n.claude/skills/mgsnake/"  # No trailing newline, on purpose.
+    file_path.write_text(before, encoding="utf-8")
+
+    helper(GITIGNORE_ENTRIES)
+
+    after = file_path.read_text(encoding="utf-8")
+    assert after == before, f"{target} was rewritten although every entry was already present"
+    mk_util_ws_success.assert_not_called()
+    assert mk_ws_advice.call_count == len(GITIGNORE_ENTRIES)
+
+
+def test_add_to_gitignore_outside_a_git_repository(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_ws_warning: MagicMock,
+) -> None:
+    """Outside a git repository the additions are skipped with a warning, not an error."""
+    from mega_snake.util.util import GITIGNORE_FILE, add_to_gitignore
+
+    monkeypatch.chdir(tmp_path)
+
+    add_to_gitignore(GITIGNORE_ENTRIES)
+
+    assert not (tmp_path / GITIGNORE_FILE).exists()
+    mk_ws_warning.assert_called_once()
+
+
 def test_ensure_working_path_when_it_exists(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -658,3 +803,108 @@ def test_wrapper_decorator_preserves_every_group_only_constructor_argument() -> 
     # reading the public one would compare two bound methods and pass regardless.
     assert wrapped._result_callback is collect  # pylint: disable=protected-access
     assert set(wrapped.commands) == {"child"}
+
+
+# ---------------------------------------------------------------------------
+# get_validated_selection — the comma-separated multiple choice
+# ---------------------------------------------------------------------------
+
+# Deliberately distinguishable fixtures: three values that share no prefix, so a wrong entry can
+# never be mistaken for a right one by a substring comparison, and none of them is the all key.
+SELECTABLE = ["mgsnake", "jira-continue", "jira-progress"]
+
+
+def test_get_validated_selection_accepts_a_single_entry(mk_input: MagicMock) -> None:
+    """One value is a selection of one, returned as a list."""
+    mk_input.return_value = "jira-continue"
+
+    assert get_validated_selection("Pick:", SELECTABLE) == ["jira-continue"]
+
+
+def test_get_validated_selection_splits_and_trims_a_comma_separated_answer(mk_input: MagicMock) -> None:
+    """Entries are separated by commas and surrounding blanks are ignored.
+
+    Order is asserted against the order typed, not against SELECTABLE: returning the declaration
+    order would pass a containment check while silently ignoring what the user actually asked for.
+    """
+    mk_input.return_value = "  jira-progress ,mgsnake  "
+
+    assert get_validated_selection("Pick:", SELECTABLE) == ["jira-progress", "mgsnake"]
+
+
+def test_get_validated_selection_expands_the_all_key(mk_input: MagicMock) -> None:
+    """'all' selects every value, and the result is the full list rather than the key itself."""
+    mk_input.return_value = "all"
+
+    result = get_validated_selection("Pick:", SELECTABLE)
+
+    assert result == SELECTABLE
+    assert "all" not in result, "the all key leaked into the selection"
+
+
+def test_get_validated_selection_collapses_duplicates(mk_input: MagicMock) -> None:
+    """A value named twice is selected once, so a caller cannot act on it twice."""
+    mk_input.return_value = "mgsnake,jira-continue,mgsnake"
+
+    assert get_validated_selection("Pick:", SELECTABLE) == ["mgsnake", "jira-continue"]
+
+
+def test_get_validated_selection_matches_case_insensitively(mk_input: MagicMock) -> None:
+    """Answers are lowercased before matching, and returned lowercased."""
+    mk_input.return_value = "MGSNAKE"
+
+    assert get_validated_selection("Pick:", SELECTABLE) == ["mgsnake"]
+
+
+def test_get_validated_selection_rejects_the_whole_answer_for_one_unknown_entry(
+    mk_input: MagicMock, mk_ws_warning: MagicMock
+) -> None:
+    """One unrecognised entry rejects everything, and the retry returns the corrected answer.
+
+    The discriminating case: the answer also carries two perfectly valid entries. An implementation
+    that dropped the unknown one and kept the rest would return a selection the user never made,
+    and the caller would report success for it.
+    """
+    mk_input.side_effect = ["mgsnake,typo,jira-continue", "mgsnake,jira-continue"]
+
+    result = get_validated_selection("Pick:", SELECTABLE)
+
+    assert result == ["mgsnake", "jira-continue"]
+    assert mk_input.call_count == 2, "the invalid answer was not re-asked"
+    mk_ws_warning.assert_called_once()
+
+
+def test_get_validated_selection_rejects_an_empty_answer(mk_input: MagicMock, mk_ws_warning: MagicMock) -> None:
+    """A blank answer is not "select nothing"; it is a missing answer and is re-asked."""
+    mk_input.side_effect = ["   ", ",,", "mgsnake"]
+
+    assert get_validated_selection("Pick:", SELECTABLE) == ["mgsnake"]
+    assert mk_ws_warning.call_count == 2
+
+
+def test_get_validated_selection_gives_up_after_the_shared_retry_limit(
+    mk_input: MagicMock, mk_ws_warning: MagicMock
+) -> None:
+    """It stops after MAX_PROMPT_TRIES retries, like every other prompt in this module.
+
+    The limit is read from the production constant rather than hard-coded, so raising it there does
+    not leave this test asserting the old number.
+    """
+    mk_input.return_value = "not-a-skill"
+
+    with pytest.raises(KeyError, match="Too many invalid selections"):
+        get_validated_selection("Pick:", SELECTABLE)
+
+    assert mk_input.call_count == MAX_PROMPT_TRIES + 1
+
+
+def test_get_validated_selection_warns_naming_the_unknown_entry(
+    mk_input: MagicMock, mk_ws_warning: MagicMock
+) -> None:
+    """The warning must say nothing was applied, so the user does not assume a partial install."""
+    mk_input.side_effect = ["typo", "mgsnake"]
+
+    get_validated_selection("Pick:", SELECTABLE)
+
+    warning = mk_ws_warning.call_args[0][0]
+    assert "nothing has been applied" in warning, f"warning does not disclaim a partial effect: {warning!r}"

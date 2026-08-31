@@ -19,9 +19,11 @@ def wrapper(_ctx, *_args, **_kwargs) -> None:
 
     These commands only need a git repository and a scratch folder (``working_path``, e.g.
     ``workspace_temp``) to write their output and logs to; they don't require a full VS Code
-    workspace. A remote is no longer required up front: the ``Repo`` snapshot resolves one when it
-    exists and otherwise asks the user for the main branch, so a repository without remotes can
-    still get its local branches reported and cleaned. The "skip" flag defers the usual
+    workspace. A remote is **not** required up front: the ``Repo`` snapshot resolves one when it
+    exists and otherwise asks the user for the main branch, so a repository without remotes still
+    gets its local branches reported and cleaned. Requiring one here would refuse a workflow that
+    works perfectly well; the remote is demanded only where a remote reference is about to be
+    touched (§4.4). The "skip" flag defers the usual
     working-path validation done during CLI initialization, so this check runs instead and can
     offer to create the folder rather than letting the command crash with a raw FileNotFoundError.
 

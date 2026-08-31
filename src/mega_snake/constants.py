@@ -15,6 +15,8 @@ INTERPRETER_PATH: str = ".venv/bin/python3.13"
 # Packaged documentation fragments and the generated command reference
 RESOURCES_DIR: str = "resources"
 DOCS_DIR: str = "docs"
+# Packaged prose bodies of the task skills `generate-skill` installs, one file per skill.
+SKILLS_DIR: str = "skills"
 DOCS_FILE_SUFFIX: str = ".md"
 DOCS_OUTPUT_FILE: str = "COMMANDS.md"
 
@@ -104,5 +106,3 @@ RELEASE_TYPE_OPT: dict[str, str] = {"p": "--prerelease", "r": "--latest=false", 
 # Which component of a semantic version the new release tag increments. Bumping a component resets
 # every component to its right, which is what keeps the sequence monotonic (1.2.3 -> 1.3.0, not 1.3.3).
 VERSION_PART_OPT: dict[str, int] = {"patch": 2, "minor": 1, "major": 0}
-
-GCLOUD_LOGGIN_OPT: dict[str, str] = {"U": "user", "A": "application", "B": "both"}
