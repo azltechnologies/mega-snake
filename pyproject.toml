@@ -44,7 +44,7 @@ dev = [
     # Stubs only mypy consumes, hence dev and not runtime. 'requests' ships no inline types, and
     # this project sets disable_error_code = ["import-untyped"], so without the stubs mypy would not
     # complain — it would simply stop type checking every call into the HTTP client.
-    "types-requests==2.33.0.20260712",
+    "types-requests==2.33.0.20260906",
     # Floor is load-bearing: twine <= 6.0 parses distribution metadata through 'pkginfo', which only
     # knows Metadata-Version up to 2.2 and silently yields empty fields for anything newer instead of
     # failing on the version itself. Hatchling emits 2.5, so an older twine reports the symptom
