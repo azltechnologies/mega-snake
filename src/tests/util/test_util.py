@@ -196,6 +196,145 @@ def test_run_operation_renders_a_missing_captured_stream_as_empty(
     assert "Error: \n" in str(raised.value)
 
 
+# The shell `run_operation` must execute with, for every platform and every configurable shell. This
+# table *is* the contract, so it is written out rather than derived from the code under test. The rule
+# it encodes: a shell native to the platform is kept; anything else falls back to that platform's
+# default -- PowerShell on Windows, zsh on macOS, bash on Linux.
+SHELL_RESOLUTION: dict[tuple[str, str], str] = {
+    ("Linux", "bash"): "bash",
+    ("Linux", "zsh"): "zsh",
+    ("Linux", "powershell"): "bash",
+    ("Linux", "pwsh"): "bash",
+    ("Darwin", "bash"): "bash",
+    ("Darwin", "zsh"): "zsh",
+    ("Darwin", "powershell"): "zsh",
+    ("Darwin", "pwsh"): "zsh",
+    ("Windows", "bash"): "powershell",
+    ("Windows", "zsh"): "powershell",
+    ("Windows", "powershell"): "powershell",
+    ("Windows", "pwsh"): "pwsh",
+}
+SUPPORTED_PLATFORMS: tuple[str, ...] = ("Linux", "Darwin", "Windows")
+
+
+@pytest.mark.parametrize(("platform_name", "configured", "expected"), [(*key, value) for key, value in SHELL_RESOLUTION.items()])
+def test_run_operation_resolves_the_shell_for_every_platform_and_configured_shell(
+    platform_name: str, configured: str, expected: str, mk_subprocess_run: MagicMock
+) -> None:
+    """Each (platform, configured shell) pair executes with exactly the shell the contract names.
+
+    The whole matrix, not a sample: the defect this pins was one wrong comparison (`OS != "Darwin"`)
+    that sent Windows with PowerShell -- the configuration `config_setup.ps1` exports for every
+    Windows user -- to `zsh`, while every row a Linux or macOS developer ever runs stayed correct.
+    Only the rows nobody exercises locally could show it, so all of them are asserted. The flag is
+    checked too, since PowerShell takes `-Command` and a POSIX shell takes `-c`.
+    """
+    mk_subprocess_run.return_value = SimpleNamespace(stdout="", stderr="", returncode=0)
+
+    # Every shell is reported as installed, so the row depends only on the resolution rule and not on
+    # which shells happen to exist on the machine running the suite. A missing fallback has its own tests.
+    with (
+        patch("mega_snake.util.util.OS", platform_name),
+        patch("mega_snake.util.util.get_property", return_value=configured),
+        patch("mega_snake.util.util.shutil.which", side_effect=lambda name: f"/usr/bin/{name}"),
+    ):
+        run_operation("git status", "Probing the shell")
+
+    argv = mk_subprocess_run.call_args[0][0]
+    expected_flag = "-Command" if expected in ("powershell", "pwsh") else "-c"
+    assert argv[0] == expected, f"{platform_name} with {configured} ran through {argv[0]}, not {expected}"
+    assert argv[1] == expected_flag, f"{platform_name} with {configured} passed {argv[1]} to {argv[0]}"
+
+
+SUBSTITUTED_SHELLS: list[tuple[str, str, str]] = [
+    (platform_name, configured, resolved)
+    for (platform_name, configured), resolved in SHELL_RESOLUTION.items()
+    if resolved != configured
+]
+
+
+@pytest.mark.parametrize(("platform_name", "configured", "fallback"), SUBSTITUTED_SHELLS)
+def test_run_operation_refuses_a_fallback_shell_that_is_not_installed(
+    platform_name: str, configured: str, fallback: str, mk_subprocess_run: MagicMock
+) -> None:
+    """A missing fallback is reported by name, before any attempt, instead of a bare FileNotFoundError.
+
+    Derived from the contract table, so every substitution the resolution can make is covered. The
+    error names the configured shell, the platform and the missing fallback -- the three facts a
+    user needs, and the ones `[WinError 2] The system cannot find the file specified` gave none of.
+    The extent is asserted as well: no process was started, so nothing was retried.
+    """
+    with (
+        patch("mega_snake.util.util.OS", platform_name),
+        patch("mega_snake.util.util.get_property", return_value=configured),
+        patch("mega_snake.util.util.shutil.which", return_value=None) as mk_which,
+        pytest.raises(EnvironmentError) as raised,
+    ):
+        run_operation("git status", "Probing the shell")
+
+    assert str(raised.value) == (
+        f"MEGA_SNAKE_SHELL is '{configured}', which is not native to {platform_name}, so mgsnake runs its "
+        f"commands through '{fallback}' instead -- but '{fallback}' is not installed or not on the PATH. "
+        f"Install '{fallback}', or set MEGA_SNAKE_SHELL to a shell that is available on {platform_name}."
+    )
+    assert type(raised.value) is OSError, "a subclass would resolve to a different exit status"
+    mk_which.assert_called_once_with(fallback)
+    mk_subprocess_run.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("platform_name", "configured"),
+    [key for key, resolved in SHELL_RESOLUTION.items() if resolved == key[1]],
+)
+def test_run_operation_does_not_search_the_path_for_a_shell_it_kept(
+    platform_name: str, configured: str, mk_subprocess_run: MagicMock
+) -> None:
+    """The configured shell is not looked up again: initialization already located it on the PATH.
+
+    The discriminating twin of the test above. Checking every shell would pass that test too, but it
+    would search the PATH on every command for a fact established once at startup.
+    """
+    mk_subprocess_run.return_value = SimpleNamespace(stdout="", stderr="", returncode=0)
+
+    with (
+        patch("mega_snake.util.util.OS", platform_name),
+        patch("mega_snake.util.util.get_property", return_value=configured),
+        patch("mega_snake.util.util.shutil.which", return_value=None) as mk_which,
+    ):
+        run_operation("git status", "Probing the shell")
+
+    mk_which.assert_not_called()
+    assert mk_subprocess_run.call_args[0][0][0] == configured
+
+
+def test_run_operation_resolves_the_shell_once_across_retries(mk_ws_warning: MagicMock, mk_subprocess_run: MagicMock) -> None:
+    """Failing attempts are retried with the same shell, and the PATH is searched once, not per attempt."""
+    failure = subprocess.CalledProcessError(returncode=1, cmd="git status", stderr="boom")
+    mk_subprocess_run.side_effect = [failure, failure, SimpleNamespace(stdout="", stderr="", returncode=0)]
+
+    with (
+        patch("mega_snake.util.util.OS", "Linux"),
+        patch("mega_snake.util.util.get_property", return_value="pwsh") as mk_property,
+        patch("mega_snake.util.util.shutil.which", return_value="/bin/bash") as mk_which,
+    ):
+        run_operation("git status", "Probing the shell")
+
+    assert [issued.args[0][0] for issued in mk_subprocess_run.call_args_list] == ["bash", "bash", "bash"]
+    mk_which.assert_called_once_with("bash")
+    mk_property.assert_called_once_with("shell")
+
+
+def test_shell_resolution_contract_covers_every_configurable_shell_on_every_platform() -> None:
+    """A shell added to SHELL_OPT must be given a row per platform, or the matrix above silently skips it."""
+    from mega_snake.constants import SHELL_OPT
+
+    expected_keys = {(platform_name, shell) for platform_name in SUPPORTED_PLATFORMS for shell in SHELL_OPT}
+    assert set(SHELL_RESOLUTION) == expected_keys, (
+        f"missing: {sorted(expected_keys - set(SHELL_RESOLUTION))}, "
+        f"unexpected: {sorted(set(SHELL_RESOLUTION) - expected_keys)}"
+    )
+
+
 def test_get_command_return_code() -> None:
     """Test get_command_return_code function."""
 

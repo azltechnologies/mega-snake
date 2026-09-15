@@ -154,14 +154,30 @@ def test_tracking_entries_keeps_the_trailing_slash_only_for_a_directory() -> Non
     """
     entries = _tracking_entries(
         [
-            (Path(".claude") / "skills" / CLI_SKILL_NAME, "skill"),
-            (Path(".claude") / "agents" / "an-agent.md", "agent"),
+            (Path(".claude") / "skills" / CLI_SKILL_NAME, "skill", True),
+            (Path(".claude") / "agents" / "an-agent.md", "agent", False),
         ]
     )
 
     assert entries[0][0] == CLAUDE_SKILL_ENTRY
     assert entries[1][0] == ".claude/agents/an-agent.md"
     assert not entries[1][0].endswith("/"), "a file pattern gained a directory-only slash"
+
+
+def test_tracking_entries_trusts_the_layout_flag_not_the_shape_of_the_path() -> None:
+    """Directory-or-file comes from the flag, whatever the name looks like.
+
+    Both fixtures are chosen to contradict a suffix heuristic: a *directory* whose name carries a
+    dot, which `PurePath.suffix` reads as an extension, and a *file* with no extension at all. An
+    implementation guessing from the path gets both wrong; one reading the flag gets both right.
+    """
+    dotted_directory = Path(".claude") / "skills" / "mgsnake.v2"
+    extensionless_file = Path(".claude") / "agents" / "plain-agent"
+    assert dotted_directory.suffix == ".v2" and extensionless_file.suffix == "", "fixtures no longer discriminate"
+
+    entries = _tracking_entries([(dotted_directory, "dotted", True), (extensionless_file, "plain", False)])
+
+    assert entries == [(".claude/skills/mgsnake.v2/", "dotted"), (".claude/agents/plain-agent", "plain")]
 
 
 def test_tracking_entries_uses_forward_slashes_on_a_windows_style_path() -> None:
@@ -174,7 +190,7 @@ def test_tracking_entries_uses_forward_slashes_on_a_windows_style_path() -> None
     windows_dir = PureWindowsPath(".github") / "skills" / CLI_SKILL_NAME
     assert "\\" in str(windows_dir), "fixture is not exercising a backslash-separated path"
 
-    entries = _tracking_entries([(windows_dir, "GitHub Copilot skill 'mgsnake'")])
+    entries = _tracking_entries([(windows_dir, "GitHub Copilot skill 'mgsnake'", True)])
 
     assert entries == [(COPILOT_SKILL_ENTRY, "GitHub Copilot skill 'mgsnake'")], f"got {entries}"
     assert "\\" not in entries[0][0]
@@ -187,7 +203,7 @@ def test_apply_tracking_forwards_the_entries_to_the_right_helper(
     mk_add_to_gitignore: MagicMock,
 ) -> None:
     """'e' writes .git/info/exclude and 'g' writes .gitignore, never both."""
-    _apply_tracking([(Path(".claude") / "skills" / CLI_SKILL_NAME, "Claude skill 'mgsnake'")], tracking)
+    _apply_tracking([(Path(".claude") / "skills" / CLI_SKILL_NAME, "Claude skill 'mgsnake'", True)], tracking)
 
     used = mk_exclude_from_git if tracking == "e" else mk_add_to_gitignore
     unused = mk_add_to_gitignore if tracking == "e" else mk_exclude_from_git
@@ -199,7 +215,7 @@ def test_apply_tracking_describes_the_item_instead_of_repeating_the_path(
     mk_exclude_from_git: MagicMock,
 ) -> None:
     """The description names the item for a reader; repeating the path says nothing new."""
-    _apply_tracking([(Path(".claude") / "skills" / CLI_SKILL_NAME, "Claude skill 'mgsnake'")], "e")
+    _apply_tracking([(Path(".claude") / "skills" / CLI_SKILL_NAME, "Claude skill 'mgsnake'", True)], "e")
 
     entry, description = mk_exclude_from_git.call_args[0][0][0]
     assert description != entry
@@ -212,7 +228,7 @@ def test_apply_tracking_versioned_emits_success(mk_ws_success: MagicMock) -> Non
         patch("mega_snake.docs_gen.install_agent_items.exclude_from_git") as mk_exc,
         patch("mega_snake.docs_gen.install_agent_items.add_to_gitignore") as mk_ign,
     ):
-        _apply_tracking([(Path(".claude") / "skills" / CLI_SKILL_NAME, "Claude skill")], "v")
+        _apply_tracking([(Path(".claude") / "skills" / CLI_SKILL_NAME, "Claude skill", True)], "v")
 
     mk_ws_success.assert_called_once()
     mk_exc.assert_not_called()
@@ -406,22 +422,46 @@ def test_prompt_items_asks_when_there_is_a_real_choice(tmp_path: Path) -> None:
 def test_report_dependencies_says_nothing_when_nothing_was_added(mk_ws_info: MagicMock) -> None:
     """A selection that needs nothing extra must not print a dependency line."""
     with patch("mega_snake.docs_gen.install_agent_items.required_by", return_value={}):
-        _report_dependencies([CLI_SKILL_NAME])
+        _report_dependencies([CLI_SKILL_NAME], ALL_RUNTIMES)
 
     mk_ws_info.assert_not_called()
 
 
 def test_report_dependencies_names_both_the_addition_and_its_reason(mk_ws_info: MagicMock) -> None:
     """The message must name what is being installed and what asked for it."""
-    with patch(
-        "mega_snake.docs_gen.install_agent_items.required_by",
-        return_value={CLI_SKILL_NAME: [DEPENDENT]},
+    with (
+        patch(
+            "mega_snake.docs_gen.install_agent_items.required_by",
+            return_value={CLI_SKILL_NAME: [DEPENDENT]},
+        ),
+        patch("mega_snake.docs_gen.install_agent_items.get_item", return_value=cli_item()),
     ):
-        _report_dependencies([DEPENDENT])
+        _report_dependencies([DEPENDENT], ALL_RUNTIMES)
 
     message = mk_ws_info.call_args[0][0]
-    assert CLI_SKILL_NAME in message, f"the added item is not named: {message!r}"
-    assert DEPENDENT in message, f"the reason is not named: {message!r}"
+    assert message == f"Also installing '{CLI_SKILL_NAME}': required by '{DEPENDENT}'.", f"got {message!r}"
+
+
+def test_report_dependencies_does_not_announce_an_addition_that_fits_no_chosen_runtime(
+    mk_ws_info: MagicMock,
+) -> None:
+    """A dependency that will be skipped everywhere must not also be announced as being installed.
+
+    `_resolve_compatibility` reports it as skipped; announcing it here too would tell the user both
+    "Also installing 'X'" and "Skipping 'X'" about the same item in the same run. The same item is
+    announced when the chosen runtime does fit it, which is what makes the silence discriminating.
+    """
+    claude_only = Item(name="claude-only-dep", summary="s", description="d", render=lambda item: {}, runtimes=(RUNTIME_CLAUDE,))
+    with (
+        patch("mega_snake.docs_gen.install_agent_items.required_by", return_value={"claude-only-dep": [DEPENDENT]}),
+        patch("mega_snake.docs_gen.install_agent_items.get_item", return_value=claude_only),
+    ):
+        _report_dependencies([DEPENDENT], (RUNTIME_COPILOT,))
+        silent_for_copilot = mk_ws_info.call_count
+        _report_dependencies([DEPENDENT], (RUNTIME_CLAUDE,))
+
+    assert silent_for_copilot == 0, "an addition that fits no chosen runtime was announced"
+    assert mk_ws_info.call_count == 1, "the same addition was not announced once its runtime was chosen"
 
 
 # ---------------------------------------------------------------------------
@@ -435,13 +475,56 @@ def test_write_items_creates_every_file_for_every_runtime(
     """Both files land under both runtimes, each with its own content."""
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path) as iso:
-        written = _write_items(ALL_RUNTIMES, RENDERED)
+        _write_items(ALL_RUNTIMES, RENDERED)
         for root in (".github", ".claude"):
             for file_name, expected in CLI_FILES.items():
                 target = Path(iso) / root / "skills" / CLI_SKILL_NAME / file_name
                 assert target.read_text(encoding="utf-8") == expected, f"{target} holds the wrong document"
 
-    assert len(written) == 4, f"expected two files per runtime, got {written}"
+
+def test_write_items_returns_one_tracking_target_per_item_and_runtime_written(
+    mk_render: MagicMock, mk_ws_success: MagicMock, tmp_path: Path
+) -> None:
+    """What comes back is what git should be told about: the skill directory once, not each file.
+
+    The CLI skill writes two files per runtime, so a return value built per file would have four
+    entries and hand git `SKILL.md` and `reference.md` separately. Two entries, both directories,
+    is the only shape that matches what `_apply_tracking` needs.
+    """
+    runner = CliRunner()
+    with runner.isolated_filesystem(temp_dir=tmp_path):
+        written = _write_items(ALL_RUNTIMES, RENDERED)
+
+    assert written == [
+        (Path(".github") / "skills" / CLI_SKILL_NAME, f"GitHub Copilot skill '{CLI_SKILL_NAME}'", True),
+        (Path(".claude") / "skills" / CLI_SKILL_NAME, f"Claude skill '{CLI_SKILL_NAME}'", True),
+    ], f"got {written}"
+
+
+def test_write_items_returns_no_tracking_target_for_a_runtime_it_skipped(
+    mk_ws_success: MagicMock, tmp_path: Path
+) -> None:
+    """A runtime the item does not fit produces no file, so it must produce no git pattern either.
+
+    This is the invariant the command used to assert only in a comment, over a second filter kept
+    in step by hand; it now follows from returning what the write loop actually did.
+    """
+    claude_only = Item(
+        name="claude-only-item",
+        summary="s",
+        description="d",
+        render=lambda item: {SKILL_FILE: "body"},
+        runtimes=(RUNTIME_CLAUDE,),
+    )
+    runner = CliRunner()
+    with (
+        patch("mega_snake.docs_gen.install_agent_items.get_item", return_value=claude_only),
+        runner.isolated_filesystem(temp_dir=tmp_path),
+    ):
+        written = _write_items(ALL_RUNTIMES, {"claude-only-item": {SKILL_FILE: "body"}})
+
+    assert [target for target, _, _ in written] == [Path(".claude") / "skills" / "claude-only-item"]
+    assert all(target.parts[0] != ".github" for target, _, _ in written), "a skipped runtime was tracked"
 
 
 def test_write_items_puts_an_agent_in_a_single_runtime_specific_file(
@@ -467,6 +550,98 @@ def test_write_items_puts_an_agent_in_a_single_runtime_specific_file(
     assert copilot.read_text(encoding="utf-8") == "AGENT BODY"
     assert claude.read_text(encoding="utf-8") == "AGENT BODY"
     assert not (Path(iso) / ".claude" / "agents" / "an-agent.agent.md").exists(), "wrong suffix for Claude"
+
+
+def test_install_passes_exactly_what_was_written_to_git_tracking(
+    mk_render: MagicMock, tmp_path: Path
+) -> None:
+    """The command hands `_apply_tracking` the targets `_write_items` returned, and nothing else."""
+    runner = CliRunner()
+    with (
+        patch("mega_snake.docs_gen.install_agent_items._apply_tracking") as mk_apply,
+        runner.isolated_filesystem(temp_dir=tmp_path),
+    ):
+        result = runner.invoke(install_agent_items, ["--item", CLI_SKILL_NAME, "--target", "l", "--tracking", "e"])
+
+    assert result.exit_code == 0, result.output
+    targets, strategy = mk_apply.call_args[0]
+    assert targets == [(Path(".claude") / "skills" / CLI_SKILL_NAME, f"Claude skill '{CLI_SKILL_NAME}'", True)]
+    assert strategy == "e"
+
+
+@pytest.mark.parametrize(
+    ("extra_args", "named"),
+    [
+        (["--item", "mgsnake"], "--item"),
+        (["--target", "l"], "--target"),
+        (["--tracking", "g"], "--tracking"),
+        (["--item", "mgsnake", "--target", "l", "--tracking", "e"], "--item, --target, --tracking"),
+    ],
+)
+def test_check_refuses_to_be_combined_with_install_options(
+    extra_args: list[str], named: str, mk_render: MagicMock, tmp_path: Path
+) -> None:
+    """`--check` plus an install option is refused, with the options named, and nothing is checked.
+
+    Ignoring them was the defect: `--check --item mgsnake` reported on items the user did not name,
+    and `--check --tracking g` did nothing while exiting as though it had been honoured. Exit 1 is
+    asserted with its negative against 0, and the validation is asserted never to have run.
+    """
+    runner = CliRunner()
+    with (
+        patch("mega_snake.docs_gen.install_agent_items._check_existing_files") as mk_check,
+        runner.isolated_filesystem(temp_dir=tmp_path),
+    ):
+        result = runner.invoke(install_agent_items, ["--check", *extra_args])
+
+    assert result.exit_code == 1, result.output
+    assert result.exit_code != 0
+    assert f"--check cannot be combined with {named}." in result.output, result.output
+    mk_check.assert_not_called()
+
+
+def test_an_impossible_explicit_request_is_refused_before_any_dependency_is_announced(
+    mk_ws_info: MagicMock, tmp_path: Path
+) -> None:
+    """A refused request prints no "Also installing" line first.
+
+    Before the reordering, the dependency report ran ahead of the compatibility check, so a run that
+    was about to fail announced installs that never happened.
+    """
+    claude_only = Item(
+        name=DEPENDENT,
+        summary="s",
+        description="d",
+        render=lambda item: {SKILL_FILE: "body"},
+        requires=(CLI_SKILL_NAME,),
+        runtimes=(RUNTIME_CLAUDE,),
+    )
+    registry = {CLI_SKILL_NAME: cli_item(), DEPENDENT: claude_only}
+    runner = CliRunner()
+    with (
+        patch("mega_snake.docs_gen.install_agent_items.item_names", return_value=list(registry)),
+        patch("mega_snake.docs_gen.install_agent_items.get_item", side_effect=registry.__getitem__),
+        patch("mega_snake.docs_gen.install_agent_items.expand_items", return_value=[CLI_SKILL_NAME, DEPENDENT]),
+        patch("mega_snake.docs_gen.install_agent_items.required_by", return_value={CLI_SKILL_NAME: [DEPENDENT]}),
+        runner.isolated_filesystem(temp_dir=tmp_path) as iso,
+    ):
+        result = runner.invoke(install_agent_items, ["--item", DEPENDENT, "--target", "c", "--tracking", "v"])
+        leftovers = sorted(str(path) for path in Path(iso).rglob("*.md"))
+
+    assert result.exit_code == 1, result.output
+    assert f"'{DEPENDENT}' cannot be installed" in result.output, result.output
+    mk_ws_info.assert_not_called()
+    assert leftovers == [], f"a refused request wrote files: {leftovers}"
+
+
+def test_install_agent_items_declares_no_epilog() -> None:
+    """The epilog is for positional arguments (§3.7), and this command has none.
+
+    The one it carried rendered as an orphan `Notes:` line in COMMANDS.md, repeating what the
+    fragment already says.
+    """
+    assert not install_agent_items.epilog, f"unexpected epilog: {install_agent_items.epilog!r}"
+    assert not any(isinstance(param, click.Argument) for param in install_agent_items.params)
 
 
 @pytest.mark.parametrize("stale_file", [SKILL_FILE, REFERENCE_FILE])

@@ -21,7 +21,7 @@ meaningless on their own. Resolving that silently would leave files on disk the 
 for, so ``expand_items`` returns the closure and the caller names what it added and why.
 
 **A hidden item is installable but not offered.** Setting ``hidden=True`` keeps an item out of the
-interactive list while leaving it reachable through a dependency and through ``--skill``. That is
+interactive list while leaving it reachable through a dependency and through ``--item``. That is
 what a bundled component wants: nobody should install it on its own by accident, but refreshing it
 directly must stay possible, or the only way to update it would be to reinstall its parent.
 """
@@ -76,7 +76,9 @@ class ItemLayout:
 
     directory: str
     own_directory: bool
-    file_suffix: dict[str, str]
+    # `hash=False`: a dict is unhashable, and a frozen dataclass generates `__hash__` from every field,
+    # so leaving it in made `hash(layout)` raise. It still takes part in `__eq__`.
+    file_suffix: dict[str, str] = field(hash=False)
 
 
 ITEM_LAYOUT: dict[ItemKind, ItemLayout] = {
@@ -187,13 +189,13 @@ def _frontmatter(item: "Item", body: str) -> str:
 
 
 def _fragment_path(name: str) -> Path:
-    """Resolve the packaged body of a task skill.
+    """Resolve the packaged body of an item whose prose is hand-written.
 
     Read through ``importlib.resources`` rather than from a path derived at runtime: this command is
     ``no_init``, so ``AppProperties`` — and with it ``get_property`` — is never built for it.
 
     Parameters:
-        name: The skill name, which is also its fragment file stem.
+        name: The item name, which is also its fragment file stem.
 
     Raises:
         None
@@ -294,7 +296,10 @@ class Item:
     kind: ItemKind = field(default=KIND_SKILL)
     requires: tuple[str, ...] = field(default=())
     hidden: bool = field(default=False)
-    frontmatter: dict[str, object] = field(default_factory=dict)
+    # `hash=False` for the same reason as `ItemLayout.file_suffix`: `frozen=True` advertises a hashable
+    # `Item`, and a dict field made `set(ITEMS)` raise. Equality still compares it, so two items that
+    # differ only in their header are still different items.
+    frontmatter: dict[str, object] = field(default_factory=dict, hash=False)
     runtimes: tuple[str, ...] = field(default=ALL_RUNTIMES)
 
     def runs_on(self, runtime: str) -> bool:
@@ -380,13 +385,15 @@ def tracking_target(item: Item, runtime: str) -> Path:
     return base / f"{item.name}{item.layout.file_suffix[runtime]}"
 
 
-def item_targets(item: Item, runtime: str, files: dict[str, str]) -> dict[Path, str]:
+def item_targets(item: Item, runtime: str, contents: dict[str, str]) -> dict[Path, str]:
     """Resolve every path this item writes under one runtime, with the content for each.
 
     Parameters:
         item: The item being installed.
         runtime: One of ``ALL_RUNTIMES``.
-        files: The rendered content, per file name, as ``Item.files`` returned it.
+        contents: The rendered content, per file name, as ``Item.files`` returned it. Not named
+            ``files``: that name is already the module-level ``importlib.resources.files``, and a
+            parameter shadowing it hands a later ``files(MODULE_NAME)`` in this body a ``dict``.
 
     Raises:
         InternalStateError: If a single-file item rendered more than one file, which would mean the
@@ -398,13 +405,13 @@ def item_targets(item: Item, runtime: str, files: dict[str, str]) -> dict[Path, 
     """
     target: Path = tracking_target(item, runtime)
     if item.layout.own_directory:
-        return {target / name: content for name, content in files.items()}
-    if len(files) != 1:
+        return {target / name: content for name, content in contents.items()}
+    if len(contents) != 1:
         raise InternalStateError(
             f"Item '{item.name}' is a {item.kind}, which is a single file, but it rendered "
-            f"{len(files)} of them. This is a bug."
+            f"{len(contents)} of them. This is a bug."
         )
-    return {target: next(iter(files.values()))}
+    return {target: next(iter(contents.values()))}
 
 
 def catalogue() -> dict[str, Item]:
@@ -432,7 +439,7 @@ def catalogue() -> dict[str, Item]:
 def item_names() -> list[str]:
     """List every registered item name, hidden ones included, in catalogue order.
 
-    This is the set a **name** may legitimately resolve to: the ``--skill`` flag accepts it in full,
+    This is the set a **name** may legitimately resolve to: the ``--item`` flag accepts it in full,
     because a hidden item still needs a way to be refreshed on its own. Use ``selectable_names`` for
     anything a user picks from a list.
 
@@ -515,7 +522,7 @@ def expand_items(names: Iterable[str], registry: Optional[dict[str, Item]] = Non
     installed whether it was asked for or not, so the natural reading order is the registry's own.
 
     Parameters:
-        names: The selected skill names.
+        names: The selected item names.
         registry: Catalogue to resolve against; defaults to the real one. Injectable so the
             resolution can be tested against graphs deeper than the shipped registry has.
 
@@ -545,14 +552,14 @@ def required_by(names: Iterable[str], registry: Optional[dict[str, Item]] = None
     what dragged them in the user has no way to tell an intended install from a bug.
 
     Parameters:
-        names: The skill names the user actually selected.
+        names: The item names the user actually selected.
         registry: Catalogue to resolve against; defaults to the real one.
 
     Raises:
         KeyError: If a selected or required name is not registered.
 
     Returns:
-        dict[str, list[str]]: Added skill name to the selected names that required it, in catalogue
+        dict[str, list[str]]: Added item name to the selected names that required it, in catalogue
             order; empty when the selection was already closed under ``requires``.
     """
     known: dict[str, Item] = catalogue() if registry is None else registry

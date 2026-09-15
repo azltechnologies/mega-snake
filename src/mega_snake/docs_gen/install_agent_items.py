@@ -48,8 +48,12 @@ STATE_STALE: str = "STALE"
 # What the command renders once and then reuses: item name -> file name -> content.
 Rendered = dict[str, dict[str, str]]
 
+# One path handed to git: where it is, the human label for the log line, and whether it is a
+# directory. The last field is carried rather than inferred, because the layout already knows it.
+TrackingTarget = tuple[PurePath, str, bool]
 
-def _tracking_entries(targets: Sequence[tuple[PurePath, str]]) -> list[tuple[str, str]]:
+
+def _tracking_entries(targets: Sequence[TrackingTarget]) -> list[tuple[str, str]]:
     """Build the (entry, description) pairs the git-tracking helpers expect.
 
     Uses ``as_posix()`` and never ``str()``: on Windows ``str(Path)`` yields backslashes, and git
@@ -61,8 +65,12 @@ def _tracking_entries(targets: Sequence[tuple[PurePath, str]]) -> list[tuple[str
     A directory entry keeps its trailing slash and a file entry must not gain one: ``foo.md/`` is a
     pattern that matches only a directory, so an agent excluded that way stays tracked.
 
+    Whether a target is a directory comes from the item's layout, never from the shape of the path.
+    Guessing it from ``PurePath.suffix`` read any dotted directory name (``mgsnake.v2``) as a file and
+    dropped its slash, re-deriving from a string what ``ItemLayout.own_directory`` already states.
+
     Parameters:
-        targets: Pairs of (path, human label). A path with a suffix is treated as a file.
+        targets: The paths to hand to git, each with its label and whether it is a directory.
 
     Raises:
         None
@@ -70,18 +78,17 @@ def _tracking_entries(targets: Sequence[tuple[PurePath, str]]) -> list[tuple[str
     Returns:
         list[tuple[str, str]]: One (pattern, label) pair per target, in the order given.
     """
-    entries: list[tuple[str, str]] = []
-    for target, label in targets:
-        pattern: str = target.as_posix()
-        entries.append((pattern if target.suffix else f"{pattern}/", label))
-    return entries
+    return [
+        (f"{target.as_posix()}/" if is_directory else target.as_posix(), label)
+        for target, label, is_directory in targets
+    ]
 
 
-def _apply_tracking(targets: Sequence[tuple[PurePath, str]], tracking: str) -> None:
+def _apply_tracking(targets: Sequence[TrackingTarget], tracking: str) -> None:
     """Apply the chosen git-tracking strategy to everything that was written.
 
     Parameters:
-        targets: Pairs of (path, human label) for every installed item.
+        targets: What was installed, as returned by ``_write_items``.
         tracking: ``"e"`` for git exclude, ``"g"`` for .gitignore, ``"v"`` to leave them versioned.
 
     Raises:
@@ -258,7 +265,7 @@ def _prompt_tracking() -> str:
     )
 
 
-def _report_dependencies(selected: Sequence[str]) -> None:
+def _report_dependencies(selected: Sequence[str], runtimes: Sequence[str]) -> None:
     """Tell the user which items were added because something they picked requires them.
 
     Installing an unselected item is correct - a task skill is useless to an assistant that does not
@@ -266,8 +273,13 @@ def _report_dependencies(selected: Sequence[str]) -> None:
     never be a surprise: files appear in the working tree, and without this line the user cannot tell
     an intended install from a defect.
 
+    Only an addition that fits at least one chosen runtime is announced. One that fits none is not
+    going to be installed, and ``_resolve_compatibility`` already says so; announcing it here as
+    "Also installing" too would tell the user two contradictory things about the same item.
+
     Parameters:
         selected: The names the user actually chose.
+        runtimes: The runtimes the user chose.
 
     Raises:
         KeyError: If a selected or required name is not registered.
@@ -276,6 +288,8 @@ def _report_dependencies(selected: Sequence[str]) -> None:
         None
     """
     for name, reasons in required_by(selected).items():
+        if not any(get_item(name).runs_on(runtime) for runtime in runtimes):
+            continue
         ws_info(f"Also installing '{name}': required by {', '.join(repr(reason) for reason in reasons)}.")
 
 
@@ -328,8 +342,16 @@ def _resolve_compatibility(installing: Rendered, runtimes: Sequence[str], select
         )
 
 
-def _write_items(runtimes: Sequence[str], installing: Rendered) -> list[Path]:
+def _write_items(runtimes: Sequence[str], installing: Rendered) -> list[TrackingTarget]:
     """Write every file of every selected item, for every selected runtime.
+
+    Returns what git should be told about, derived from what this loop actually wrote. The caller
+    passes it straight to ``_apply_tracking``, so the rule "only what was installed is tracked" holds
+    by construction: a second derivation of the same set, filtered by hand in parallel, is what the
+    command used to do, and the two had to be kept in agreement by nothing but care.
+
+    The unit returned is the tracking target, not the file: a skill is one directory holding several
+    files, and git is handed the directory once.
 
     Parameters:
         runtimes: The runtimes to install for.
@@ -339,9 +361,9 @@ def _write_items(runtimes: Sequence[str], installing: Rendered) -> list[Path]:
         InternalStateError: If a single-file item rendered more than one file.
 
     Returns:
-        list[Path]: The paths that were written.
+        list[TrackingTarget]: One entry per (runtime, item) pair that had files written, in order.
     """
-    written: list[Path] = []
+    written: list[TrackingTarget] = []
     for runtime in runtimes:
         for name, files in installing.items():
             item: Item = get_item(name)
@@ -350,7 +372,11 @@ def _write_items(runtimes: Sequence[str], installing: Rendered) -> list[Path]:
             for path, content in item_targets(item, runtime, files).items():
                 write_or_check_document(path, content, check=False)
                 ws_success(f"Generated {path}")
-                written.append(path)
+            # The item name belongs in the label: the helpers log "Excluded <description> in
+            # <file>", so a label carrying only the runtime and the kind prints the same line once
+            # per item and identifies none of them.
+            label: str = f"{RUNTIME_LABEL[runtime]} {item.kind} '{name}'"
+            written.append((tracking_target(item, runtime), label, item.layout.own_directory))
     return written
 
 
@@ -392,11 +418,6 @@ def _check_existing_files(rendered: Rendered) -> None:
     " selection, the target and the git-tracking strategy are asked interactively unless --item,"
     " --target and --tracking supply them, which is what makes the command usable from a hook or a"
     " CI step.",
-    epilog="""
-    Notes:\n
-        Re-running is idempotent: an item already present is rewritten with the current content,
-        which is how an installation is brought up to date after upgrading mgsnake.
-    """,
 )
 @cli_metadata(flags={"no_init"})
 @click.option(
@@ -426,7 +447,8 @@ def _check_existing_files(rendered: Rendered) -> None:
     is_flag=True,
     default=False,
     help="Render in memory, compare with every installed file on disk, and exit with an error when"
-    " any is stale. Never prompts and never writes.",
+    " any is stale. Never prompts and never writes. It always checks every item for every assistant,"
+    " so it cannot be combined with --item, --target or --tracking.",
 )
 def install_agent_items(items: tuple[str, ...], target: Optional[str], tracking: Optional[str], check: bool) -> None:
     """Install or validate the AI agent skills and agents.
@@ -438,17 +460,31 @@ def install_agent_items(items: tuple[str, ...], target: Optional[str], tracking:
         check: When True, validate installed files instead of installing them.
 
     Raises:
+        click.ClickException: If --check is combined with --item, --target or --tracking.
         ValidationError: If --check finds that any installed file is stale.
         KeyError: If the user provides too many invalid answers to an interactive prompt.
 
     Returns:
         None
     """
-    rendered: Rendered = {name: get_item(name).files() for name in item_names()}
-
     if check:
-        _check_existing_files(rendered)
+        # Refused rather than ignored, before anything is rendered. `--check` always validates every
+        # item for every runtime, so `--check --item mgsnake` would silently report on items the user
+        # did not name and `--check --tracking g` would do nothing while looking accepted. `diff-tree`
+        # refuses its impossible flag combination for the same reason (§3.2).
+        conflicting: list[str] = [
+            flag for flag, value in (("--item", items), ("--target", target), ("--tracking", tracking)) if value
+        ]
+        if conflicting:
+            raise click.ClickException(
+                f"BAD REQUEST: --check cannot be combined with {', '.join(conflicting)}. It always "
+                "validates every installed item for every assistant, so those options would be "
+                "silently ignored. Run --check on its own, or drop it to install."
+            )
+        _check_existing_files({name: get_item(name).files() for name in item_names()})
         return
+
+    rendered: Rendered = {name: get_item(name).files() for name in item_names()}
 
     # Every answer is resolved before the first byte is written, so abandoning any prompt leaves the
     # working tree exactly as it was. Writing first would strand files on disk, neither excluded nor
@@ -457,24 +493,9 @@ def install_agent_items(items: tuple[str, ...], target: Optional[str], tracking:
     runtimes: tuple[str, ...] = TARGET_OPT[target] if target else _prompt_target()
     strategy: str = tracking or _prompt_tracking()
 
-    _report_dependencies(selected)
     installing: Rendered = {name: rendered[name] for name in expand_items(selected)}
+    # Compatibility first: it may refuse the whole request, and nothing should be announced as being
+    # installed before that decision is made.
     _resolve_compatibility(installing, runtimes, selected)
-    _write_items(runtimes, installing)
-    _apply_tracking(
-        [
-            (
-                tracking_target(get_item(name), runtime),
-                # The item name belongs in the label: the helpers log "Excluded <description> in
-                # <file>", so a label carrying only the runtime and the kind prints the same line
-                # once per item and identifies none of them.
-                f"{RUNTIME_LABEL[runtime]} {get_item(name).kind} '{name}'",
-            )
-            for runtime in runtimes
-            for name in installing
-            # Only what was actually written. Excluding a path no file was installed at would leave
-            # a pattern in the user's git config for something that is never going to be there.
-            if get_item(name).runs_on(runtime)
-        ],
-        strategy,
-    )
+    _report_dependencies(selected, runtimes)
+    _apply_tracking(_write_items(runtimes, installing), strategy)

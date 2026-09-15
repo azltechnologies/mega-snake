@@ -5,13 +5,14 @@ This module contains utility functions for common operations.
 import json
 import os
 import re
+import shutil
 from typing import Optional, Tuple, Union
 import subprocess
 import platform
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, TypeVar
 import inspect
 import click
 from colorama import init, Fore, Back, Style
@@ -34,6 +35,18 @@ GITIGNORE_FILE = ".gitignore"
 
 REMOTE_PREFIX = "refs/remotes"
 LOCAL_PREFIX = "refs/heads"
+
+# Rejected answers allowed before a prompt gives up. Shared by every prompt helper below so the
+# three of them cannot drift into offering different numbers of attempts for the same kind of
+# question.
+MAX_PROMPT_TRIES: int = 3
+
+# Separator accepted by `get_validated_selection` between the entries of a multiple choice.
+SELECTION_SEPARATOR: str = ","
+
+# What a prompt's `parse` callback returns, carried through `_prompt_with_retries` to its caller so
+# each prompt helper keeps its real return type instead of collapsing to `Any`.
+ParsedT = TypeVar("ParsedT")
 
 # Initialize colopiprama
 init(autoreset=True)
@@ -143,6 +156,8 @@ def run_operation(
             indefinitely.
 
     Raises:
+        EnvironmentError: If the configured shell is not native to the platform and the fallback
+            shell that replaces it is not on the PATH. Raised before any attempt is made.
         subprocess.SubprocessError: If the command still fails — or still times out — after 3
             attempts.
 
@@ -153,15 +168,35 @@ def run_operation(
     ws_advice(
         f"Running operation: {description}; Command: {cwd}; Timeout: {timeout if timeout is not None else 'None'} secs"
     )
+    # Resolved once, before the retries: neither the configuration nor the platform can change between
+    # attempts, and the check below would otherwise search the PATH on every one of them.
+    configured: str = get_property("shell")
+    shell: str = configured
+    # The configured shell is used when it is native to the platform; otherwise each platform falls
+    # back to its own default, because the commands this module runs are written for that platform's
+    # shell family. The Darwin branch compares with `==`. It used to read `!=`, which made it catch
+    # every platform except macOS -- including Windows with PowerShell, the exact configuration
+    # `config_setup.ps1` exports -- so every Windows user ran their commands through `zsh`, and the
+    # Linux branch below it could never be reached.
+    if OS == "Windows" and shell not in ["powershell", "pwsh"]:
+        shell = "powershell"
+    elif OS == "Darwin" and shell not in ["bash", "zsh"]:
+        shell = "zsh"
+    elif OS == "Linux" and shell not in ["bash", "zsh"]:
+        shell = "bash"
+    # Only a substituted shell is checked. The configured one was already located on the PATH by
+    # `init_app_properties`; the fallback never was, and when it is missing -- `bash` in a minimal
+    # image such as Alpine -- `subprocess.run` raises a bare `FileNotFoundError` that, on Windows,
+    # does not even name the file. Raised before the first attempt: a missing binary does not appear
+    # on a retry.
+    if shell != configured and not shutil.which(shell):
+        raise EnvironmentError(
+            f"MEGA_SNAKE_SHELL is '{configured}', which is not native to {OS}, so mgsnake runs its commands "
+            f"through '{shell}' instead -- but '{shell}' is not installed or not on the PATH. Install "
+            f"'{shell}', or set MEGA_SNAKE_SHELL to a shell that is available on {OS}."
+        )
+    flag: str = "-Command" if shell in ["powershell", "pwsh"] else "-c"
     for attempt in range(1, num_retries + 1):
-        shell: str = get_property("shell")
-        if OS == "Windows" and shell not in ["powershell", "pwsh"]:
-            shell = "powershell"
-        elif OS != "Darwin" and shell not in ["bash", "zsh"]:
-            shell = "zsh"
-        elif OS == "Linux" and shell not in ["bash", "zsh"]:
-            shell = "bash"
-        flag: str = "-Command" if shell in ["powershell", "pwsh"] else "-c"
         try:
             ws_advice(f"Running: {cwd}")
             result = subprocess.run(
@@ -260,23 +295,14 @@ def get_typed_validated_input(p_prompt: str, warn: str, valid_values: list[str],
     )
 
 
-# Rejected answers allowed before a prompt gives up. Shared by every prompt helper below so the
-# three of them cannot drift into offering different numbers of attempts for the same kind of
-# question.
-MAX_PROMPT_TRIES: int = 3
-
-# Separator accepted by `get_validated_selection` between the entries of a multiple choice.
-SELECTION_SEPARATOR: str = ","
-
-
 def _prompt_with_retries(
     p_prompt: str,
-    parse: Callable[[str], Any],
+    parse: Callable[[str], ParsedT],
     *,
     instructions: str = "",
     warn: str,
     fail_message: str,
-) -> Any:
+) -> ParsedT:
     """Ask a question until ``parse`` accepts the answer, or the attempts run out.
 
     The retry loop lives here once. Every prompt helper in this module is the same loop wrapped
@@ -308,7 +334,9 @@ def _prompt_with_retries(
         KeyError: If the user fails to give an accepted answer within ``MAX_PROMPT_TRIES`` retries.
 
     Returns:
-        Any: Whatever ``parse`` returned for the accepted answer.
+        ParsedT: Whatever ``parse`` returned for the accepted answer, with its type preserved -- so
+            ``get_validated_input`` is checked as returning ``str`` and ``get_validated_selection`` as
+            returning ``list[str]``, rather than both collapsing to ``Any``.
     """
     tries: int = 0
     prompt: str = p_prompt

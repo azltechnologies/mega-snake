@@ -189,9 +189,7 @@ def render_index(commands: Iterable[IntrospectedCommand]) -> str:
         lines.extend([f"## {group_name}", "", "| Command | Aliases | Description |", "| --- | --- | --- |"])
         for command in grouped_commands[group_name]:
             aliases: str = ", ".join(f"`{alias}`" for alias in command.aliases) if command.aliases else "—"
-            lines.append(
-                f"| `{command.name}` | {aliases} | {_escape_markdown_cell(_to_single_cell_line(command.short_help))} |"
-            )
+            lines.append(f"| `{command.name}` | {aliases} | {_escape_markdown_cell(command.short_help)} |")
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 

@@ -636,18 +636,21 @@ other, and two tests enforce it (§6.3).
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `docs_gen/introspect.py`      | Walks the CLI and normalizes it into `IntrospectedCommand` dataclasses. Owns `normalize_help()` and `normalize_epilog()`. |
 | `docs_gen/markdown_writer.py` | Pure rendering: dataclasses → Markdown. Owns the table-escaping helpers and `write_or_check_document()`.                  |
-| `docs_gen/generate_docs.py`   | The `generate-docs` Click command, plus `render_command_reference()` — the one composition of "walk the CLI" then "render it", shared with `install-agent-items`. |
+| `docs_gen/generate_docs.py`   | The `generate-docs` Click command, plus `introspected_commands()` — the single walk of the CLI every generated document starts from. |
 | `docs_gen/install_agent_items.py` | The `install-agent-items` Click command: item/target/tracking resolution, state reporting, writing, git tracking.     |
 | `docs_gen/item_registry.py`   | The model: `Item`, the on-disk layouts, path resolution, the renderers and the dependency closure. Never changes when an item is added. |
 | `docs_gen/item_catalog.py`    | The content: the `ITEMS` tuple and the prose that belongs to it. This is the file adding an item touches.                 |
 | `docs_gen/man_page.py`        | The `man` Click command: alias resolution, terminal rendering, paging.                                                    |
 | `docs_gen/module.py`          | The `CliGroup`, the `wrapper` (carrying `docs_group="Documentation"`) and `add_wrapper`.                                  |
 
-**There is exactly one renderer, and no command may grow a second one.** `generate-docs` and `install-agent-items`
-publish the identical document, so they share `render_command_reference()` outright; `man` needs to filter the
-command list first, so it composes `iter_introspected_commands()` with the same `render_markdown()` rather
-than reimplementing the rendering. A second pipeline would let two "generated" documents disagree, and a
-generated file that can drift buys nothing over a hand-written one.
+**There is exactly one renderer, and no command may grow a second one.** Every command that publishes
+the reference renders it with the same `render_markdown()`, from the same normalized command list:
+`generate-docs` and `install-agent-items` take that list from `introspected_commands()`, and `man`, which
+needs to filter it first, composes `iter_introspected_commands()` directly. A second pipeline would let two
+"generated" documents disagree, and a generated file that can drift buys nothing over a hand-written one.
+**Do not wrap that pair in a convenience function "for sharing"** unless it genuinely has more than one
+caller: `render_command_reference()` existed on that claim, was documented as the seam two commands
+shared, and by the time anyone checked it had exactly one.
 
 `generate-docs` is `@cli_metadata(flags={"no_init"})`: it needs no workspace, no git and no `MEGA_SNAKE_SHELL`, so it
 resolves the packaged fragments through `importlib.resources` and must never call `get_property()`. It imports the
@@ -700,10 +703,11 @@ single-command page is the same document with one entry, which is what keeps the
 
 #### `install-agent-items`
 
-Writes `SKILL.md` into the agent-skill directories (`.github/skills/mgsnake/` for GitHub Copilot,
-`.claude/skills/mgsnake/` for Claude, or both) so the _user's_ assistant can drive mgsnake inside the user's
-own project — which is what makes it user-facing despite documenting mgsnake (§1). Also `no_init`, and its
-body renders through `render_command_reference()` so it cannot diverge from `COMMANDS.md`.
+Installs the agent items mgsnake ships — skills and agents, for GitHub Copilot, Claude, or both — so the
+_user's_ assistant can drive mgsnake inside the user's own project, which is what makes it user-facing
+despite documenting mgsnake (§1). Also `no_init`. The CLI skill's reference is rendered by the same
+`render_markdown()` as `COMMANDS.md`, from the same `introspected_commands()` walk, so the two cannot
+diverge.
 
 **It writes two files, and the split is the whole design.** Both runtimes load a skill's body
 eagerly the moment the skill triggers, and both are built for progressive disclosure. So `SKILL.md`
@@ -718,7 +722,7 @@ Three rules hold that shape together, and breaking any one of them silently undo
   reference disagree about which commands exist — the one failure a generated document must not have.
   This is not an exception to "exactly one renderer": the index is a different **document**, not a
   second rendering of the reference.
-- **`--check` covers every file, not just `SKILL.md`.** `_skill_files()` returns the whole
+- **`--check` covers every file, not just `SKILL.md`.** `Item.files()` returns the whole
   `{name: content}` mapping precisely so the write path and the validation iterate the same set; the
   reference half is the larger one and the likelier to go stale, and checking only the index would
   report a current skill while the document it points at described commands that no longer exist.
@@ -729,7 +733,7 @@ Three rules hold that shape together, and breaking any one of them silently undo
 
 Four more properties a reader will otherwise misjudge:
 
-- **The YAML frontmatter is what makes the file a skill.** `_skill_document()` prepends `name` and
+- **The YAML frontmatter is what makes the file an item.** `_frontmatter()` prepends `name` and
   `description`; a `SKILL.md` opening with a bare Markdown heading is not discovered by either
   runtime, so the command would write a file that achieves nothing. The same pair serves both
   targets, which is why one rendered document still feeds every directory.
@@ -737,14 +741,14 @@ Four more properties a reader will otherwise misjudge:
   `SKILL.md` files that are neither excluded nor gitignored whenever the second prompt exhausts its retries.
   Keep the order; two tests pin that nothing survives an abandoned prompt.
 - **Every prompt has a flag that answers it, and that is what makes the command scriptable.**
-  `--skill`, `--target` and `--tracking` each replace one question; a run supplying all three asks
+  `--item`, `--target` and `--tracking` each replace one question; a run supplying all three asks
   nothing. Only what is missing is prompted for. This is not a convenience: while the write path was
   unconditionally interactive, a bare `mgsnake install-agent-items` in a hook blocked on `input()`, and
   under CI it raised `EOFError` — unmapped in `ERROR_CODES`, so exit **100** with a traceback
   blaming mgsnake for a perfectly legitimate invocation. Keep every future question flag-answerable.
-- **Every skill is always offered, annotated with its state.** `skill_state` classifies a skill in a
-  root as absent, current or stale, and a skill is current only when *every* file it owns is. Hiding
-  installed skills would remove the only path to an update: the run would report "everything is
+- **Every offered item is always listed, annotated with its state.** `item_state` classifies an item in
+  a runtime as absent, current or stale, and an item is current only when *every* file it owns is. Hiding
+  installed items would remove the only path to an update: the run would report "everything is
   installed" and leave a stale file behind with a successful exit — the same silent-staleness defect
   §3.9 describes for a cached Jira field id.
 - **The selection is all-or-nothing.** `get_validated_selection` (§4.3) rejects the whole answer when
@@ -758,7 +762,10 @@ Four more properties a reader will otherwise misjudge:
   not "skill files exist", so it passes on a checkout that has none — which is the accepted behaviour, stated
   in the fragment, not a gap waiting to be closed. It compares the frontmatter like any other line, and each
   file independently, so one present file is validated even when its sibling is missing. It is also the one
-  mode that never prompts, which is what a CI step runs.
+  mode that never prompts, which is what a CI step runs. Because it always covers every item for every
+  runtime, it **refuses** `--item`, `--target` and `--tracking` rather than ignoring them — the same choice
+  `diff-tree` makes for its impossible combination (§3.2): an option accepted and silently not honoured
+  reads as a result the command never produced.
 - **An item is a skill or an agent, and the kind decides its shape on disk, not just its folder.**
   `ITEM_LAYOUT` is the only place that knows a skill owns a directory while an agent is a single
   file — and that the file is `<name>.agent.md` for Copilot but `<name>.md` for Claude. That
@@ -791,12 +798,17 @@ Four more properties a reader will otherwise misjudge:
   dropped: a partial install warns (`both` means "wherever it fits"), an explicitly named item that
   fits nowhere is a `ClickException` (installing zero files and exiting 0 would read as success),
   and a *dependency* that fits nowhere warns instead — refusing there would block an install the
-  user did ask for because of a component they never named. The same filter runs in `_write_items`,
-  `_check_existing_files` and the tracking targets, so no pattern is ever added for a file that was
-  not installed, and `_describe_states` iterates `item.runtimes` alone — reporting "not installed:
-  GitHub Copilot" for an item that will never go there is a lie the user cannot act on.
+  user did ask for because of a component they never named. It runs **before** `_report_dependencies`,
+  which in turn announces only additions that fit a chosen runtime, so a run never prints "Also
+  installing" for something it then skips or refuses. **What git is told about is what was written,
+  by construction:** `_write_items` returns one tracking target per (runtime, item) it actually wrote —
+  the directory for a skill, the file for an agent, carrying `own_directory` from the layout — and
+  the command passes exactly that to `_apply_tracking`. Never rebuild that set with a second filter;
+  two derivations of the same set agree only for as long as someone keeps them in step. `_describe_states`
+  iterates `item.runtimes` alone — reporting "not installed: GitHub Copilot" for an item that will
+  never go there is a lie the user cannot act on.
 - **A hidden item is not offered, but stays addressable.** `selectable_names()` drives the
-  interactive list, `item_names()` drives the `--skill` choices, and the two differ by exactly the
+  interactive list, `item_names()` drives the `--item` choices, and the two differ by exactly the
   `hidden` flag. Both halves are load-bearing: hiding a bundled component stops it being installed
   alone by accident, and keeping it addressable is what leaves it an update path that does not mean
   reinstalling its parent.
@@ -816,7 +828,8 @@ asked to untrack stay tracked with no error at all — while the idempotency reg
 appends a duplicate line on every re-run. This applies to **any** path this project writes into an
 ignore-pattern file, not just this command. `_tracking_entries()` exists as a separate function so the rule
 can be tested against a `PureWindowsPath`: on Linux `str()` and `as_posix()` agree, so nothing else
-discriminates.
+discriminates. The trailing slash is decided by the target's `is_directory` flag, never by the shape of the
+path: a suffix check reads a dotted directory name (`mgsnake.v2`) as a file.
 
 #### Document structure (heading levels)
 
@@ -1171,6 +1184,24 @@ result = run_operation(
 if result.returncode != 0:
     # handle error...
 ```
+
+**Which shell runs the command is a per-platform contract.** The configured `MEGA_SNAKE_SHELL` is kept
+when it is native to the platform; anything else falls back to that platform's default — PowerShell on
+Windows, zsh on macOS, bash on Linux — because the commands are written for that platform's shell
+family. `SHELL_RESOLUTION` in `src/tests/util/test_util.py` spells out all twelve pairs and is asserted
+row by row, with a second test forcing a row per platform for any shell later added to `SHELL_OPT`.
+**Keep it a full matrix.** The cascade once compared `OS != "Darwin"` where it meant `==`, which sent
+every Windows user — `config_setup.ps1` exports `powershell` — through `zsh`, while every row a Linux or
+macOS developer runs stayed correct. A sampled test cannot see that; only the rows nobody runs locally
+could, and the three affected lines had sat uncovered under a passing 95% gate.
+
+**A substituted shell is verified before the first attempt; the configured one is not.** The shell is
+resolved once, outside the retry loop. `init_app_properties` has already located the configured shell on
+the PATH, but a platform fallback was never checked, and when it is missing (`bash` in a minimal image
+such as Alpine) `subprocess.run` raises a bare `FileNotFoundError` that on Windows does not even name the
+file. `run_operation` therefore raises `EnvironmentError` (exit 112) naming the configured shell, the
+platform and the missing fallback, without starting a process — a binary that is not installed does not
+appear on a retry.
 
 **Shared helpers — always reuse these, never reimplement them:**
 
@@ -1919,7 +1950,8 @@ it (§1): their audience is the mgsnake user, so they must **not** be swept into
 for a normal invocation — registered only when `mgsnake` runs from a source checkout of itself, or
 exposed under an explicitly internal group. `docs_gen` was deliberately kept self-contained so the
 move stays mechanical: nothing outside it imports its internals except `__main__`'s registration,
-and `render_command_reference()` is already the public seam the other two commands share. If the
+and `introspected_commands()` plus `render_markdown()` are already the seam every documentation
+command renders through. If the
 "export the reference to a file" half turns out to be worth keeping for users, it survives as an
 option on `man` rather than as a second command.
 

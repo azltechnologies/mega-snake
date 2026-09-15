@@ -543,12 +543,8 @@ Installs the agent assets mgsnake ships - skills into .github/skills/<name>/ or 
 | `--item [mgsnake\|jira-continue\|jira-progress-comment\|create-progress-folder\|create-progress-file\|comment-killer-spotter\|comment-killer-playermaker\|comment-killer-hitman\|comment-killer-kingpin]` | Install this item instead of asking. Repeat the option to install several. Items required by the ones named are installed too, and reported. Accepts bundled items that the interactive list does not offer, so one can be refreshed without reinstalling what bundles it. |
 | `--target [c\|l\|b]` | Where to install, instead of asking: 'c' for GitHub Copilot, 'l' for Claude, 'b' for both. |
 | `--tracking [e\|g\|v]` | How to track the files in git, instead of asking: 'e' excludes them in .git/info/exclude, 'g' adds them to .gitignore, 'v' leaves them versioned. |
-| `--check` | Render in memory, compare with every installed file on disk, and exit with an error when any is stale. Never prompts and never writes. |
+| `--check` | Render in memory, compare with every installed file on disk, and exit with an error when any is stale. Never prompts and never writes. It always checks every item for every assistant, so it cannot be combined with --item, --target or --tracking. |
 | `-h, --help` | Show this message and exit. |
-
-Notes:
-
-Re-running is idempotent: an item already present is rewritten with the current content, which is how an installation is brought up to date after upgrading mgsnake.
 
 Agent items let AI agent runtimes (GitHub Copilot, Claude) drive `mgsnake` inside your own project.
 Each item is a Markdown document the runtime discovers by reading the YAML frontmatter at its top.

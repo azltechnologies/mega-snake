@@ -699,3 +699,36 @@ def test_a_narrowed_item_reports_the_runtime_it_cannot_run_on() -> None:
     assert built.runs_on(RUNTIME_CLAUDE) is True
     assert built.runs_on(RUNTIME_COPILOT) is False
     assert built.portable is False
+
+
+# ---------------------------------------------------------------------------
+# Hashability of the frozen model
+# ---------------------------------------------------------------------------
+
+
+def test_every_catalogue_item_and_layout_is_hashable() -> None:
+    """`frozen=True` advertises hashable instances, and it must hold for every one that ships.
+
+    A dict field made `hash()` raise for all of them, so the first `set(ITEMS)` or `{item: ...}`
+    anyone wrote crashed. Iterated over the real catalogue and layouts rather than a sample, since a
+    single new field of an unhashable type brings the failure back for every instance at once.
+    """
+    for item in ITEMS:
+        hash(item)
+    for layout in ITEM_LAYOUT.values():
+        hash(layout)
+
+    assert len(set(ITEMS)) == len(ITEMS), "distinct catalogue items collapsed into one set member"
+
+
+def test_items_that_differ_only_in_their_header_are_still_unequal() -> None:
+    """Leaving the header out of the hash must not leave it out of equality.
+
+    `hash=False` is only safe because equal items still hash equally; dropping the field from
+    comparison as well would make two items with different headers interchangeable in a set.
+    """
+    explore = Item(name=ALPHA, summary="s", description="d", render=lambda item: {}, frontmatter={"agent": "Explore"})
+    plan = Item(name=ALPHA, summary="s", description="d", render=explore.render, frontmatter={"agent": "Plan"})
+
+    assert explore != plan, "two items with different headers compared equal"
+    assert len({explore, plan}) == 2, "two items with different headers collapsed into one set member"
