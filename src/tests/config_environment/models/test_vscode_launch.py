@@ -16,6 +16,11 @@ from mega_snake.config_environment.models.project_stack import (
 from mega_snake.config_environment.models.vscode_launch import VscodeLaunch, LAUNCH_VERSION_QUERY
 
 VERSION_TEST = "1.2.3"
+
+# What the patched `_logger_args` returns in `test_to_dict`. Deliberately non-empty: an empty stub is
+# what an implementation that never calls the builder would also produce, so it could not tell a
+# composed `args` from one that forgot the redirect.
+LOGGER_ARGS_STUB: list[str] = [">", "'stub.log'", "2>&1"]
 LAUNCH_TEST_SETTING = "configtests"
 LAUNCH_TEST_QUERY = f'.launch.["{LAUNCH_TEST_SETTING}"]'
 
@@ -90,7 +95,9 @@ def test_to_dict_emits_the_redirect_once_however_often_it_is_called() -> None:
     the two calls merely both "hold".
     """
     working_path = "path/to/working"
-    for member in [t for t in VscodeLaunch if t.watcher]:
+    watched = [t for t in VscodeLaunch if t.watcher]
+    assert watched, "no launch configuration has a watcher, so this test walks nothing"
+    for member in watched:
         args_before = list(member.args)
         mock = MagicMock()
         mock.return_value = "mocked log path"
@@ -117,8 +124,7 @@ def test_to_dict() -> None:
     fake_launch.task_type = "fake"
     list_launch.append(fake_launch)
     for member in list_launch:
-        mock = MagicMock()
-        mock.return_value = []
+        mock = MagicMock(return_value=list(LOGGER_ARGS_STUB))
         # `fake_launch` is a bare SimpleNamespace, so it has no `_logger_args` of its own to
         # save and restore -- `create=True` lets patch.object add it for the block and delete it
         # again on exit, instead of leaving it stuck on the object for later tests to trip over.
@@ -130,11 +136,12 @@ def test_to_dict() -> None:
         assert result["request"] == member.request
         if member.env:
             assert result["env"] == member.env
-        if member.args:
-            if member.task_type == "debugpy":
-                assert result["args"] == " ".join(member.args)
-            else:
-                assert result["args"] == member.args
+        # `args` is composed: the member's own args followed by the redirect, never `member.args` alone
+        expected_args: list[str] = [*member.args, *LOGGER_ARGS_STUB]
+        if member.task_type == "debugpy":
+            assert result["args"] == " ".join(expected_args), f"{member.name} did not compose its args"
+        else:
+            assert result["args"] == expected_args, f"{member.name} did not compose its args"
         for key, value in member.extra_args.items():
             assert result[key] == value
         # the stack only decides whether the configuration is written, it is not part of it

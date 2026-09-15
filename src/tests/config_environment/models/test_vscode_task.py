@@ -8,6 +8,11 @@ from mega_snake.config_environment.models.vscode_task import VscodeTask, TASKS_V
 
 VERSION_TEST = "1.2.3"
 
+# What the patched `_logger_args` returns in `test_to_dict`. Deliberately non-empty: an empty stub is
+# what an implementation that never calls the builder would also produce, so it could not tell a
+# composed `args` from one that forgot the redirect.
+LOGGER_ARGS_STUB: list[str] = [">", "'stub.log'", "2>&1"]
+
 
 @pytest.fixture(name="jq")
 def fixture_jq() -> Generator[MagicMock, None, None]:
@@ -84,7 +89,9 @@ def test_to_dict_emits_the_redirect_once_however_often_it_is_called() -> None:
     return identical dicts, not that the two calls merely both "hold".
     """
     working_path = "path/to/working"
-    for member in [t for t in VscodeTask if t.watcher]:
+    watched = [t for t in VscodeTask if t.watcher]
+    assert watched, "no task has a watcher, so this test walks nothing"
+    for member in watched:
         args_before = list(member.args)
         mock = MagicMock()
         mock.return_value = "mocked log path"
@@ -102,8 +109,7 @@ def test_to_dict() -> None:
     """Test to_dict"""
     param = "path/to/working"
     for member in VscodeTask:
-        mock = MagicMock()
-        mock.return_value = []
+        mock = MagicMock(return_value=list(LOGGER_ARGS_STUB))
         with patch.object(member, "_logger_args", mock):
             result = member.to_dict(param)
             mock.assert_called_once_with(param)
@@ -115,8 +121,8 @@ def test_to_dict() -> None:
             assert result["type"] == member.task_type
         if member.command:
             assert result["command"] == member.command
-        if member.args:
-            assert result["args"] == member.args
+        # `args` is composed: the member's own args followed by the redirect, never `member.args` alone
+        assert result["args"] == [*member.args, *LOGGER_ARGS_STUB], f"{member.name} did not compose its args"
         for key, value in member.extra_args.items():
             assert result[key] == value
         # the stack only decides whether the task is written, it is not part of the task definition
