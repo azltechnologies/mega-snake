@@ -794,7 +794,6 @@ def test_each_item_carries_a_usable_summary_and_description(name: str) -> None:
 
     assert item.summary.strip(), f"{name} has no summary for the selection list"
     assert item.description.strip(), f"{name} has no frontmatter description"
-    assert '"' not in item.description, f"{name} would break its quoted YAML scalar"
 
 
 # ---------------------------------------------------------------------------

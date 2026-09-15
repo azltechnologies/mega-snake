@@ -247,7 +247,9 @@ def get_typed_validated_input(p_prompt: str, warn: str, valid_values: list[str],
             str: The accepted value, exactly as the user typed it.
         """
         if answer not in valid_values:
-            raise ValueError(answer)
+            # No message on purpose: `warn` already says what is expected, and a message would be
+            # prepended to it, changing the warning this helper has always printed.
+            raise ValueError()
         return answer
 
     return _prompt_with_retries(
@@ -286,6 +288,13 @@ def _prompt_with_retries(
     helper can validate, normalize and convert in one place rather than validating here and
     converting at the call site.
 
+    **The rejection reason reaches the user.** When ``parse`` raises ``ValueError`` *with* a message,
+    that message is shown as the first line of the warning, above ``warn``. The message is the only
+    place that knows *what* was wrong with this particular answer — which entry was not recognised —
+    while ``warn`` can only say what a valid answer looks like. Discarding it left a user who typed
+    one wrong name among several to diff the answer against the full list by eye. A ``ValueError``
+    raised without a message keeps the warning exactly as ``warn`` alone.
+
     Parameters:
         p_prompt: The question shown to the user.
         parse: Converts a raw answer into the accepted value, raising ``ValueError`` to reject it.
@@ -308,12 +317,13 @@ def _prompt_with_retries(
         raw: str = input(f"\n{prompt}\n{suffix}") if tries == 0 else input(f"\n{prompt}\n")
         try:
             return parse(raw)
-        except ValueError:
+        except ValueError as rejection:
             prompt = (
                 f"{Back.BLACK}{Fore.YELLOW}{p_prompt}\ttry again\t—\t"
                 f"{Fore.RED}{MAX_PROMPT_TRIES - tries} attempts left\n{suffix}{Style.RESET_ALL}"
             )
-            ws_warning(warn)
+            reason: str = str(rejection)
+            ws_warning(f"{reason}\n{warn}" if reason else warn)
             tries += 1
             if tries > MAX_PROMPT_TRIES:
                 raise KeyError(fail_message) from None
@@ -361,12 +371,18 @@ def get_validated_selection(p_prompt: str, valid_values: list[str], all_key: str
         """
         entries: list[str] = [item.strip().lower() for item in answer.split(SELECTION_SEPARATOR) if item.strip()]
         if not entries:
-            raise ValueError(answer)
-        if all_key.lower() in entries:
-            return list(allowed)
-        unknown: list[str] = [entry for entry in entries if entry not in allowed]
+            raise ValueError("No entry was given.")
+        # Validated before the `all` shortcut, never after it. Checking `all` first returned the
+        # whole catalogue for `all, typo`, silently accepting the typo -- the one outcome the
+        # all-or-nothing rule above exists to rule out.
+        all_answer: str = all_key.lower()
+        unknown: list[str] = list(
+            dict.fromkeys(entry for entry in entries if entry not in allowed and entry != all_answer)
+        )
         if unknown:
-            raise ValueError(SELECTION_SEPARATOR.join(unknown))
+            raise ValueError(f"Not recognised: {', '.join(repr(entry) for entry in unknown)}.")
+        if all_answer in entries:
+            return list(allowed)
         return list(dict.fromkeys(entries))
 
     return _prompt_with_retries(
@@ -426,7 +442,8 @@ def get_validated_input(p_prompt: str, valid_values: list[str]) -> str:
         """
         chosen: str = answer.lower()
         if chosen not in allowed:
-            raise ValueError(answer)
+            # No message on purpose: the warning already lists every accepted value.
+            raise ValueError()
         return chosen
 
     return _prompt_with_retries(
@@ -476,15 +493,27 @@ def _append_missing_entries(
         return
     content: str = ""
     if os.path.exists(target):
-        with open(target, "r", encoding="utf-8") as file:
+        # `newline=""` on both handles, so Python translates no line ending in either direction. The
+        # default text mode turned every `\r\n` into `\n` on the way in and wrote them back that way,
+        # so adding one pattern rewrote every line of a CRLF file -- and `.gitignore` is committed,
+        # which made a one-line addition a whole-file diff and a merge conflict for the team.
+        with open(target, "r", encoding="utf-8", newline="") as file:
             content = file.read()
+    # New lines follow the convention the file already uses, so it never ends up with mixed endings.
+    line_ending: str = "\r\n" if "\r\n" in content else "\n"
     missing: list[Tuple[str, str]] = []
+    # What the file will contain once the entries accepted so far are appended. Matching against this
+    # rather than against `content` alone is what catches two entries of the same batch that name the
+    # same pattern (`foo/` and `foo`): both were missing from the original text, so both used to be
+    # appended. It is only a lookup view -- the file itself is still untouched until the write below.
+    searched: str = content
     for entry, description in entries:
         regex = re.compile(rf"^\s*{re.escape(entry.rstrip('/'))}/?\s*$", re.MULTILINE)
-        if regex.search(content):
+        if regex.search(searched):
             ws_advice(present_message.format(description=description, target=target))
             continue
         missing.append((entry, description))
+        searched += f"\n{entry}\n"
     # Deciding what is missing before touching the text is what makes a no-op run a true no-op: the
     # file is not reopened for writing at all, so its bytes and its mtime are left alone.
     if not missing:
@@ -493,14 +522,14 @@ def _append_missing_entries(
     # new entry into the existing last pattern instead of adding one. Done here rather than up front
     # so a run that adds nothing does not rewrite the file just to normalize its final newline.
     if content and not content.endswith("\n"):
-        content += "\n"
+        content += line_ending
     for entry, description in missing:
-        content += f"{entry}\n"
+        content += f"{entry}{line_ending}"
         ws_success(added_message.format(description=description, target=target))
     parent: str = os.path.dirname(target)
     if parent:
         os.makedirs(parent, exist_ok=True)
-    with open(target, "w", encoding="utf-8") as file:
+    with open(target, "w", encoding="utf-8", newline="") as file:
         file.write(content)
 
 

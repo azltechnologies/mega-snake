@@ -731,9 +731,8 @@ Four more properties a reader will otherwise misjudge:
 
 - **The YAML frontmatter is what makes the file a skill.** `_skill_document()` prepends `name` and
   `description`; a `SKILL.md` opening with a bare Markdown heading is not discovered by either
-  runtime, so the command would write a file that achieves nothing. The description is
-  emitted as a **quoted** scalar — a plain YAML scalar may not contain `": "`, which that prose can easily
-  reacquire. The same pair serves both targets, which is why one rendered document still feeds every directory.
+  runtime, so the command would write a file that achieves nothing. The same pair serves both
+  targets, which is why one rendered document still feeds every directory.
 - **Both answers are collected before the first byte is written.** Prompting after writing would strand
   `SKILL.md` files that are neither excluded nor gitignored whenever the second prompt exhausts its retries.
   Keep the order; two tests pin that nothing survives an abandoned prompt.
@@ -749,8 +748,12 @@ Four more properties a reader will otherwise misjudge:
   installed" and leave a stale file behind with a successful exit — the same silent-staleness defect
   §3.9 describes for a cached Jira field id.
 - **The selection is all-or-nothing.** `get_validated_selection` (§4.3) rejects the whole answer when
-  one entry is unknown, and says nothing was applied. Keeping the recognised half would install a
-  selection the user never made and print success for it.
+  one entry is unknown — **`all` included**: unknown entries are checked before the `all` shortcut, so
+  `all, typo` is rejected rather than read as "everything". Keeping the recognised half would install a
+  selection the user never made and print success for it. The warning's first line names exactly the
+  unrecognised entries: `parse` raises `ValueError` with that reason and `_prompt_with_retries` shows it
+  above the generic guidance, so a user with one typo among several names does not have to diff their
+  answer against the full list by eye.
 - **`--check` only validates files that already exist.** Its purpose is "existing skill files are not stale",
   not "skill files exist", so it passes on a checkout that has none — which is the accepted behaviour, stated
   in the fragment, not a gap waiting to be closed. It compares the frontmatter like any other line, and each
@@ -769,9 +772,19 @@ Four more properties a reader will otherwise misjudge:
   declaration order. Those extra fields (`agent`, `context`, `arguments`, `allowed-tools`,
   `user-invocable` …) are what make an item *behave* as written: drop them and a skill that was a
   fork of the Explore agent installs as an ordinary skill, and one that took arguments silently
-  stops receiving them — registered, accepted, and wrong. `_yaml_value` quotes only what a plain
-  scalar would break (`": "`, a leading indicator, a reserved word like `no`); quoting everything
-  would rewrite every header on the next run, quoting nothing changes types and truncates values.
+  stops receiving them — registered, accepted, and wrong.
+- **The header is serialized by PyYAML, never by hand.** Quoting, escaping, and whether `2024`,
+  `no` or `Read[all]` survive as the strings they were declared as are rules of the YAML
+  specification; a hand-written emitter was tried and every rule it missed was a header that
+  installed cleanly and parsed into something else. Three settings in `_frontmatter` carry the
+  output **shape**, which matters as much as validity because installed files are compared line by
+  line: `sort_keys=False` (the runtimes read `name` and `description` first), a `HeaderDumper` that
+  pins the mapping to block style and every list *and tuple* to one inline `[a, b]` line
+  (`default_flow_style=None` turns a scalars-only header into a one-line `{...}`), and an unbounded
+  `width` so a long description is never folded. PyYAML is imported lazily there. Frontmatter
+  tests go through a parser, never through literals of the emitted text: a literal only proves
+  the emitter agrees with whoever wrote it, which is how the hand-written version shipped its
+  bugs at full coverage.
 - **An item declares which runtimes it fits, and an unfittable one is never written.** Those extra
   header fields are runtime-specific vocabulary, so an item using them narrows `runtimes`.
   `_resolve_compatibility` then decides by **what the user asked for**, never by how much was
@@ -1176,7 +1189,7 @@ to write at all. They differ only in the target file and the wording of three me
 when the two were separate copies, every fix to the matching or the newline handling had to be applied twice,
 and the descriptions of what "idempotent" meant had already started to drift apart.
 
-Two behaviours of that shared implementation are contractual, not incidental:
+Four behaviours of that shared implementation are contractual, not incidental:
 
 - **A run that adds nothing writes nothing.** The missing entries are computed before the text is touched, so
   the file is not reopened at all — its bytes and its mtime survive. Appending the separator newline up front
@@ -1184,6 +1197,13 @@ Two behaviours of that shared implementation are contractual, not incidental:
 - **A file whose last line has no newline gets a separator first.** Otherwise the first new entry is merged
   onto the existing last pattern, producing a line that matches nothing and silently loses two exclusions.
   `.gitignore` files edited by hand routinely end mid-line — this repository's own does.
+- **No line ending is ever translated.** Both handles open with `newline=""`, and the lines added follow the
+  convention the file already uses. Default text mode rewrote every `\r\n` as `\n` on the way through, so
+  adding one pattern to a CRLF `.gitignore` — a committed file — produced a whole-file diff and a merge
+  conflict. The tests compare **bytes**: a text comparison translates both sides and passes either way.
+- **A batch is deduplicated against itself, not just against the file.** Each entry accepted for writing
+  joins the text the next entry is matched against, so `foo/` and `foo` in one call are written once.
+  That lookup view is separate from the file, which keeps the no-op guarantee above intact.
 
 Entries handed to either helper must use forward slashes (`Path.as_posix()`), for the reason spelled out under
 `install-agent-items` in §3.7: git reads a backslash in an ignore pattern as an escape.
@@ -1420,11 +1440,28 @@ would remove the stored token entirely and is the natural upgrade.)
 
 7.  **Avoid duplicated code**: Each fix, implementation or modification in the codebase must use the existing utilities, helpers, and patterns. Additionally, If you find yourself copying and pasting code, consider refactoring it into a shared utility function or class.
 
-    **Prefer existing third-party dependencies over adding new ones.** Before introducing a new library, check
-    whether any dependency already listed in `pyproject.toml` can do the job. Adding a new package incurs
-    maintenance, security, and version-compatibility costs for every future contributor; only do it when the
-    existing set genuinely cannot cover the need. The same rule applies to standard-library modules: reach for
-    what is already imported in the module before pulling in something new.
+    **Prefer what already exists, but not at any cost.** Reach first for the utilities, helpers and
+    dependencies the project already has, and for what the module already imports. Something new is the
+    better path when it makes the change meaningfully shorter, simpler or more readable — as a rough bar,
+    around a quarter less code, or clearly easier to follow — and it is **always** the better path when the
+    alternative is hand-rolling an implementation of a published format or protocol (a YAML or TOML
+    serializer, a date parser, an HTTP retry policy). Those have specifications, and every rule of the
+    specification that a hand-written version misses is a bug shipped to users.
+
+    > **⚠️ New dependencies, utilities and helpers need the maintainer's approval first.** Concluding that
+    > something new is the better path is a *proposal*, never a decision. Stop and present it before
+    > writing it, covering:
+    >
+    > - **Why it is better** than what already exists, in concrete terms — what code goes away, what class
+    >   of bug stops being possible.
+    > - **The trade-offs**: runtime or dev dependency, how widely used and actively maintained it is, its
+    >   license and transitive dependencies, and its import cost — a dependency only some commands need is
+    >   imported lazily (§3.9).
+    > - **The impact of proceeding**: which files change, whether generated or installed output changes
+    >   shape, and what a user of an existing installation will notice.
+    >
+    > Then wait. Do not add the dependency, the utility or the helper, and do not write code that assumes
+    > it, until the maintainer says yes. Adding it and asking afterwards is not approval.
 
 8.  **Consistency**: We must use the same approach and design patterns consistently across the codebase. If a pattern is already established, follow it rather than introducing a new one. If you are writing a new implementation, make sure to check what development patterns are being used in the codebase beforehand, so you can use similar approaches in your new solution unless there is a strong reason to deviate.
 
@@ -2103,7 +2140,31 @@ has to match the new set exactly; `test_the_catalogue_is_exactly_what_is_documen
 cover fragment prose, so this is checked by reading it. Deleting this entry means the skill no longer
 tells the assistant to avoid a file, not that the sentence was softened.
 
-### 8.10 `add_logger_args` mutates the enum member instead of building a value (§3.1)
+### 8.10 PyYAML emits YAML 1.1, and the runtimes likely read YAML 1.2 (§3.7)
+
+**What.** `_frontmatter` decides quoting through PyYAML, which implements YAML 1.1. The two
+versions disagree on a few plain scalars. A string shaped like a 1.2-only number — `1e10`, `1E5`,
+`0o17` — is not a number to PyYAML, so it is emitted unquoted, and a 1.2 reader parses it back as a
+number. The opposite direction (`no`, `on`, `yes` as booleans) is safe: PyYAML quotes them, and a 1.2
+reader keeps the quotes as a string.
+
+**Where.** `src/mega_snake/docs_gen/item_registry.py`, `_frontmatter`.
+
+**Why it was left.** No field the catalogue ships, or plausibly will, looks like a 1.2 number: tool
+specs, model names, booleans and prose. Which YAML version the agent runtimes actually parse with
+was not confirmed either — Claude Code is a Node CLI, so 1.2 is likely but unverified. Fixing a gap
+nothing reaches, against a reader nobody checked, is not worth a second serializer.
+
+**Shape of the fix.** First confirm the parser each runtime uses. If it is 1.2 and a field ever
+needs such a value: `ruamel.yaml`, which implements 1.2 and was checked to quote `1e10` and `0o17`
+— but its safe dumper sorts keys, so it has to run in round-trip mode to keep `name` and
+`description` first, and that ordering must be verified before switching.
+
+**Verify.** Extend `test_frontmatter_values_parse_back_unchanged_and_with_their_type` with `1e10`
+and `0o17` against a **1.2** parser; today's round-trip uses PyYAML and cannot see this gap, which
+is the reason it is written down here instead of being covered by a test.
+
+### 8.11 `add_logger_args` mutates the enum member instead of building a value (§3.1)
 
 **What.** `VscodeTask.add_logger_args` and `VscodeLaunch.add_logger_args` do
 `self.args.extend(...)`, and `self` is an enum member — a process-wide singleton. The redirect is

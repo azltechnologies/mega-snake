@@ -270,13 +270,6 @@ def test_item_names_are_valid_identifiers() -> None:
         assert name.replace("-", "").isalnum(), f"{name!r} is not a slug"
 
 
-def test_skill_descriptions_stay_quotable() -> None:
-    """The description is emitted as a double-quoted YAML scalar, so it must not break one."""
-    for built in ITEMS:
-        assert '"' not in built.description, f"{built.name!r} has an unescaped quote in its description"
-        assert "\n" not in built.description, f"{built.name!r} has a newline in its description"
-
-
 def test_get_item_rejects_an_unknown_name() -> None:
     """An unregistered name is an error, never a silently empty skill."""
     with pytest.raises(KeyError):
@@ -500,7 +493,69 @@ def test_bundled_with_excludes_the_item_itself() -> None:
 # Frontmatter (layer A)
 # ---------------------------------------------------------------------------
 
-from mega_snake.docs_gen.item_registry import _frontmatter, _yaml_value  # noqa: E402
+import yaml  # noqa: E402
+
+from mega_snake.docs_gen.item_registry import _frontmatter  # noqa: E402
+
+
+def header_of(item: Item) -> dict[str, object]:
+    """Parse the frontmatter an item renders back into the mapping a YAML reader would see.
+
+    Every frontmatter assertion below goes through this rather than comparing emitted text with a
+    literal. A literal written next to the emitter only proves the emitter agrees with its author;
+    parsing the output is what proves a reader gets back the value that was declared.
+
+    Parameters:
+        item: The item whose header is parsed.
+
+    Raises:
+        AssertionError: If the rendered document does not open with a delimited header block.
+
+    Returns:
+        dict[str, object]: The parsed header, in document order.
+    """
+    document = _frontmatter(item, "BODY")
+    opening, header, rest = document.split("---\n", 2)
+    assert opening == "", f"{item.name}: the document does not start with a header delimiter"
+    assert rest == "\nBODY", f"{item.name}: the body does not follow the closing delimiter"
+    parsed = yaml.safe_load(header)
+    assert isinstance(parsed, dict), f"{item.name}: the header did not parse as a mapping"
+    return parsed
+
+
+def item_with(frontmatter: dict[str, object], *, description: str = "Does a thing.") -> Item:
+    """Build an item carrying the given extra header fields.
+
+    Parameters:
+        frontmatter: The extra fields under test, passed explicitly by every caller.
+        description: The frontmatter description.
+
+    Raises:
+        None
+
+    Returns:
+        Item: The built item.
+    """
+    return Item(name=ALPHA, summary="s", description=description, render=lambda item: {}, frontmatter=frontmatter)
+
+
+@pytest.mark.parametrize("name", [item.name for item in ITEMS])
+def test_every_catalogue_header_round_trips_through_a_yaml_parser(name: str) -> None:
+    """Every shipped item's header parses back to exactly what the item declares, in the same order.
+
+    Iterated over the whole catalogue because the property is structural: a header that fails to
+    parse, or parses into different values, installs cleanly and is then either never registered or
+    registered as something else. Both the values and the key order are compared, since the runtimes
+    read `name` and `description` first and a reordered header rewrites every installed file.
+    """
+    item = next(candidate for candidate in ITEMS if candidate.name == name)
+    expected: dict[str, object] = {"name": item.name, "description": item.description}
+    expected.update({key: list(value) if isinstance(value, tuple) else value for key, value in item.frontmatter.items()})
+
+    parsed = header_of(item)
+
+    assert parsed == expected, f"{name}: the header parses to {parsed!r}"
+    assert list(parsed) == list(expected), f"{name}: the header keys came back in a different order"
 
 
 def test_frontmatter_emits_the_declared_fields_after_name_and_description() -> None:
@@ -508,16 +563,11 @@ def test_frontmatter_emits_the_declared_fields_after_name_and_description() -> N
 
     Emitting only name and description installs a document the runtime happily registers and that
     then behaves nothing like the one that was authored -- a skill that was a fork of another agent
-    becomes an ordinary skill, and one that took arguments silently stops receiving them.
+    becomes an ordinary skill, and one that took arguments silently stops receiving them. The exact
+    lines are pinned too, because they are what already-installed files contain: a change in shape
+    would report every one of them as stale.
     """
-    built = spec(ALPHA, description="Does a thing.")
-    built = Item(
-        name=built.name,
-        summary=built.summary,
-        description=built.description,
-        render=built.render,
-        frontmatter={"agent": "Explore", "user-invocable": False, "arguments": ["contextfile"]},
-    )
+    built = item_with({"agent": "Explore", "user-invocable": False, "arguments": ["contextfile"]})
 
     lines = _frontmatter(built, "BODY").splitlines()
 
@@ -526,18 +576,10 @@ def test_frontmatter_emits_the_declared_fields_after_name_and_description() -> N
 
 
 def test_frontmatter_keeps_the_declared_order() -> None:
-    """Header order is the author's; reordering it would rewrite every file on the next run."""
-    built = Item(
-        name=ALPHA,
-        summary="s",
-        description="d",
-        render=lambda item: {},
-        frontmatter={"zeta": "1", "alpha": "2"},
-    )
+    """Header order is the author's; a serializer that sorts keys would rewrite every file."""
+    built = item_with({"zeta": "last-declared-first", "alpha": "first-declared-second"})
 
-    lines = _frontmatter(built, "BODY").splitlines()
-
-    assert lines[3:5] == ["zeta: 1", "alpha: 2"]
+    assert list(header_of(built)) == ["name", "description", "zeta", "alpha"]
 
 
 def test_frontmatter_omits_the_extra_block_when_there_is_none() -> None:
@@ -548,47 +590,87 @@ def test_frontmatter_omits_the_extra_block_when_there_is_none() -> None:
 
 
 @pytest.mark.parametrize(
-    ("value", "expected"),
+    ("label", "value"),
     [
-        ("plain text", "plain text"),
-        # A colon followed by a space ends a plain scalar early, truncating the value.
-        ("Explores the codebase: is it valid?", '"Explores the codebase: is it valid?"'),
-        # These parse as booleans rather than strings.
-        ("no", '"no"'),
-        ("true", '"true"'),
-        # A leading indicator changes the node type.
-        ("- dash", '"- dash"'),
-        ("*star", '"*star"'),
-        # Trailing space is dropped by a plain scalar.
-        ("padded ", '"padded "'),
-        # A comment marker truncates the rest of the line.
-        ("tail # comment", '"tail # comment"'),
-        # Real values from the items this exists for, which must NOT be quoted needlessly.
-        ("Bash(uv run pytest) Bash(ruff check:*)", "Bash(uv run pytest) Bash(ruff check:*)"),
-        ("fork", "fork"),
+        # A comma inside a sequence entry would split it into two entries if left unquoted.
+        ("comma inside a list entry", ["Bash(git log, git diff)", "Read"]),
+        # A bracket inside a sequence entry opens a nested collection and breaks the parse.
+        ("bracket inside a list entry", ["Read[all]"]),
+        # A colon followed by a space ends a plain scalar early.
+        ("colon and space", "Explores the codebase: is it valid?"),
+        # A string that looks like a year or a version parses back as a number if left plain.
+        ("year-like string", "2024"),
+        ("float-like string", "1.2"),
+        # Words YAML reads as booleans or null.
+        ("boolean-like word", "no"),
+        ("null-like word", "null"),
+        # Characters a plain scalar cannot carry at all.
+        ("tab", "a\tb"),
+        ("backslash and tab", "a\\\tb"),
+        ("control character", "a\x01b"),
+        ("double quote", 'say "hi": now'),
+        ("leading indicator", "- dash"),
+        ("comment marker", "tail # comment"),
+        ("trailing space", "padded "),
     ],
 )
-def test_yaml_value_quotes_only_what_a_plain_scalar_would_break(value: str, expected: str) -> None:
-    """Quoting everything would rewrite every header; quoting nothing changes types and truncates."""
-    assert _yaml_value(value) == expected
+def test_frontmatter_values_parse_back_unchanged_and_with_their_type(label: str, value: object) -> None:
+    """Each hazard a hand-written emitter used to mishandle survives as the exact declared value.
+
+    Compared with the declared value *and* its type, and never with a literal of the emitted text:
+    `"2024"` parsing back as the integer 2024 is equal-looking and wrong, which is precisely the
+    failure a text comparison written by the emitter's author does not catch.
+    """
+    parsed = header_of(item_with({"field": value}))
+
+    assert parsed["field"] == value, f"{label}: parsed back as {parsed['field']!r}"
+    assert type(parsed["field"]) is type(value), f"{label}: came back as {type(parsed['field']).__name__}"
 
 
-def test_yaml_value_renders_booleans_and_numbers_unquoted() -> None:
-    """`user-invocable: false` must be a boolean, not the string "False"."""
-    assert _yaml_value(False) == "false"
-    assert _yaml_value(True) == "true"
-    assert _yaml_value(3) == "3"
+def test_frontmatter_keeps_real_booleans_and_numbers_as_scalars_of_their_type() -> None:
+    """The inverse of the case above: a real bool or int must not turn into a quoted string."""
+    parsed = header_of(item_with({"user-invocable": False, "retries": 3, "label": "3"}))
+
+    assert parsed["user-invocable"] is False
+    assert parsed["retries"] == 3 and isinstance(parsed["retries"], int)
+    assert parsed["label"] == "3" and isinstance(parsed["label"], str)
+    assert parsed["retries"] != parsed["label"], "an int and a numeric-looking string became indistinguishable"
 
 
-def test_yaml_value_renders_a_list_as_a_flow_sequence() -> None:
-    """Argument and tool lists are short and belong on one line."""
-    assert _yaml_value(["contextfile", "planfile"]) == "[contextfile, planfile]"
-    assert _yaml_value(("Read", "Write")) == "[Read, Write]"
+def test_frontmatter_renders_a_tuple_exactly_like_a_list() -> None:
+    """A tuple must produce the same inline line as a list, not just the same parsed value.
+
+    Parsing alone cannot tell the two apart: a tuple emitted as a block (`tools:` then `- Read`)
+    reads back identically, so a round-trip assertion stays green while the header changes shape.
+    The emitted line is compared too, because shape is what installed files are diffed on.
+    """
+    tuple_lines = _frontmatter(item_with({"tools": ("Read", "Write")}), "BODY").splitlines()
+    list_lines = _frontmatter(item_with({"tools": ["Read", "Write"]}), "BODY").splitlines()
+
+    assert tuple_lines[3] == "tools: [Read, Write]", f"the tuple rendered as {tuple_lines[3:6]!r}"
+    assert tuple_lines == list_lines, "a tuple and a list with the same values rendered differently"
+    assert header_of(item_with({"tools": ("Read", "Write")}))["tools"] == ["Read", "Write"]
 
 
-def test_yaml_value_escapes_a_quote_inside_a_quoted_scalar() -> None:
-    """A raw double quote inside a quoted scalar would end it early."""
-    assert _yaml_value('say "hi": now') == '"say \\"hi\\": now"'
+def test_frontmatter_never_folds_a_long_value_onto_a_second_line() -> None:
+    """A folded value is valid YAML but reflows on unrelated edits, marking installed files stale."""
+    description = " ".join(["word"] * 200)
+
+    lines = _frontmatter(item_with({}, description=description), "BODY").splitlines()
+
+    assert lines[2] == f"description: {description}", "the description was folded across lines"
+    assert lines[3] == "---"
+
+
+@pytest.mark.parametrize("reserved", ["name", "description"])
+def test_frontmatter_refuses_an_extra_field_that_redeclares_a_reserved_key(reserved: str) -> None:
+    """Redeclaring `name` or `description` is a catalogue bug, reported rather than silently applied.
+
+    Applied silently, the header would name the document something other than the key the registry,
+    the install directory and the dependency graph all use for it.
+    """
+    with pytest.raises(InternalStateError, match=rf"Item '{ALPHA}' redeclares \['{reserved}'\]"):
+        _frontmatter(item_with({reserved: "other"}), "BODY")
 
 
 # ---------------------------------------------------------------------------

@@ -30,6 +30,11 @@ dependencies = [
     "types-colorama==0.4.15.20260508",
     "virtualenv==21.7.4",
     "pytest-mock==3.15.1",
+    # Serializes the YAML frontmatter of the agent items `install-agent-items` writes. Taken instead
+    # of a hand-written emitter on purpose: quoting, escaping, and telling a string from a number or
+    # a boolean are rules of a specification, and every one a hand-rolled version missed was a
+    # corrupted header that installed cleanly. Imported lazily inside `_frontmatter`, like requests.
+    "pyyaml==6.0.3",
 ]
 
 [project.optional-dependencies]
@@ -45,6 +50,9 @@ dev = [
     # this project sets disable_error_code = ["import-untyped"], so without the stubs mypy would not
     # complain — it would simply stop type checking every call into the HTTP client.
     "types-requests==2.33.0.20260712",
+    # Same reasoning for 'pyyaml': without its stubs mypy reads every 'yaml' call in
+    # item_registry._frontmatter as Any, including the custom dumper and its representers.
+    "types-pyyaml==6.0.12.20260906",
     # Floor is load-bearing: twine <= 6.0 parses distribution metadata through 'pkginfo', which only
     # knows Metadata-Version up to 2.2 and silently yields empty fields for anything newer instead of
     # failing on the version itself. Hatchling emits 2.5, so an older twine reports the symptom

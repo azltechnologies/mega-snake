@@ -4,7 +4,7 @@ import inspect
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch, mock_open
-from typing import Generator, Callable
+from typing import Any, Callable, Generator, Optional
 from types import SimpleNamespace
 import pytest
 import click
@@ -636,6 +636,132 @@ def test_appending_nothing_leaves_the_file_byte_identical(
     assert mk_ws_advice.call_count == len(GITIGNORE_ENTRIES)
 
 
+IGNORE_FILE_HELPERS = pytest.mark.parametrize(
+    ("helper_name", "target_name"),
+    [("add_to_gitignore", "GITIGNORE_FILE"), ("exclude_from_git", "GIT_EXCLUDE_FILE")],
+)
+
+
+def ignore_file_under_test(helper_name: str, target_name: str, root: Path, content: Optional[bytes]) -> tuple[Any, Path]:
+    """Prepare a git repository holding the given ignore-file bytes, and return the helper and its file.
+
+    Bytes rather than text on purpose: every assertion in these tests is about line endings, which a
+    text-mode read or write would translate before the assertion could see them.
+
+    Parameters:
+        helper_name: The public helper to exercise, looked up on the util module.
+        target_name: The util constant naming the file that helper writes.
+        root: The directory to use as the repository root; the caller has already chdir'ed into it.
+        content: The file's initial bytes, or None to leave it absent.
+
+    Raises:
+        None
+
+    Returns:
+        tuple[Any, Path]: The helper function, and the absolute path of the file it writes.
+    """
+    import mega_snake.util.util as util_module
+
+    (root / ".git").mkdir(exist_ok=True)
+    file_path = root / getattr(util_module, target_name)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    if content is not None:
+        file_path.write_bytes(content)
+    return getattr(util_module, helper_name), file_path
+
+
+@IGNORE_FILE_HELPERS
+def test_appending_keeps_every_existing_crlf_line_ending(
+    helper_name: str,
+    target_name: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_util_ws_success: MagicMock,
+    mk_ws_advice: MagicMock,
+) -> None:
+    """Adding one entry to a CRLF file changes only the new line, and the new line is CRLF too.
+
+    Compared as exact bytes: a text-mode read-modify-write turns every `\\r\\n` into `\\n`, and a
+    text comparison would translate both sides and pass. `.gitignore` is committed, so that rewrite
+    is a whole-file diff for a one-line change. The negative half pins that no bare `\\n` slipped in,
+    which is what appending with a hard-coded ending would produce -- a file with mixed endings.
+    """
+    monkeypatch.chdir(tmp_path)
+    before = b"build/\r\nnode_modules/\r\n"
+    helper, file_path = ignore_file_under_test(helper_name, target_name, tmp_path, before)
+
+    helper([GITIGNORE_ENTRIES[0]])
+
+    after = file_path.read_bytes()
+    assert after == before + b".github/skills/mgsnake/\r\n", f"{target_name} came back as {after!r}"
+    assert after.startswith(before), f"{target_name}: the pre-existing lines were rewritten"
+    assert b"\n" not in after.replace(b"\r\n", b""), f"{target_name} ended up with mixed line endings"
+
+
+@IGNORE_FILE_HELPERS
+def test_appending_to_an_unterminated_crlf_file_separates_with_crlf(
+    helper_name: str,
+    target_name: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_util_ws_success: MagicMock,
+    mk_ws_advice: MagicMock,
+) -> None:
+    """The separator added before the first new entry follows the file's convention as well."""
+    monkeypatch.chdir(tmp_path)
+    helper, file_path = ignore_file_under_test(helper_name, target_name, tmp_path, b"build/\r\nnode_modules/")
+
+    helper([GITIGNORE_ENTRIES[0]])
+
+    assert file_path.read_bytes() == b"build/\r\nnode_modules/\r\n.github/skills/mgsnake/\r\n"
+
+
+@IGNORE_FILE_HELPERS
+def test_appending_to_an_lf_file_keeps_lf(
+    helper_name: str,
+    target_name: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_util_ws_success: MagicMock,
+    mk_ws_advice: MagicMock,
+) -> None:
+    """The discriminating twin of the CRLF test: an LF file must not be converted to CRLF."""
+    monkeypatch.chdir(tmp_path)
+    helper, file_path = ignore_file_under_test(helper_name, target_name, tmp_path, b"build/\n")
+
+    helper([GITIGNORE_ENTRIES[0]])
+
+    after = file_path.read_bytes()
+    assert after == b"build/\n.github/skills/mgsnake/\n", f"{target_name} came back as {after!r}"
+    assert b"\r" not in after, f"{target_name} gained a carriage return"
+
+
+@IGNORE_FILE_HELPERS
+def test_two_entries_naming_the_same_pattern_in_one_batch_are_written_once(
+    helper_name: str,
+    target_name: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_util_ws_success: MagicMock,
+    mk_ws_advice: MagicMock,
+) -> None:
+    """`foo/` and `foo` in the same call are one pattern: the first is added, the second is present.
+
+    Both are missing from the original file, which is exactly why a presence check run only against
+    that file appended both. The descriptions differ so the messages show which one was written.
+    """
+    monkeypatch.chdir(tmp_path)
+    helper, file_path = ignore_file_under_test(helper_name, target_name, tmp_path, None)
+
+    helper([("foo/", "first declaration"), ("foo", "second declaration")])
+
+    assert file_path.read_bytes() == b"foo/\n", f"{target_name} came back as {file_path.read_bytes()!r}"
+    assert mk_util_ws_success.call_count == 1, "the duplicate was reported as added"
+    assert "first declaration" in mk_util_ws_success.call_args[0][0]
+    mk_ws_advice.assert_called_once()
+    assert "second declaration" in mk_ws_advice.call_args[0][0], "the duplicate was not reported as present"
+
+
 def test_add_to_gitignore_outside_a_git_repository(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -880,6 +1006,8 @@ def test_get_validated_selection_rejects_an_empty_answer(mk_input: MagicMock, mk
 
     assert get_validated_selection("Pick:", SELECTABLE) == ["mgsnake"]
     assert mk_ws_warning.call_count == 2
+    reasons = [issued.args[0].splitlines()[0] for issued in mk_ws_warning.call_args_list]
+    assert reasons == ["No entry was given.", "No entry was given."], f"got {reasons}"
 
 
 def test_get_validated_selection_gives_up_after_the_shared_retry_limit(
@@ -898,13 +1026,73 @@ def test_get_validated_selection_gives_up_after_the_shared_retry_limit(
     assert mk_input.call_count == MAX_PROMPT_TRIES + 1
 
 
-def test_get_validated_selection_warns_naming_the_unknown_entry(
+def test_get_validated_selection_warns_naming_the_unknown_entries(
     mk_input: MagicMock, mk_ws_warning: MagicMock
 ) -> None:
-    """The warning must say nothing was applied, so the user does not assume a partial install."""
+    """The warning's first line names exactly the entries that were not recognised, in typed order.
+
+    The fixture mixes two unknown names around a valid one, so the assertion separates an
+    implementation that names the culprits from one that repeats the whole answer (the valid name
+    would appear) or names only the first (the second would be missing). Compared by equality over
+    the first line, since the lines below it are the generic guidance every rejection repeats.
+    """
+    typos = ["jira-continu", "comment-kiler"]
+    mk_input.side_effect = [f"{typos[0]}, mgsnake, {typos[1]}", "mgsnake"]
+
+    get_validated_selection("Pick:", SELECTABLE)
+
+    reason = mk_ws_warning.call_args[0][0].splitlines()[0]
+    assert reason == f"Not recognised: {', '.join(repr(typo) for typo in typos)}.", f"got {reason!r}"
+    assert "'mgsnake'" not in reason, "a valid entry was reported as unrecognised"
+
+
+def test_get_validated_selection_warning_still_says_nothing_was_applied(
+    mk_input: MagicMock, mk_ws_warning: MagicMock
+) -> None:
+    """Below the reason, the warning keeps disclaiming a partial effect."""
     mk_input.side_effect = ["typo", "mgsnake"]
 
     get_validated_selection("Pick:", SELECTABLE)
 
-    warning = mk_ws_warning.call_args[0][0]
-    assert "nothing has been applied" in warning, f"warning does not disclaim a partial effect: {warning!r}"
+    guidance = mk_ws_warning.call_args[0][0].splitlines()[1]
+    assert guidance.startswith("Invalid selection; nothing has been applied."), f"got {guidance!r}"
+
+
+@pytest.mark.parametrize("answer", ["all, typo", "typo, all", "ALL, typo"])
+def test_get_validated_selection_rejects_an_unknown_entry_even_next_to_the_all_key(
+    answer: str, mk_input: MagicMock, mk_ws_warning: MagicMock
+) -> None:
+    """`all` must not short-circuit validation: an unknown entry beside it still rejects the answer.
+
+    Checked in both positions and in upper case, because the defect was an ordering one -- the `all`
+    shortcut ran before the unknown-entry check -- and a fix that only reorders for one position or
+    one casing would pass a single-case test. Rejection is asserted by its effects: the answer is
+    re-asked, the retry's result is what comes back, and the typo is named.
+    """
+    mk_input.side_effect = [answer, "mgsnake"]
+
+    result = get_validated_selection("Pick:", SELECTABLE)
+
+    assert result == ["mgsnake"], f"{answer!r} was accepted as {result}"
+    assert result != SELECTABLE, f"{answer!r} selected the whole catalogue"
+    assert mk_input.call_count == 2, f"{answer!r} was not re-asked"
+    assert mk_ws_warning.call_args[0][0].splitlines()[0] == "Not recognised: 'typo'."
+
+
+def test_get_validated_selection_accepts_the_all_key_next_to_valid_entries(mk_input: MagicMock) -> None:
+    """Redundant but valid: `all` beside real names still selects everything, without a retry."""
+    mk_input.return_value = "mgsnake, all"
+
+    assert get_validated_selection("Pick:", SELECTABLE) == SELECTABLE
+    assert mk_input.call_count == 1
+
+
+def test_get_validated_input_warning_is_unchanged_by_the_rejection_reason(
+    mk_input: MagicMock, mk_ws_warning: MagicMock
+) -> None:
+    """Only a helper that supplies a reason gets one: the single-value prompt keeps its exact warning."""
+    mk_input.side_effect = ["nope", "b"]
+
+    get_validated_input("Pick:", ["a", "b"])
+
+    assert mk_ws_warning.call_args[0][0] == "Invalid input. Please enter one of:\n a | b"

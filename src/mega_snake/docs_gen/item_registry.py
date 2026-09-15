@@ -90,90 +90,100 @@ ITEM_LAYOUT: dict[ItemKind, ItemLayout] = {
 }
 
 
-def _frontmatter(item: "Item", body: str) -> str:
-    """Prepend the YAML frontmatter that makes a Markdown file a discoverable skill.
+# Wide enough that PyYAML never folds a value onto a second line. A folded scalar is still valid
+# YAML, but it reflows whenever the prose around the fold point changes length, and a header that
+# reflows on an unrelated wording edit reports every installed item as stale.
+_YAML_LINE_WIDTH: int = 2**31 - 1
 
-    ``name`` and ``description`` are always present -- both runtimes key a document by them, and a
-    file without them is simply never registered. Anything else the item declares in ``frontmatter``
-    follows, in declaration order, because the fields that make an item *work* live there: a skill
-    that is really a fork of another agent, one that takes arguments, one that must not be offered to
-    the user directly. Emitting only the first two would install a document the runtime accepts and
-    then behaves nothing like the one that was written.
+# Keys every header carries, owned by the Item fields of the same name. Declaring either one again
+# in `frontmatter` would silently replace the value the rest of the registry keys the item by.
+_RESERVED_HEADER_KEYS: frozenset[str] = frozenset({"name", "description"})
+
+
+def _frontmatter(item: "Item", body: str) -> str:
+    """Prepend the YAML frontmatter that makes a Markdown file a discoverable item.
+
+    ``name`` and ``description`` are always present and always first -- both runtimes key a document
+    by them, and a file without them is simply never registered. Anything else the item declares in
+    ``frontmatter`` follows, in declaration order, because the fields that make an item *work* live
+    there: a skill that is really a fork of another agent, one that takes arguments, one that must not
+    be offered to the user directly. Emitting only the first two would install a document the runtime
+    accepts and then behaves nothing like the one that was written.
+
+    The serialization is delegated to PyYAML rather than written by hand. Whether a value needs
+    quoting, how a tab or a quote is escaped, and whether ``2024`` or ``no`` would be read back as a
+    number or a boolean are rules of the YAML specification, and every one a hand-written emitter
+    missed was a header that installed cleanly and meant something else. PyYAML is imported here,
+    not at module level, so the commands that never write a header do not pay its import.
 
     Parameters:
         item: The item whose header is being built.
         body: The Markdown body to place under the frontmatter.
 
     Raises:
-        None
+        InternalStateError: If ``frontmatter`` redeclares ``name`` or ``description``, which would
+            silently replace the values the registry identifies the item by.
 
     Returns:
         str: The complete document, frontmatter first.
     """
-    lines: list[str] = ["---", f"name: {item.name}", f"description: {_yaml_value(item.description)}"]
-    lines.extend(f"{key}: {_yaml_value(value)}" for key, value in item.frontmatter.items())
-    lines.append("---")
-    return "\n".join(lines) + f"\n\n{body}"
+    import yaml  # pylint: disable=import-outside-toplevel  # lazy: see the docstring
 
+    clashing: frozenset[str] = _RESERVED_HEADER_KEYS & frozenset(item.frontmatter)
+    if clashing:
+        # The catalogue is authored in this package, so a clash is a registry defect, never input.
+        raise InternalStateError(f"Item '{item.name}' redeclares {sorted(clashing)} in its frontmatter. This is a bug.")
+    header: dict[str, object] = {"name": item.name, "description": item.description}
+    header.update(item.frontmatter)
 
-# YAML plain scalars are ambiguous for these: quoting is what keeps a value a string.
-_YAML_RESERVED: frozenset[str] = frozenset({"true", "false", "yes", "no", "on", "off", "null", "none", "~", ""})
+    class HeaderDumper(yaml.SafeDumper):
+        """Emit the header mapping in block style and every sequence inline.
 
+        PyYAML's ``default_flow_style=None`` chooses per collection, and it picks the flow style for
+        any mapping holding only scalars -- so a header with nothing but ``name`` and ``description``
+        came out as ``{name: ..., description: ...}`` on one line. Fixing each style explicitly keeps
+        one ``key: value`` line per field whatever the header happens to contain.
 
-def _yaml_scalar(value: str) -> str:
-    """Render one string as a YAML scalar, quoting it only when a plain one would be wrong.
+        Parameters:
+            None
 
-    Quoting everything would work but would rewrite every header this project already emits; quoting
-    nothing silently changes types and truncates values. The conditions below are the ones that
-    actually bite: ``": "`` ends a plain scalar early, ``#`` starts a comment, a leading indicator
-    character changes the node type, and a word like ``no`` parses as a boolean.
+        Raises:
+            None
 
-    Parameters:
-        value: The string to render.
+        Returns:
+            None
+        """
 
-    Raises:
-        None
+    def represent_inline_sequence(dumper: yaml.SafeDumper, data: Iterable[object]) -> yaml.nodes.SequenceNode:
+        """Represent a list or a tuple as a one-line flow sequence (``[a, b]``).
 
-    Returns:
-        str: The value, quoted when a plain scalar would not survive it.
-    """
-    needs_quotes: bool = (
-        value.strip() != value
-        or value.lower() in _YAML_RESERVED
-        or ": " in value
-        or value.endswith(":")
-        or " #" in value
-        or any(value.startswith(char) for char in "-?:,[]{}#&*!|>'\"%@`")
-        or "\n" in value
+        Parameters:
+            dumper: The dumper building the document.
+            data: The list or tuple being represented.
+
+        Raises:
+            None
+
+        Returns:
+            yaml.nodes.SequenceNode: The flow-style sequence node.
+        """
+        return dumper.represent_sequence("tag:yaml.org,2002:seq", data, flow_style=True)
+
+    # Both sequence types, explicitly. SafeDumper already represents a tuple -- but through its own
+    # list representer, in block style, so a tuple left out here renders as a multi-line `- item`
+    # block while the same values in a list render inline. It parses back identically, which is
+    # exactly why only the emitted shape shows it.
+    HeaderDumper.add_representer(list, represent_inline_sequence)
+    HeaderDumper.add_representer(tuple, represent_inline_sequence)
+    dumped: str = yaml.dump(
+        header,
+        Dumper=HeaderDumper,
+        sort_keys=False,
+        allow_unicode=True,
+        default_flow_style=False,
+        width=_YAML_LINE_WIDTH,
     )
-    if not needs_quotes:
-        return value
-    escaped: str = value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
-    return f'"{escaped}"'
-
-
-def _yaml_value(value: object) -> str:
-    """Render one frontmatter value: a bool, a number, a list, or a string.
-
-    A flow sequence (``[a, b]``) is used for lists because every list these headers carry is short
-    and reads better on one line than as a block.
-
-    Parameters:
-        value: The value to render.
-
-    Raises:
-        None
-
-    Returns:
-        str: The YAML representation.
-    """
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, (int, float)):
-        return str(value)
-    if isinstance(value, (list, tuple)):
-        return "[" + ", ".join(_yaml_scalar(str(entry)) for entry in value) + "]"
-    return _yaml_scalar(str(value))
+    return f"---\n{dumped}---\n\n{body}"
 
 
 def _fragment_path(name: str) -> Path:
