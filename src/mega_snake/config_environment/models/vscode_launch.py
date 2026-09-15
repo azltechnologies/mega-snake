@@ -125,25 +125,39 @@ class VscodeLaunch(Enum):
         result: dict[str, Any] = {"name": self.task_name, "type": self.task_type, "request": self.request}
         if self.env:
             result["env"] = self.env
-        self.add_logger_args(working_path)
-        if self.args:
+        combined_args: list[str] = [*self.args, *self._logger_args(working_path)]
+        if combined_args:
             if self.task_type == "debugpy":
-                result["args"] = " ".join(self.args)
+                result["args"] = " ".join(combined_args)
             else:
-                result["args"] = self.args
+                result["args"] = combined_args
         for key, value in self.extra_args.items():
             result[key] = value
         return result
 
-    # Same in-place enum mutation as `VscodeTask.add_logger_args`, and it must be fixed together with
-    # it: this `to_dict` joins `args` with `" "` for the `debugpy` type, so the two call sites do not
-    # compose the value identically and cannot be changed in isolation.
-    # TODO (copilot-instructions §8.7): compose the args in `to_dict` instead of mutating.
-    def add_logger_args(self, working_path: str) -> None:
-        """Adds the redirect arg to the task."""
-        if self.watcher:
-            output: str = self.watcher.get_pattern_date(working_path)
-            self.args.extend(output.split(" "))
+    def _logger_args(self, working_path: str) -> list[str]:
+        """Builds the log redirect arguments for this configuration, without storing them on the member.
+
+        Twin of `VscodeTask._logger_args`: `self` is an enum member, i.e. a process-wide singleton,
+        so the redirect must be composed into the value `to_dict` emits rather than appended to
+        `self.args` — appending there would permanently mutate the member and duplicate the redirect
+        on every subsequent call. `to_dict` joins the composed list with `" "` for the `debugpy`
+        type, so the two classes' `to_dict` methods do not compose the value identically even though
+        this builder is shared in shape.
+
+        Parameters:
+            working_path: The workspace's working path, used to resolve the watcher's log pattern.
+
+        Raises:
+            None
+
+        Returns:
+            list[str]: The redirect arguments, or an empty list when the configuration has no watcher.
+        """
+        if not self.watcher:
+            return []
+        output: str = self.watcher.get_pattern_date(working_path)
+        return output.split(" ")
 
     @staticmethod
     def add_launch_version(json_data: dict[str, Any]) -> Optional[dict[str, Any]]:

@@ -57,16 +57,53 @@ def test_add_launch_version() -> None:
         assert result is None
 
 
-def test_add_logger_args() -> None:
-    """Test add_logger_args"""
+def test_logger_args_renders_the_redirect_without_touching_the_member() -> None:
+    """`_logger_args` returns the redirect but never writes it back onto the enum member.
+
+    `self` is an enum member, i.e. a process-wide singleton, so a builder that appended to
+    `self.args` would permanently mutate it for every other caller. This pins that `_logger_args`
+    is a pure function of its argument: it returns the redirect, and `member.args` is unchanged
+    before and after the call, for members with and without a watcher.
+    """
+    for member in VscodeLaunch:
+        args_before = list(member.args)
+        if member.watcher:
+            mock = MagicMock()
+            mock.return_value = "mocked log path"
+            with patch.object(member.watcher, "get_pattern_date", mock):
+                result = member._logger_args("path/to/working")  # pylint: disable=protected-access
+                mock.assert_called_once_with("path/to/working")
+            assert result == "mocked log path".split(" ")
+        else:
+            result = member._logger_args("path/to/working")  # pylint: disable=protected-access
+            assert result == []
+        assert member.args == args_before, f"{member.name}.args was mutated by _logger_args"
+
+
+def test_to_dict_emits_the_redirect_once_however_often_it_is_called() -> None:
+    """Calling `to_dict()` twice on the same member must not duplicate the log redirect.
+
+    `to_dict` used to call `add_logger_args`, which appended the redirect onto the enum member's
+    own `args` list -- a process-wide singleton -- so a second call appended it a second time. This
+    must fail before the fix: it asserts the redirect appears exactly once (as a joined string for
+    `debugpy`, as a list element otherwise) and that the two calls return identical dicts, not that
+    the two calls merely both "hold".
+    """
+    working_path = "path/to/working"
     for member in [t for t in VscodeLaunch if t.watcher]:
-        args_size = len(member.args)
+        args_before = list(member.args)
         mock = MagicMock()
         mock.return_value = "mocked log path"
         with patch.object(member.watcher, "get_pattern_date", mock):
-            member.add_logger_args("path/to/working")
-            mock.assert_called_once()
-        assert len(member.args) == args_size + 3
+            first = member.to_dict(working_path)
+            second = member.to_dict(working_path)
+        assert first == second, f"{member.name}.to_dict() is not stable across repeated calls"
+        # A joined string for `debugpy`, a list element otherwise -- `.count` on either counts
+        # occurrences of "mocked" correctly, which is the one substring the mocked watcher emits.
+        assert first["args"].count("mocked") == 1, (
+            f"{member.name}.to_dict() duplicated the log redirect: {first['args']}"
+        )
+        assert member.args == args_before, f"{member.name}.args was mutated by to_dict()"
 
 
 def test_to_dict() -> None:
@@ -81,10 +118,11 @@ def test_to_dict() -> None:
     list_launch.append(fake_launch)
     for member in list_launch:
         mock = MagicMock()
-        # `fake_launch` is a bare SimpleNamespace, so it has no `add_logger_args` of its own to
+        mock.return_value = []
+        # `fake_launch` is a bare SimpleNamespace, so it has no `_logger_args` of its own to
         # save and restore -- `create=True` lets patch.object add it for the block and delete it
         # again on exit, instead of leaving it stuck on the object for later tests to trip over.
-        with patch.object(member, "add_logger_args", mock, create=True):
+        with patch.object(member, "_logger_args", mock, create=True):
             result = member.to_dict(param)
             mock.assert_called_once_with(param)
         assert result["name"] == member.task_name

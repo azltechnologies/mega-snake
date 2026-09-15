@@ -396,6 +396,15 @@ Three things that are easy to get wrong when adding a stack or an artifact:
 **Nothing already in the `.code-workspace` is ever removed.** Narrowing the stacks adds less; it
 never takes anything away, which is what makes the change safe to roll out on existing workspaces.
 
+**A `VscodeTask` or `VscodeLaunch` member is a value, not state.** Both are enum members — process-wide
+singletons — so anything a caller does to one is visible to every other caller for the rest of the
+process. `to_dict(working_path)` composes the log-redirect args through a private `_logger_args(working_path)`
+builder and returns the result; it never writes back onto `self.args`. Never reintroduce a method that
+mutates `self.args`, `self.extra_args` or any other member attribute in place — a second `to_dict()` call
+on the same member must always emit the same value as the first. `VscodeLaunch.to_dict` joins the composed
+list with `" "` for the `debugpy` type, while `VscodeTask.to_dict` emits it as a list, so the two classes'
+`_logger_args` builders are twins in shape but their callers compose the result differently.
+
 #### `set-java` (`java_set.py`)
 
 Manages the `java.configuration.runtimes` and `terminal.integrated.env` settings in VS Code.
@@ -2196,45 +2205,3 @@ needs such a value: `ruamel.yaml`, which implements 1.2 and was checked to quote
 and `0o17` against a **1.2** parser; today's round-trip uses PyYAML and cannot see this gap, which
 is the reason it is written down here instead of being covered by a test.
 
-### 8.11 `add_logger_args` mutates the enum member instead of building a value (§3.1)
-
-**What.** `VscodeTask.add_logger_args` and `VscodeLaunch.add_logger_args` do
-`self.args.extend(...)`, and `self` is an enum member — a process-wide singleton. The redirect is
-therefore not appended to a copy of the task, it is appended to *the* task, permanently, for
-everything that touches it afterwards:
-
-```pycon
->>> VscodeTask.GRADLE_BUILD.args
-['clean', 'build']
->>> VscodeTask.GRADLE_BUILD.to_dict("wp")["args"].count("2>&1")
-1
->>> VscodeTask.GRADLE_BUILD.to_dict("wp")["args"].count("2>&1")
-2
-```
-
-Two consequences. In **production** a second `to_dict` on the same member would emit
-`... > log 2>&1 > log 2>&1`; no user has hit it only because `_update_vscode_tasks` and
-`_update_vscode_launch` iterate each member exactly once and the process then exits. In the **suite**
-it already bites: the mutation leaks across test modules, so a test's result depends on pytest's
-collection order — `test_launch_input_calls_stay_inside_their_own_stacks` once shipped green over an
-empty loop for exactly that reason. Nothing catches it, because the only assertion on the emitted
-args compares `result["args"]` against `member.args` *after* the mutation, which holds either way.
-
-**Where.** `src/mega_snake/config_environment/models/vscode_task.py` and
-`config_environment/models/vscode_launch.py`, both `add_logger_args`, plus both `to_dict`.
-
-**Why it was left.** It changes a model shared by every emitted task and launch configuration, and
-it surfaced inside a change set about stack detection that was already several review rounds deep.
-`reference_text.py` works around it in the meantime by asking the watcher for the rendered redirect
-rather than reading `args`.
-
-**Shape of the fix.** Leave `self.args` alone and let `to_dict` compose what it emits —
-`args = [*self.args, *self._logger_args(working_path)]` — turning the method into a pure builder.
-**Both classes must be changed together**: `VscodeLaunch.to_dict` joins the list with `" "` for the
-`debugpy` type, so the two call sites do not compose the value identically and cannot be fixed in
-isolation.
-
-**Verify.** A test that calls `to_dict` twice on the same member and asserts the redirect appears
-exactly once — the assertion nothing makes today, and the one that must fail before the fix. Any
-existing assertion that compares `result["args"]` against `member.args` has to be rewritten against
-an expected literal, since after the fix the two legitimately differ.

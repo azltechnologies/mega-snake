@@ -251,14 +251,26 @@ class VscodeTask(Enum):
         self.problem_matcher = problem_matcher if problem_matcher else []
         self.extra_args = extra_args if extra_args else {}
 
-    # `self.args.extend(...)` mutates the enum member, which is a process-wide singleton, so the
-    # redirect accumulates across calls instead of being built per emission.
-    # TODO (copilot-instructions §8.7): compose the args in `to_dict` instead of mutating.
-    def add_logger_args(self, working_path: str) -> None:
-        """Adds the redirect arg to the task."""
-        if self.watcher:
-            output: str = self.watcher.get_pattern_date(working_path)
-            self.args.extend(output.split(" "))
+    def _logger_args(self, working_path: str) -> list[str]:
+        """Builds the log redirect arguments for this task, without storing them back on the member.
+
+        `self` is an enum member, i.e. a process-wide singleton, so the redirect must be composed
+        into the value `to_dict` emits rather than appended to `self.args` — appending there would
+        permanently mutate the member and duplicate the redirect on every subsequent call.
+
+        Parameters:
+            working_path: The workspace's working path, used to resolve the watcher's log pattern.
+
+        Raises:
+            None
+
+        Returns:
+            list[str]: The redirect arguments, or an empty list when the task has no watcher.
+        """
+        if not self.watcher:
+            return []
+        output: str = self.watcher.get_pattern_date(working_path)
+        return output.split(" ")
 
     def to_dict(self, working_path: str) -> dict[str, Any]:
         """Converts the enum to a dictionary."""
@@ -272,9 +284,9 @@ class VscodeTask(Enum):
             result["type"] = self.task_type
         if self.command:
             result["command"] = self.command
-        self.add_logger_args(working_path)
-        if self.args:
-            result["args"] = self.args
+        combined_args: list[str] = [*self.args, *self._logger_args(working_path)]
+        if combined_args:
+            result["args"] = combined_args
         for key, value in self.extra_args.items():
             result[key] = value
         return result

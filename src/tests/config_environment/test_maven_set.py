@@ -50,23 +50,13 @@ def reset_mocks(*mocks: MagicMock) -> None:
 
 @pytest.fixture(autouse=True)
 def run_after_each_test() -> Generator[None, None, None]:
-    """Reset the counter, Maven task args, and watcher methods after each test"""
-    from mega_snake.config_environment.models.vscode_task import (
-        VscodeTask,
-        MAVEN_CLEAN_INSTALL_ARGS,
-        MAVEN_TEST_ARGS,
-        MAVEN_VERIFY_ARGS,
-        MAVEN_DEPENDENCY_TREE_ARGS,
-        MAVEN_SPRING_BOOT_ARGS,
-    )
-    from mega_snake.config_environment.models.log_viewer_watcher import LogWatcher
+    """Reset the counter and watcher methods after each test.
 
-    # Reset Maven VscodeTask enum args to avoid mutation from previous tests
-    VscodeTask.MAVEN_CLEAN_INSTALL.args = list(MAVEN_CLEAN_INSTALL_ARGS)
-    VscodeTask.MAVEN_TEST.args = list(MAVEN_TEST_ARGS)
-    VscodeTask.MAVEN_VERIFY.args = list(MAVEN_VERIFY_ARGS)
-    VscodeTask.MAVEN_DEPENDENCY_TREE.args = list(MAVEN_DEPENDENCY_TREE_ARGS)
-    VscodeTask.MAVEN_SPRING_BOOT.args = list(MAVEN_SPRING_BOOT_ARGS)
+    `VscodeTask.to_dict` no longer mutates `self.args` (it composes the log redirect through
+    `_logger_args` instead), so the Maven task args reset this fixture used to perform is gone --
+    there is nothing left to leak across tests.
+    """
+    from mega_snake.config_environment.models.log_viewer_watcher import LogWatcher
 
     # Restore methods on Maven LogWatcher members (may be monkeypatched by other tests)
     original_get_pattern_date = LogWatcher.get_pattern_date

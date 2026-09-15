@@ -148,8 +148,8 @@ def test_the_input_reference_walk_actually_sees_something() -> None:
 
     `test_launch_input_calls_stay_inside_their_own_stacks` shipped green over an **empty loop**: no
     launch configuration carries a `${input:...}` in `command`/`args`/`extra_args`/`env` at import
-    time, and the one edge that exists -- the watcher redirect -- reached `args` only because
-    `add_logger_args` mutates the enum member in place from inside `to_dict()`. A test whose
+    time, and the one edge that exists -- the watcher redirect -- never reaches `args` at all:
+    `to_dict` composes it and `reference_text` asks the watcher directly, the same way. A test whose
     docstring promises an invariant while its body distinguishes no behaviour is the failure the
     sibling config guard was written to prevent, and it was reproduced here one test later.
 
