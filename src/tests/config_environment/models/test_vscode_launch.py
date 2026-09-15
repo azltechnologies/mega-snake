@@ -1,7 +1,7 @@
 """Test for VscodeLaunch model"""
 
 from pathlib import Path
-from typing import Generator
+from typing import Generator, Union
 from types import SimpleNamespace, MethodType
 import inspect
 from unittest.mock import patch, MagicMock
@@ -86,31 +86,37 @@ def test_logger_args_renders_the_redirect_without_touching_the_member() -> None:
 
 
 def test_to_dict_emits_the_redirect_once_however_often_it_is_called() -> None:
-    """Calling `to_dict()` twice on the same member must not duplicate the log redirect.
+    """Calling `to_dict()` twice on the same member must not carry the first redirect into the second.
 
     `to_dict` used to call `add_logger_args`, which appended the redirect onto the enum member's
-    own `args` list -- a process-wide singleton -- so a second call appended it a second time. This
-    must fail before the fix: it asserts the redirect appears exactly once (as a joined string for
-    `debugpy`, as a list element otherwise) and that the two calls return identical dicts, not that
-    the two calls merely both "hold".
+    own `args` list -- a process-wide singleton -- so a second call appended it a second time. The
+    two calls use different working paths, so a redirect left behind by the first one is a distinct
+    value in the second emission, and each emission is compared by equality against the declared
+    args followed by the redirect of its own call -- joined into one string for `debugpy`.
     """
-    working_path = "path/to/working"
+    first_path, second_path = "path/to/first", "path/to/second"
     watched = [t for t in VscodeLaunch if t.watcher]
     assert watched, "no launch configuration has a watcher, so this test walks nothing"
+    assert any(t.task_type == "debugpy" for t in watched), "the joined-args branch is not walked"
     for member in watched:
-        args_before = list(member.args)
-        mock = MagicMock()
-        mock.return_value = "mocked log path"
-        with patch.object(member.watcher, "get_pattern_date", mock):
-            first = member.to_dict(working_path)
-            second = member.to_dict(working_path)
-        assert first == second, f"{member.name}.to_dict() is not stable across repeated calls"
-        # A joined string for `debugpy`, a list element otherwise -- `.count` on either counts
-        # occurrences of "mocked" correctly, which is the one substring the mocked watcher emits.
-        assert first["args"].count("mocked") == 1, (
-            f"{member.name}.to_dict() duplicated the log redirect: {first['args']}"
-        )
-        assert member.args == args_before, f"{member.name}.args was mutated by to_dict()"
+        declared_args: list[str] = list(member.args)
+        first_redirect: list[str] = member.watcher.get_pattern_date(first_path).split(" ")
+        second_redirect: list[str] = member.watcher.get_pattern_date(second_path).split(" ")
+        first_expected: list[str] = [*declared_args, *first_redirect]
+        second_expected: list[str] = [*declared_args, *second_redirect]
+        if member.task_type == "debugpy":
+            first_expected_value: Union[str, list[str]] = " ".join(first_expected)
+            second_expected_value: Union[str, list[str]] = " ".join(second_expected)
+        else:
+            first_expected_value, second_expected_value = first_expected, second_expected
+
+        first_args = member.to_dict(first_path)["args"]
+        second_args = member.to_dict(second_path)["args"]
+
+        assert first_args == first_expected_value, f"{member.name} emitted {first_args}"
+        assert second_args == second_expected_value, f"{member.name} emitted {second_args}"
+        assert first_redirect[1] not in second_args, f"{member.name} kept the first call's redirect"
+        assert member.args == declared_args, f"{member.name}.args was mutated by to_dict()"
 
 
 def test_to_dict() -> None:
@@ -194,13 +200,15 @@ def test_add_launch_config(_launch_config_query: MagicMock) -> None:
     # Test when the pattern is not found
     for inst in VscodeLaunch:
         to_dict: MagicMock = MagicMock(side_effect=lambda wk, inst=inst: dict_side_effect(inst, wk))
-        inst.to_dict = to_dict
         jd = _get_data_copy()
         tasks_found: list[dict[str, str]] = [
             d for d in jd["launch"][LAUNCH_TEST_SETTING] if d["name"] == inst.task_name
         ]
         assert not tasks_found
-        result = inst.add_launch_config(jd, substituter, working_path)
+        # Patched for the call only: `inst` is an enum member, so assigning `inst.to_dict` would
+        # leave the mock on the singleton for every test that runs afterwards.
+        with patch.object(inst, "to_dict", to_dict):
+            result = inst.add_launch_config(jd, substituter, working_path)
         tasks_found = [d for d in result["launch"][LAUNCH_TEST_SETTING] if d["name"] == inst.task_name]
         assert tasks_found
         assert len(tasks_found) == 1
@@ -212,7 +220,6 @@ def test_add_launch_config(_launch_config_query: MagicMock) -> None:
     # Test when the pattern is found but has multiple entries
     for inst in VscodeLaunch:
         to_dict: MagicMock = MagicMock(side_effect=lambda wk, inst=inst: dict_side_effect(inst, wk))
-        inst.to_dict = to_dict
         jd = _get_data_copy()
         jd["launch"][LAUNCH_TEST_SETTING].append({"name": inst.task_name})
         jd["launch"][LAUNCH_TEST_SETTING].append({"name": inst.task_name})
@@ -220,7 +227,8 @@ def test_add_launch_config(_launch_config_query: MagicMock) -> None:
             d for d in jd["launch"][LAUNCH_TEST_SETTING] if d["name"] == inst.task_name
         ]
         assert len(tasks_found) == 2
-        result = inst.add_launch_config(jd, substituter, working_path)
+        with patch.object(inst, "to_dict", to_dict):
+            result = inst.add_launch_config(jd, substituter, working_path)
         tasks_found = [d for d in result["launch"][LAUNCH_TEST_SETTING] if d["name"] == inst.task_name]
         assert tasks_found
         assert len(tasks_found) == 1

@@ -81,28 +81,29 @@ def test_logger_args_renders_the_redirect_without_touching_the_member() -> None:
 
 
 def test_to_dict_emits_the_redirect_once_however_often_it_is_called() -> None:
-    """Calling `to_dict()` twice on the same member must not duplicate the log redirect.
+    """Calling `to_dict()` twice on the same member must not carry the first redirect into the second.
 
     `to_dict` used to call `add_logger_args`, which appended the redirect onto the enum member's
-    own `args` list -- a process-wide singleton -- so a second call appended it a second time. This
-    must fail before the fix: it asserts the redirect appears exactly once and that the two calls
-    return identical dicts, not that the two calls merely both "hold".
+    own `args` list -- a process-wide singleton -- so a second call appended it a second time. The
+    two calls use different working paths, so a redirect left behind by the first one is a distinct
+    value in the second emission, and each emission is compared by equality against the declared
+    args followed by the redirect of its own call.
     """
-    working_path = "path/to/working"
+    first_path, second_path = "path/to/first", "path/to/second"
     watched = [t for t in VscodeTask if t.watcher]
     assert watched, "no task has a watcher, so this test walks nothing"
     for member in watched:
-        args_before = list(member.args)
-        mock = MagicMock()
-        mock.return_value = "mocked log path"
-        with patch.object(member.watcher, "get_pattern_date", mock):
-            first = member.to_dict(working_path)
-            second = member.to_dict(working_path)
-        assert first == second, f"{member.name}.to_dict() is not stable across repeated calls"
-        assert first["args"].count("mocked") == 1, (
-            f"{member.name}.to_dict() duplicated the log redirect: {first['args']}"
-        )
-        assert member.args == args_before, f"{member.name}.args was mutated by to_dict()"
+        declared_args: list[str] = list(member.args)
+        first_redirect: list[str] = member.watcher.get_pattern_date(first_path).split(" ")
+        second_redirect: list[str] = member.watcher.get_pattern_date(second_path).split(" ")
+
+        first_args = member.to_dict(first_path)["args"]
+        second_args = member.to_dict(second_path)["args"]
+
+        assert first_args == [*declared_args, *first_redirect], f"{member.name} emitted {first_args}"
+        assert second_args == [*declared_args, *second_redirect], f"{member.name} emitted {second_args}"
+        assert first_redirect[1] not in second_args, f"{member.name} kept the first call's redirect"
+        assert member.args == declared_args, f"{member.name}.args was mutated by to_dict()"
 
 
 def test_to_dict() -> None:
