@@ -15,6 +15,7 @@ from click.testing import CliRunner
 from mega_snake import __main__ as app_main
 from mega_snake.util.formatting import WorkspaceError, resolve_error_code
 from mega_snake.util.cli_group import ATTR_METADATA
+from mega_snake.util.command_registration import ModuleRegistration, is_context_command
 
 
 @pytest.mark.parametrize("command_name", ["shell-path", "generate-docs"])
@@ -190,3 +191,12 @@ def test_post_command_does_not_exit_without_an_exit_code() -> None:
     context.obj = {}
     with context.scope():
         assert app_main.post_command(None) is None
+
+
+def test_every_shipped_module_is_registered_through_module_registration() -> None:
+    """The real MODULES list holds registrations, each able to wrap every command it declares."""
+    for module in app_main.MODULES:
+        assert isinstance(module, ModuleRegistration), repr(module)
+        for name, command in module.group.commands.items():
+            needed = module.add_context_wrapper if is_context_command(command) else module.add_wrapper
+            assert needed is not None, f"'{name}' of '{module.group.name}' has no decorator for its kind"

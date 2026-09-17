@@ -8,7 +8,7 @@ from mega_snake.config_environment.maven_set import maven_project_setup, set_mav
 from mega_snake.config_environment.local_config import initial_load
 from mega_snake.config_environment.create_working_env import create_working_env
 from mega_snake.constants import RELOAD_ENVIRONMENT_EXIT_CODE
-from mega_snake.util.util import wrapper_decorator
+from mega_snake.util.command_registration import ModuleRegistration, wrapper_decorator
 from mega_snake.util.cli_group import ATTR_METADATA, META_RELOADS_ENV, CliGroup
 
 
@@ -44,9 +44,6 @@ def wrapper(ctx: click.Context, *_args, **_kwargs) -> None:
         ctx.obj["exit_code"] = RELOAD_ENVIRONMENT_EXIT_CODE
 
 
-# Export the decorated wrapper for use in other modules
-add_wrapper = wrapper_decorator(wrapper)
-
 main.add_command_with_alias(set_java_version, ["java", "sj"])
 main.add_command_with_alias(set_gradle_version, ["gradle", "sg"])
 main.add_command_with_alias(set_maven_version, ["maven", "sm"])
@@ -54,3 +51,6 @@ main.add_command_with_alias(maven_project_setup, ["mps"])
 main.add_command_with_alias(initial_load, ["iload", "ilc"])
 main.add_command_with_alias(create_working_env, ["cwe", "env"])
 main.add_command_with_alias(create_graphql_schema, ["graphql", "gql", "cgs"])
+
+# The module's single export: its group, wrapped command by command by the CLI entry point.
+registration = ModuleRegistration(main, add_wrapper=wrapper_decorator(wrapper))

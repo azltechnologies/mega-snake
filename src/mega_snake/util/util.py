@@ -13,8 +13,6 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Any, Callable, TypeVar
-import inspect
-import click
 from colorama import init, Fore, Back, Style
 from jsoncomment import JsonComment
 from mega_snake.util.formatting import (
@@ -25,7 +23,7 @@ from mega_snake.util.formatting import (
     ws_success,
     ws_warning,
 )
-from mega_snake.util.cli_group import ATTR_ALIAS, ATTR_DOCS, ATTR_GROUP, ATTR_METADATA
+from mega_snake.util.cli_group import ATTR_METADATA
 from mega_snake.util.props import get_property
 
 OS = platform.system()
@@ -673,161 +671,5 @@ def cli_metadata(**metadata) -> Callable:
             setattr(f, ATTR_METADATA, {})
         getattr(f, ATTR_METADATA).update(metadata)
         return f
-
-    return decorator
-
-
-# `Group.result_callback` is the *decorator* that registers one; the registered callback itself is
-# stored under this name. Reading the public attribute would pass a bound method as the callback.
-_CONSTRUCTOR_ATTRIBUTE_OVERRIDES: dict[str, str] = {"result_callback": "_result_callback"}
-
-
-def _constructor_parameters(command_class: type) -> set[str]:
-    """Return every named constructor parameter a command class accepts, across its whole MRO.
-
-    The walk is the point. ``CliGroup.__init__`` is ``(*args, **kwargs)`` forwarding to its base, so
-    reading that one signature yields nothing at all and the rebuild silently produces a group with
-    no subcommands -- the exact failure this function exists to prevent, reintroduced one level up.
-    ``**kwargs`` and ``*args`` are excluded for the same reason they are useless here: they are the
-    funnel, not settings, and passing one by name would raise.
-
-    Parameters:
-        command_class: The class whose constructors to read.
-
-    Raises:
-        None
-
-    Returns:
-        set[str]: The parameter names that can be passed by keyword.
-    """
-    variadic = (inspect.Parameter.VAR_KEYWORD, inspect.Parameter.VAR_POSITIONAL)
-    names: set[str] = set()
-    for ancestor in command_class.__mro__:
-        if not (isinstance(ancestor, type) and issubclass(ancestor, click.Command)):
-            continue
-        names |= {
-            name
-            for name, parameter in inspect.signature(ancestor.__init__).parameters.items()
-            if name != "self" and parameter.kind not in variadic
-        }
-    return names
-
-
-def _constructor_argument(command: click.Command, name: str) -> Any:
-    """Read the value a rebuilt command should receive for one constructor parameter.
-
-    Parameters:
-        command: The command being copied.
-        name: The constructor parameter name.
-
-    Raises:
-        None
-
-    Returns:
-        Any: The stored value, read from the private attribute when the public one is not it.
-    """
-    return getattr(command, _CONSTRUCTOR_ATTRIBUTE_OVERRIDES.get(name, name))
-
-
-def _has_argument(command: click.Command, name: str) -> bool:
-    """Report whether a command carries a value for one constructor parameter.
-
-    Parameters:
-        command: The command being copied.
-        name: The constructor parameter name.
-
-    Raises:
-        None
-
-    Returns:
-        bool: True when the attribute the rebuild would read exists.
-    """
-    return hasattr(command, _CONSTRUCTOR_ATTRIBUTE_OVERRIDES.get(name, name))
-
-
-def _rebuild_command(command: click.Command) -> click.Command:
-    """Rebuild a command as the same class, so wrapping it cannot change what it is.
-
-    Wrapping copies the command through ``click.Command.__init__``'s signature, which is the reason
-    §2.3 of the contributor guide insists custom attributes be re-applied by hand afterwards. A
-    subclass constructor accepts more than that signature mentions, and everything it adds is
-    dropped unless it is copied too: a ``click.Group`` rebuilt through the plain ``Command``
-    constructor comes out a leaf command with no subcommands, so ``mgsnake config get`` stops
-    resolving the moment the group is registered through a module wrapper like every other command.
-
-    The parameter set is therefore taken from **the command's own class** as well as from
-    ``click.Command``, rather than naming the extras one by one. Enumerating them fixed ``commands``
-    and left ``invoke_without_command``, ``chain``, ``result_callback`` and ``subcommand_metavar``
-    behind, each of which fails the same silent way -- a group declared
-    ``@click.group(invoke_without_command=True)`` would simply stop running its own body, with
-    nothing to see until someone invoked it bare. Deriving the set means the next subclass, or the
-    next click release, is covered without anyone remembering to come back here.
-
-    Parameters:
-        command: The command (or group) to copy.
-
-    Raises:
-        None
-
-    Returns:
-        click.Command: A fresh instance of the same class carrying the same constructor arguments.
-    """
-    attribute_names: set[str] = _constructor_parameters(click.Command) | _constructor_parameters(type(command))
-    return type(command)(
-        **{name: _constructor_argument(command, name) for name in attribute_names if _has_argument(command, name)}
-    )
-
-
-def wrapper_decorator(sub_wrapper: Callable) -> Callable:
-    """Decorator to wrap a command with additional logic"""
-
-    preserved_attrs: Tuple[str, ...] = (ATTR_ALIAS, ATTR_DOCS, ATTR_GROUP)
-
-    def apply_command_metadata(target: click.Command, source: Any) -> None:
-        """Copy custom documentation metadata from a wrapper or callback onto a command.
-
-        Parameters:
-            target: The command that should receive the metadata.
-            source: The callback or wrapper that may carry metadata.
-
-        Raises:
-            None
-
-        Returns:
-            None
-        """
-        metadata: dict[str, Any] = getattr(source, ATTR_METADATA, {})
-        for attr_name in (ATTR_DOCS, ATTR_GROUP):
-            if value := metadata.get(attr_name):
-                setattr(target, attr_name, value)
-
-    def decorator(command) -> click.Command:
-        """
-        Decorator that can handle both Click Commands and regular functions
-        """
-
-        @click.pass_context
-        def wrapper(ctx, *args, **kwargs) -> None:
-            sub_wrapper(ctx, *args, **kwargs)
-            return ctx.invoke(command, *args, **kwargs)
-
-        def update_flags(source) -> None:
-            """Update flags from the source object to the wrapper"""
-            if source_flags := getattr(source, ATTR_METADATA, {}):
-                if not hasattr(wrapper, ATTR_METADATA):
-                    setattr(wrapper, ATTR_METADATA, {})
-                getattr(wrapper, ATTR_METADATA).update(source_flags)
-
-        update_flags(sub_wrapper)
-        update_flags(command.callback)
-
-        comm = _rebuild_command(command)
-        comm.callback = wrapper  # Override the callback with our wrapper
-        for attr_name in preserved_attrs:
-            if value := getattr(command, attr_name, None):
-                setattr(comm, attr_name, value)
-        apply_command_metadata(comm, sub_wrapper)
-        apply_command_metadata(comm, command.callback)
-        return comm
 
     return decorator

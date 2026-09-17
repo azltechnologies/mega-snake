@@ -311,7 +311,7 @@ def test_real_cli_registers_every_command_and_alias_exactly_once() -> None:
     """
     from mega_snake.__main__ import MODULES, cli as root_cli  # pylint: disable=import-outside-toplevel
 
-    declared: list[str] = [name for group, _ in MODULES for name in group.commands]
+    declared: list[str] = [name for module in MODULES for name in module.group.commands]
 
     assert sorted(declared) == sorted(set(declared)), "a module declares the same name twice"
     assert sorted(root_cli.commands) == sorted(declared)

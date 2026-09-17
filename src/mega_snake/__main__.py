@@ -3,21 +3,22 @@
 import os
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as get_package_version
-from typing import Callable, Optional
+from typing import Optional
 import sys
 import click
-from .diff_tree.module import main as diff_tree, add_wrapper as diff_tree_result_callback
-from .docs_gen.module import main as docs_gen, add_wrapper as docs_gen_result_callback
-from .light_weight.module import main as create_release, add_wrapper as create_release_result_callback
-from .remote_branches.module import main as remote_branches, add_wrapper as remote_branches_result_callback
-from .config_environment.module import main as config_environment, add_wrapper as config_env_result_callback
-from .dependency_audit.module import main as dependency_audit, add_wrapper as dependency_audit_result_callback
-from .state.module import main as state, add_wrapper as state_result_callback
-from .jira_api.module import main as jira_api, add_wrapper as jira_api_result_callback
+from .diff_tree.module import registration as diff_tree
+from .docs_gen.module import registration as docs_gen
+from .light_weight.module import registration as create_release
+from .remote_branches.module import registration as remote_branches
+from .config_environment.module import registration as config_environment
+from .dependency_audit.module import registration as dependency_audit
+from .state.module import registration as state
+from .jira_api.module import registration as jira_api
 from .constants import LOGGING_OPT, SHELL_OPT, APP_NAME, MODULE_NAME
 from .util.formatting import get_traceback
 from .util.props import init_app_properties
 from .util.formatting import WorkspaceError, ws_advice
+from .util.command_registration import ModuleRegistration
 from .util.cli_group import ATTR_METADATA, META_FLAGS, CliGroup
 
 
@@ -163,23 +164,21 @@ def post_command(ctx, result, **kwargs) -> None:
         sys.exit(exit_code)
 
 
-# Every module exposes the same pair: its command group, and the decorator that wraps each of its
-# commands with the module's own pre-flight checks. Registration order drives the order shown in
-# the help output.
-MODULES: list[tuple[CliGroup, Callable]] = [
-    (diff_tree, diff_tree_result_callback),
-    (docs_gen, docs_gen_result_callback),
-    (create_release, create_release_result_callback),
-    (config_environment, config_env_result_callback),
-    (remote_branches, remote_branches_result_callback),
-    (dependency_audit, dependency_audit_result_callback),
-    (state, state_result_callback),
-    (jira_api, jira_api_result_callback),
+# Registration order drives the order shown in the help output.
+MODULES: list[ModuleRegistration] = [
+    diff_tree,
+    docs_gen,
+    create_release,
+    config_environment,
+    remote_branches,
+    dependency_audit,
+    state,
+    jira_api,
 ]
 
-for group, add_wrapper in MODULES:
-    for command in group.commands.values():
-        cli.add_command(add_wrapper(command))
+for module in MODULES:
+    for command in module.group.commands.values():
+        cli.add_command(module.wrap(command))
 
 
 def main() -> None:

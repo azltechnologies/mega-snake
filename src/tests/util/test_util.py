@@ -1,6 +1,5 @@
 """Test cases for util.py"""
 
-import inspect
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch, mock_open
@@ -8,8 +7,6 @@ from typing import Any, Callable, Generator, Optional
 from types import SimpleNamespace
 import pytest
 import click
-from click.testing import CliRunner
-from mega_snake.util.cli_group import CliGroup
 from mega_snake.util.util import (
     load_json_with_comments,
     run_operation,
@@ -22,7 +19,6 @@ from mega_snake.util.util import (
     get_typed_validated_input,
     MAX_PROMPT_TRIES,
     cli_metadata,
-    wrapper_decorator,
     write_json_atomically,
     GIT_EXCLUDE_FILE,
 )
@@ -30,7 +26,6 @@ from mega_snake.util.formatting import (
     USER_DECLINED_ERROR_CODE,
     InternalStateError,
     UserDeclinedError,
-    resolve_error_code,
 )
 from mega_snake.util.cli_group import ATTR_METADATA
 
@@ -479,68 +474,6 @@ def test_cli_metadata() -> None:
         "short_help": "Test command",
         "help": "This is a test command",
     }
-
-
-def test_wrapper_decorator() -> None:
-    """Test wrapper_decorator function."""
-
-    def wrapper(ctx: click.Context, *_args, **_kwargs) -> None:
-        """Wrapper for the config_environment command."""
-        ctx.obj["exit_code"] = 21
-
-    add_wrapper = wrapper_decorator(wrapper)
-
-    exit_code: int = 0
-
-    @click.command()
-    @click.pass_context
-    # This command is decorated with cli_metadata
-    @cli_metadata(name="test_command", short_help="Test command", help="This is a test command")
-    def test_command(ctx) -> None:
-        """Test command."""
-        nonlocal exit_code
-        exit_code = ctx.obj.get("exit_code", 0)
-
-    # Add aliases to the command
-    setattr(test_command, "aliases", ["tc", "testcmd"])
-
-    wrapped_command: click.Command = add_wrapper(test_command)
-    runner = CliRunner()
-    result = runner.invoke(wrapped_command, obj={"foo": "bar"})
-    assert result.exit_code == 0
-    assert result.exception is None
-    assert isinstance(wrapped_command, click.Command)
-    assert exit_code == 21
-
-
-def test_wrapper_decorator_keeps_a_group_a_group() -> None:
-    """Wrapping must not turn a `click.Group` into a leaf command.
-
-    The rebuild copies a command through `click.Command.__init__`'s signature, which knows nothing
-    about `commands`. Before this was handled, registering the nested `config` group through its
-    module wrapper silently produced a command with no subcommands, so `mgsnake config get` stopped
-    resolving.
-    """
-
-    def wrapper(_ctx: click.Context, *_args, **_kwargs) -> None:
-        """No-op pre-flight."""
-
-    @click.group(name="parent")
-    def parent() -> None:
-        """Parent group."""
-
-    @parent.command(name="child")
-    def child() -> None:
-        """Child command."""
-        click.echo("child ran")
-
-    wrapped = wrapper_decorator(wrapper)(parent)
-
-    assert isinstance(wrapped, click.Group)
-    assert set(wrapped.commands) == {"child"}
-    result = CliRunner().invoke(wrapped, ["child"])
-    assert result.exit_code == 0
-    assert "child ran" in result.output
 
 
 def test_write_json_atomically_writes_the_payload(tmp_path: Path) -> None:
@@ -1015,59 +948,6 @@ def test_ensure_working_path_invalid_property(
     mk_get_property.return_value = str(tmp_path.parent / "somewhere_else")
     with pytest.raises(InternalStateError, match="not in the current directory"):
         ensure_working_path()
-
-
-def test_wrapper_decorator_preserves_every_group_only_constructor_argument() -> None:
-    """The sibling of the test above, generalised: `commands` was never the only casualty.
-
-    Fixing `commands` by name left `invoke_without_command`, `chain`, `subcommand_metavar` and
-    `result_callback` behind, and each fails the same silent way -- nothing raises, the group simply
-    stops behaving as declared until someone happens to invoke it the right way. The parameter set is
-    now derived from the class, so this test walks `Group.__init__`'s own signature rather than a
-    list someone has to remember to extend.
-
-    `CliGroup` is the class under test on purpose: its `__init__` is `(*args, **kwargs)`, so reading
-    one signature yields nothing at all and the rebuild produces an empty group. Only a walk of the
-    MRO answers, and using a plain `click.Group` here would hide that.
-    """
-
-    def wrapper(_ctx: click.Context, *_args, **_kwargs) -> None:
-        """No-op pre-flight."""
-
-    parent = CliGroup(
-        name="parent",
-        invoke_without_command=True,
-        chain=False,
-        subcommand_metavar="<THING>",
-        help="Parent group.",
-    )
-
-    @parent.command(name="child")
-    def child() -> None:
-        """Child command."""
-        click.echo("child ran")
-
-    @parent.result_callback()
-    def collect(result: object, **_kwargs: object) -> str:
-        """Mark the result so a dropped callback is visible."""
-        return f"collected:{result}"
-
-    wrapped = wrapper_decorator(wrapper)(parent)
-
-    group_only = {
-        name
-        for name, parameter in inspect.signature(click.Group.__init__).parameters.items()
-        if name != "self" and parameter.kind not in (parameter.VAR_KEYWORD, parameter.VAR_POSITIONAL)
-    }
-    dropped = [name for name in group_only if not hasattr(wrapped, name)]
-    assert dropped == [], f"the rebuild dropped {dropped}"
-    assert wrapped.invoke_without_command is True, "a group declared to run bare must still run bare"
-    assert wrapped.subcommand_metavar == "<THING>"
-    assert wrapped.chain is False
-    # `result_callback` is the decorator, so the registered callback lives on the private attribute;
-    # reading the public one would compare two bound methods and pass regardless.
-    assert wrapped._result_callback is collect  # pylint: disable=protected-access
-    assert set(wrapped.commands) == {"child"}
 
 
 # ---------------------------------------------------------------------------

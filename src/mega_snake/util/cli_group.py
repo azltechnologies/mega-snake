@@ -26,6 +26,10 @@ META_FLAGS = "flags"
 # to re-source them once it finishes. Declared per command rather than per module: sitting in
 # config_environment is not what makes a command change the environment, touching those files is.
 META_RELOADS_ENV = "reloads_environment"
+# Metadata key marking a command whose outcome must reach the click context. Such a command returns a
+# primitive and is registered through `wrapper_context_decorator`, whose module ending writes the
+# context on its behalf: commands never touch the context themselves.
+META_CONTEXT_COMMAND = "context_command"
 DEFAULT_GROUP_KEY = "commands"
 
 
