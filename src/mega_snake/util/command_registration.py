@@ -9,7 +9,7 @@ command's outcome reaches the click context without the command ever touching it
 import inspect
 from dataclasses import dataclass
 from types import UnionType
-from typing import Any, Callable, Optional, Tuple, Union, get_args, get_origin, get_type_hints
+from typing import Any, Callable, Optional, Tuple, Union, cast, get_args, get_origin, get_type_hints
 
 import click
 
@@ -132,6 +132,7 @@ PRESERVED_ATTRS: Tuple[str, ...] = (ATTR_ALIAS, ATTR_DOCS, ATTR_GROUP)
 # into the click context, so anything richer is a sign the command is handing it work to do.
 # `bytes` is left out on purpose: no ending has a reason to branch on raw data.
 PRIMITIVE_TYPES: Tuple[type, ...] = (int, float, str, bool, type(None))
+_PRIMITIVE_NAMES: str = ", ".join(primitive.__name__ for primitive in PRIMITIVE_TYPES)
 
 
 def is_primitive(value: Any) -> bool:
@@ -182,11 +183,12 @@ def _is_primitive_annotation(annotation: Any) -> bool:
     return all(member in PRIMITIVE_TYPES for member in members)
 
 
-def _require_primitive_return_annotation(command: click.Command) -> None:
-    """Refuse a context command whose callback does not promise a primitive return value.
+def _require_primitive_return_annotation(callback: Optional[Callable], label: str) -> None:
+    """Refuse a context callback that does not promise a primitive return value.
 
     Parameters:
-        command: The context command being registered.
+        callback: The callback whose return value reaches a module ending.
+        label: How the command is named in the refusal: its name, or the group and subcommand names.
 
     Raises:
         InternalStateError: If the callback has no return annotation, or it is not primitive.
@@ -194,17 +196,79 @@ def _require_primitive_return_annotation(command: click.Command) -> None:
     Returns:
         None
     """
-    hints: dict[str, Any] = get_type_hints(command.callback) if command.callback else {}
+    hints: dict[str, Any] = get_type_hints(callback) if callback else {}
     if "return" not in hints:
         raise InternalStateError(
-            f"Context command '{command.name}' must annotate its return type with a primitive "
-            f"({', '.join(t.__name__ for t in PRIMITIVE_TYPES)})."
+            f"Context command '{label}' must annotate its return type with a primitive ({_PRIMITIVE_NAMES})."
         )
     if not _is_primitive_annotation(hints["return"]):
         raise InternalStateError(
-            f"Context command '{command.name}' is annotated to return {hints['return']!r}, "
-            f"which is not a primitive ({', '.join(t.__name__ for t in PRIMITIVE_TYPES)})."
+            f"Context command '{label}' is annotated to return {hints['return']!r}, "
+            f"which is not a primitive ({_PRIMITIVE_NAMES})."
         )
+
+
+def _require_context_group_shape(group: click.Group) -> None:
+    """Refuse a context group whose subcommand results could not reach an ending one by one.
+
+    A context group hands the ending the value its subcommand returned, through the group's result
+    callback. That only means one primitive per invocation for a plain group of leaf commands, so
+    every other shape is refused rather than half supported: a chained group passes a list, a group
+    invoked without a subcommand passes its own callback's value, a nested group passes whatever its
+    own result callback makes of it, and an existing result callback would sit between the
+    subcommand and the ending.
+
+    Parameters:
+        group: The context group being registered.
+
+    Raises:
+        InternalStateError: If the group is chained, runs without a subcommand, already has a result
+            callback, holds a nested group, or has a subcommand not annotated with a primitive.
+
+    Returns:
+        None
+    """
+    unsupported: list[str] = []
+    if group.chain:
+        unsupported.append("chain=True")
+    if group.invoke_without_command:
+        unsupported.append("invoke_without_command=True")
+    if group._result_callback is not None:  # pylint: disable=protected-access
+        unsupported.append("a result callback of its own")
+    if unsupported:
+        raise InternalStateError(
+            f"Context group '{group.name}' cannot hand its results to an ending: it declares {', '.join(unsupported)}."
+        )
+    for name, subcommand in group.commands.items():
+        if isinstance(subcommand, click.Group):
+            raise InternalStateError(
+                f"Context group '{group.name}' cannot hand its results to an ending: '{name}' is a nested group."
+            )
+        _require_primitive_return_annotation(subcommand.callback, f"{group.name} {name}")
+
+
+def _deliver(ending: Callable[[click.Context, Any], None], ctx: click.Context, label: str, result: Any) -> Any:
+    """Hand a context command's result to its module ending, once it is known to be primitive.
+
+    Parameters:
+        ending: The module ending.
+        ctx: The click context the ending writes into.
+        label: How the command is named if the result is refused.
+        result: What the command returned.
+
+    Raises:
+        InternalStateError: If the result is not a primitive.
+
+    Returns:
+        Any: The result, untouched.
+    """
+    if not is_primitive(result):
+        raise InternalStateError(
+            f"Context command '{label}' returned {type(result).__name__}, "
+            f"which is not a primitive ({_PRIMITIVE_NAMES})."
+        )
+    ending(ctx, result)
+    return result
 
 
 def _merge_metadata(target: Callable, source: Any) -> None:
@@ -323,6 +387,12 @@ def wrapper_context_decorator(sub_wrapper: Callable, ending: Callable[[click.Con
     reach the context (an exit status, say) declares ``@cli_metadata(context_command=True)``,
     returns a primitive, and lets its module's ``ending`` translate that result into the context.
 
+    A **group** may be a context command too. Its callback runs before the subcommand, so the value
+    worth delivering is the subcommand's: the ending is attached as the group's result callback and
+    receives what the invoked subcommand returned. Every subcommand must then annotate a primitive
+    return, and the group must be a plain group of leaf commands (see
+    ``_require_context_group_shape``).
+
     Parameters:
         sub_wrapper: The module wrapper, called with the click context and the command arguments.
         ending: Called with the click context and the command result once the command returned.
@@ -335,14 +405,15 @@ def wrapper_context_decorator(sub_wrapper: Callable, ending: Callable[[click.Con
     """
 
     def decorator(command: click.Command) -> click.Command:
-        """Wrap one context command with the module wrapper and ending.
+        """Wrap one context command, or context group, with the module wrapper and ending.
 
         Parameters:
-            command: The context command to wrap.
+            command: The context command or group to wrap.
 
         Raises:
-            InternalStateError: If the command is not flagged as a context command, or its
-                callback does not annotate a primitive return type.
+            InternalStateError: If the command is not flagged as a context command, a leaf callback
+                or a group's subcommand does not annotate a primitive return type, or the group has
+                a shape whose results cannot reach an ending one by one.
 
         Returns:
             click.Command: The wrapped command.
@@ -352,23 +423,53 @@ def wrapper_context_decorator(sub_wrapper: Callable, ending: Callable[[click.Con
                 f"Command '{command.name}' is not a context command and must be registered through "
                 "wrapper_decorator, not wrapper_context_decorator."
             )
-        _require_primitive_return_annotation(command)
+        if isinstance(command, click.Group):
+            return _wrap_context_group(command, sub_wrapper, ending)
+        _require_primitive_return_annotation(command.callback, str(command.name))
 
         @click.pass_context
         def wrapper(ctx, *args, **kwargs) -> Any:
             sub_wrapper(ctx, *args, **kwargs)
-            res = ctx.invoke(command, *args, **kwargs)
-            if not is_primitive(res):
-                raise InternalStateError(
-                    f"Context command '{command.name}' returned {type(res).__name__}, "
-                    f"which is not a primitive ({', '.join(t.__name__ for t in PRIMITIVE_TYPES)})."
-                )
-            ending(ctx, res)
-            return res
+            return _deliver(ending, ctx, str(command.name), ctx.invoke(command, *args, **kwargs))
 
         return _wrap_command(command, sub_wrapper, wrapper)
 
     return decorator
+
+
+def _wrap_context_group(
+    group: click.Group, sub_wrapper: Callable, ending: Callable[[click.Context, Any], None]
+) -> click.Command:
+    """Wrap a context group: the module wrapper before its callback, the ending on its subcommand's result.
+
+    Parameters:
+        group: The context group.
+        sub_wrapper: The module wrapper.
+        ending: The module ending.
+
+    Raises:
+        InternalStateError: If the group's shape or a subcommand's annotation is refused.
+
+    Returns:
+        click.Command: The wrapped group, carrying the ending as its result callback.
+    """
+    _require_context_group_shape(group)
+
+    @click.pass_context
+    def wrapper(ctx, *args, **kwargs) -> Any:
+        sub_wrapper(ctx, *args, **kwargs)
+        return ctx.invoke(group, *args, **kwargs)
+
+    wrapped = _wrap_command(group, sub_wrapper, wrapper)
+
+    def deliver_subcommand_result(result: Any, **_params: Any) -> Any:
+        ctx = click.get_current_context()
+        return _deliver(ending, ctx, f"{group.name} {ctx.invoked_subcommand}", result)
+
+    # The rebuild keeps the class, so the copy of a group is a group.
+    rebuilt = cast(click.Group, wrapped)
+    rebuilt.result_callback()(deliver_subcommand_result)
+    return rebuilt
 
 
 @dataclass(frozen=True)
