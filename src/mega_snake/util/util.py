@@ -5,15 +5,14 @@ This module contains utility functions for common operations.
 import json
 import os
 import re
+import shutil
 from typing import Optional, Tuple, Union
 import subprocess
 import platform
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Callable
-import inspect
-import click
+from typing import Any, Callable, TypeVar
 from colorama import init, Fore, Back, Style
 from jsoncomment import JsonComment
 from mega_snake.util.formatting import (
@@ -24,15 +23,29 @@ from mega_snake.util.formatting import (
     ws_success,
     ws_warning,
 )
-from mega_snake.util.cli_group import ATTR_ALIAS, ATTR_DOCS, ATTR_GROUP, ATTR_METADATA
+from mega_snake.constants import SHELL_ENV_VARIABLE
+from mega_snake.util.cli_group import ATTR_METADATA
 from mega_snake.util.props import get_property
 
 OS = platform.system()
 
 GIT_EXCLUDE_FILE = os.path.join(".git", "info", "exclude")
+GITIGNORE_FILE = ".gitignore"
 
 REMOTE_PREFIX = "refs/remotes"
 LOCAL_PREFIX = "refs/heads"
+
+# Rejected answers allowed before a prompt gives up. Shared by every prompt helper below so the
+# three of them cannot drift into offering different numbers of attempts for the same kind of
+# question.
+MAX_PROMPT_TRIES: int = 3
+
+# Separator accepted by `get_validated_selection` between the entries of a multiple choice.
+SELECTION_SEPARATOR: str = ","
+
+# What a prompt's `parse` callback returns, carried through `_prompt_with_retries` to its caller so
+# each prompt helper keeps its real return type instead of collapsing to `Any`.
+ParsedT = TypeVar("ParsedT")
 
 # Initialize colopiprama
 init(autoreset=True)
@@ -126,6 +139,14 @@ def run_operation(
 ) -> subprocess.CompletedProcess[str]:
     """Runs the given command and retries on failure up to 3 times.
 
+    A timeout is retried like any other failure, and catching it takes a deliberate clause:
+    ``subprocess.TimeoutExpired`` is a ``SubprocessError`` but **not** a ``CalledProcessError``, so
+    an ``except`` written for the latter never sees it. Miss that and a single slow network call — a
+    cold fetch, a VPN, a credential prompt — aborts the whole command with a raw traceback while the
+    retries that exist precisely for transient failures never run. **Never narrow this to
+    ``CalledProcessError`` alone.** The two are caught together and reported the same way; only the
+    wording differs, since a timeout has no exit code to show.
+
     Parameters:
         cwd: The shell command to execute.
         description: Human-readable description of the operation, used in log messages.
@@ -133,15 +154,9 @@ def run_operation(
         timeout: Maximum number of seconds to wait for the command to finish, or None to wait
             indefinitely.
 
-    A timeout is retried like any other failure. It used to propagate on the first attempt instead,
-    because ``subprocess.TimeoutExpired`` is a ``SubprocessError`` but **not** a
-    ``CalledProcessError``, so the ``except`` clause never saw it — which meant a single slow network
-    call (a cold fetch, a VPN, a credential prompt) aborted the whole command with a raw traceback,
-    and the retries that exist precisely for transient failures never ran. The two are caught
-    together and reported the same way; only the wording differs, since a timeout has no exit code
-    to show.
-
     Raises:
+        EnvironmentError: If the configured shell is not native to the platform and the fallback
+            shell that replaces it is not on the PATH. Raised before any attempt is made.
         subprocess.SubprocessError: If the command still fails — or still times out — after 3
             attempts.
 
@@ -152,15 +167,35 @@ def run_operation(
     ws_advice(
         f"Running operation: {description}; Command: {cwd}; Timeout: {timeout if timeout is not None else 'None'} secs"
     )
+    # Resolved once, before the retries: neither the configuration nor the platform can change between
+    # attempts, and the check below would otherwise search the PATH on every one of them.
+    configured: str = get_property("shell")
+    shell: str = configured
+    # The configured shell is used when it is native to the platform; otherwise each platform falls
+    # back to its own default, because the commands this module runs are written for that platform's
+    # shell family. The Darwin branch compares with `==`. It used to read `!=`, which made it catch
+    # every platform except macOS -- including Windows with PowerShell, the exact configuration
+    # `config_setup.ps1` exports -- so every Windows user ran their commands through `zsh`, and the
+    # Linux branch below it could never be reached.
+    if OS == "Windows" and shell not in ["powershell", "pwsh"]:
+        shell = "powershell"
+    elif OS == "Darwin" and shell not in ["bash", "zsh"]:
+        shell = "zsh"
+    elif OS == "Linux" and shell not in ["bash", "zsh"]:
+        shell = "bash"
+    # Only a substituted shell is checked. The configured one was already located on the PATH by
+    # `init_app_properties`; the fallback never was, and when it is missing -- `bash` in a minimal
+    # image such as Alpine -- `subprocess.run` raises a bare `FileNotFoundError` that, on Windows,
+    # does not even name the file. Raised before the first attempt: a missing binary does not appear
+    # on a retry.
+    if shell != configured and not shutil.which(shell):
+        raise EnvironmentError(
+            f"{SHELL_ENV_VARIABLE} is '{configured}', which is not native to {OS}, so mgsnake runs its commands "
+            f"through '{shell}' instead -- but '{shell}' is not installed or not on the PATH. Install "
+            f"'{shell}', or set {SHELL_ENV_VARIABLE} to a shell that is available on {OS}."
+        )
+    flag: str = "-Command" if shell in ["powershell", "pwsh"] else "-c"
     for attempt in range(1, num_retries + 1):
-        shell: str = get_property("shell")
-        if OS == "Windows" and shell not in ["powershell", "pwsh"]:
-            shell = "powershell"
-        elif OS != "Darwin" and shell not in ["bash", "zsh"]:
-            shell = "zsh"
-        elif OS == "Linux" and shell not in ["bash", "zsh"]:
-            shell = "bash"
-        flag: str = "-Command" if shell in ["powershell", "pwsh"] else "-c"
         try:
             ws_advice(f"Running: {cwd}")
             result = subprocess.run(
@@ -232,21 +267,158 @@ def get_typed_validated_input(p_prompt: str, warn: str, valid_values: list[str],
     Returns:
         str: The accepted value, exactly as the user typed it.
     """
+
+    def parse(answer: str) -> str:
+        """Accept the answer only when it is listed, matched verbatim.
+
+        Parameters:
+            answer: The raw answer as typed.
+
+        Raises:
+            ValueError: If the answer is not one of ``valid_values``.
+
+        Returns:
+            str: The accepted value, exactly as the user typed it.
+        """
+        if answer not in valid_values:
+            # No message on purpose: `warn` already says what is expected, and a message would be
+            # prepended to it, changing the warning this helper has always printed.
+            raise ValueError()
+        return answer
+
+    return _prompt_with_retries(
+        p_prompt,
+        parse,
+        warn=warn,
+        fail_message=f"Too many invalid inputs for '{p_prompt}'. Exiting. {fail_msg if fail_msg is not None else ''}",
+    )
+
+
+def _prompt_with_retries(
+    p_prompt: str,
+    parse: Callable[[str], ParsedT],
+    *,
+    instructions: str = "",
+    warn: str,
+    fail_message: str,
+) -> ParsedT:
+    """Ask a question until ``parse`` accepts the answer, or the attempts run out.
+
+    The retry loop lives here once. Every prompt helper in this module is the same loop wrapped
+    around a different notion of "valid", and while each carried its own copy every fix to the
+    attempt counting, the banner or the give-up message had to be applied in each of them — which is
+    how they came to disagree about whether the instructions are repeated on a retry.
+
+    ``parse`` signals rejection with ``ValueError`` and returns the accepted value otherwise, so a
+    helper can validate, normalize and convert in one place rather than validating here and
+    converting at the call site.
+
+    **The rejection reason reaches the user.** When ``parse`` raises ``ValueError`` *with* a message,
+    that message is shown as the first line of the warning, above ``warn``. The message is the only
+    place that knows *what* was wrong with this particular answer — which entry was not recognised —
+    while ``warn`` can only say what a valid answer looks like. Discarding it left a user who typed
+    one wrong name among several to diff the answer against the full list by eye. A ``ValueError``
+    raised without a message keeps the warning exactly as ``warn`` alone.
+
+    Parameters:
+        p_prompt: The question shown to the user.
+        parse: Converts a raw answer into the accepted value, raising ``ValueError`` to reject it.
+        instructions: Guidance appended to the first prompt and to every retry banner. Empty when the
+            question is self-explanatory, which is what keeps the banner identical to what the
+            verbatim-matching helper has always printed.
+        warn: Message shown after a rejected answer.
+        fail_message: Message carried by the error raised once the attempts run out.
+
+    Raises:
+        KeyError: If the user fails to give an accepted answer within ``MAX_PROMPT_TRIES`` retries.
+
+    Returns:
+        ParsedT: Whatever ``parse`` returned for the accepted answer, with its type preserved -- so
+            ``get_validated_input`` is checked as returning ``str`` and ``get_validated_selection`` as
+            returning ``list[str]``, rather than both collapsing to ``Any``.
+    """
     tries: int = 0
-    prompt = p_prompt
+    prompt: str = p_prompt
+    suffix: str = f"{instructions}\n" if instructions else ""
     while True:
-        user_input = input(f"\n{prompt}\n")
-        if user_input in valid_values:
-            return user_input
-        prompt = (
-            f"{Back.BLACK}{Fore.YELLOW}{p_prompt}\ttry again\t—\t{Fore.RED}{3 - tries} attempts left\n{Style.RESET_ALL}"
-        )
-        ws_warning(warn)
-        tries += 1
-        if tries > 3:
-            raise KeyError(
-                f"Too many invalid inputs for '{p_prompt}'. Exiting. {fail_msg if fail_msg is not None else ''}"
+        raw: str = input(f"\n{prompt}\n{suffix}") if tries == 0 else input(f"\n{prompt}\n")
+        try:
+            return parse(raw)
+        except ValueError as rejection:
+            prompt = (
+                f"{Back.BLACK}{Fore.YELLOW}{p_prompt}\ttry again\t—\t"
+                f"{Fore.RED}{MAX_PROMPT_TRIES - tries} attempts left\n{suffix}{Style.RESET_ALL}"
             )
+            reason: str = str(rejection)
+            ws_warning(f"{reason}\n{warn}" if reason else warn)
+            tries += 1
+            if tries > MAX_PROMPT_TRIES:
+                raise KeyError(fail_message) from None
+
+
+def get_validated_selection(p_prompt: str, valid_values: list[str], all_key: str = "all") -> list[str]:
+    """Ask the user to pick several of the given values, as one comma-separated answer.
+
+    A single unrecognised entry rejects the **whole** answer, and the warning names it. Silently
+    dropping it would act on a selection the user did not make, and acting on the recognised half is
+    worse still: the user reads the success message for the entries that worked and never learns the
+    rest were ignored. Nothing is applied until the answer is accepted in full.
+
+    Duplicates collapse and order is preserved, so ``b, a, b`` selects ``[b, a]`` — the answer is a
+    set of choices, and a caller iterating it must not act on one of them twice.
+
+    Parameters:
+        p_prompt: The question shown to the user.
+        valid_values: The selectable values, matched case-insensitively.
+        all_key: Answer that selects everything, offered alongside the values themselves.
+
+    Raises:
+        KeyError: If the user fails to give an accepted answer within ``MAX_PROMPT_TRIES`` retries.
+
+    Returns:
+        list[str]: The selected values, lowercased, without duplicates, in the order given.
+    """
+    allowed: list[str] = [value.lower() for value in valid_values]
+    instructions: str = (
+        f"Please enter one or more of:\n {' | '.join(valid_values)}\n"
+        f"Separate them with '{SELECTION_SEPARATOR}', or enter '{all_key}' for all of them."
+    )
+
+    def parse(answer: str) -> list[str]:
+        """Split, normalize and validate a comma-separated answer.
+
+        Parameters:
+            answer: The raw answer as typed.
+
+        Raises:
+            ValueError: If the answer is empty or names anything that is not selectable.
+
+        Returns:
+            list[str]: The selected values, deduplicated and in the order given.
+        """
+        entries: list[str] = [item.strip().lower() for item in answer.split(SELECTION_SEPARATOR) if item.strip()]
+        if not entries:
+            raise ValueError("No entry was given.")
+        # Validated before the `all` shortcut, never after it. Checking `all` first returned the
+        # whole catalogue for `all, typo`, silently accepting the typo -- the one outcome the
+        # all-or-nothing rule above exists to rule out.
+        all_answer: str = all_key.lower()
+        unknown: list[str] = list(
+            dict.fromkeys(entry for entry in entries if entry not in allowed and entry != all_answer)
+        )
+        if unknown:
+            raise ValueError(f"Not recognised: {', '.join(repr(entry) for entry in unknown)}.")
+        if all_answer in entries:
+            return list(allowed)
+        return list(dict.fromkeys(entries))
+
+    return _prompt_with_retries(
+        p_prompt,
+        parse,
+        instructions=instructions,
+        warn=f"Invalid selection; nothing has been applied. {instructions}",
+        fail_message=f"Too many invalid selections for '{p_prompt} —— {instructions}'. Exiting.",
+    )
 
 
 def get_input_or_default(p_prompt: str, default: Any) -> str:
@@ -268,35 +440,132 @@ def get_input_or_default(p_prompt: str, default: Any) -> str:
 
 
 def get_validated_input(p_prompt: str, valid_values: list[str]) -> str:
-    """
-    Get user input and validate against allowed values
+    """Ask the user for one of the given values, matching the answer case-insensitively.
 
-    Args:
-        prompt: str
-        valid_values: set[str]
+    Parameters:
+        p_prompt: The question shown to the user.
+        valid_values: The accepted answers; both they and the answer are lowercased before matching.
+
+    Raises:
+        KeyError: If the user fails to give an accepted value within the allowed attempts.
+
+    Returns:
+        str: The accepted value, lowercased.
     """
     instructions: str = f"Please enter one of:\n {' | '.join(valid_values)}"
-    warn: str = f"Invalid input. {instructions}"
-    tries: int = 0
-    prompt = p_prompt
-    while True:
-        user_input = input(f"\n{prompt}\n").lower() if tries > 0 else input(f"\n{prompt}\n{instructions}\n").lower()
-        # convert to lowercase all the values in valid_values
-        valid_values = [value.lower() for value in valid_values]
-        if user_input in valid_values:
-            return user_input
-        prompt = (
-            f"{Back.BLACK}{Fore.YELLOW}{p_prompt}\ttry again\t—\t{Fore.RED}{3 - tries} "
-            f"attempts left\n{instructions}\n{Style.RESET_ALL}"
-        )
-        ws_warning(warn)
-        tries += 1
-        if tries > 3:
-            raise KeyError(f"Too many invalid inputs for '{p_prompt} —— {instructions}'. Exiting.")
+    allowed: list[str] = [value.lower() for value in valid_values]
+
+    def parse(answer: str) -> str:
+        """Accept the answer only when it is listed, compared in lower case.
+
+        Parameters:
+            answer: The raw answer as typed.
+
+        Raises:
+            ValueError: If the answer is not one of ``valid_values``.
+
+        Returns:
+            str: The accepted value, lowercased.
+        """
+        chosen: str = answer.lower()
+        if chosen not in allowed:
+            # No message on purpose: the warning already lists every accepted value.
+            raise ValueError()
+        return chosen
+
+    return _prompt_with_retries(
+        p_prompt,
+        parse,
+        instructions=instructions,
+        warn=f"Invalid input. {instructions}",
+        fail_message=f"Too many invalid inputs for '{p_prompt} —— {instructions}'. Exiting.",
+    )
+
+
+def _append_missing_entries(
+    target: str,
+    entries: list[Tuple[str, str]],
+    *,
+    skip_message: str,
+    present_message: str,
+    added_message: str,
+) -> None:
+    """Append every entry that is not already listed in a git ignore-pattern file.
+
+    The two public helpers below differ only in which file they write and how they word their
+    messages, so the whole read-modify-write lives here once: duplicating it means a later fix to
+    the matching, the newline handling or the write condition gets applied to one copy and forgotten
+    in the other.
+
+    Nothing is written when every entry is already present, so a no-op run leaves the file's bytes
+    untouched — which is what the "idempotent" in the public docstrings claims.
+
+    Parameters:
+        target: Path of the ignore-pattern file to update.
+        entries: Pairs of (entry, description); the entry is the literal line written to the file
+            (e.g. ``".vscode/"``) and the description is the human label used in the log messages.
+        skip_message: Warning emitted, with the descriptions appended, outside a git repository.
+        present_message: Advice template for an entry that is already listed; formatted with
+            ``description`` and ``target``.
+        added_message: Success template for an entry that was appended; same placeholders.
+
+    Raises:
+        None
+
+    Returns:
+        None
+    """
+    if not os.path.exists(".git"):
+        ws_warning(f"{skip_message}: {', '.join(description for _, description in entries)}")
+        return
+    content: str = ""
+    if os.path.exists(target):
+        # `newline=""` on both handles, so Python translates no line ending in either direction. The
+        # default text mode turned every `\r\n` into `\n` on the way in and wrote them back that way,
+        # so adding one pattern rewrote every line of a CRLF file -- and `.gitignore` is committed,
+        # which made a one-line addition a whole-file diff and a merge conflict for the team.
+        with open(target, "r", encoding="utf-8", newline="") as file:
+            content = file.read()
+    # New lines follow the convention the file already uses, so it never ends up with mixed endings.
+    line_ending: str = "\r\n" if "\r\n" in content else "\n"
+    missing: list[Tuple[str, str]] = []
+    # What the file will contain once the entries accepted so far are appended. Matching against this
+    # rather than against `content` alone is what catches two entries of the same batch that name the
+    # same pattern (`foo/` and `foo`): both were missing from the original text, so both used to be
+    # appended. It is only a lookup view -- the file itself is still untouched until the write below.
+    searched: str = content
+    for entry, description in entries:
+        regex = re.compile(rf"^\s*{re.escape(entry.rstrip('/'))}/?\s*$", re.MULTILINE)
+        if regex.search(searched):
+            ws_advice(present_message.format(description=description, target=target))
+            continue
+        missing.append((entry, description))
+        searched += f"\n{entry}\n"
+    # Deciding what is missing before touching the text is what makes a no-op run a true no-op: the
+    # file is not reopened for writing at all, so its bytes and its mtime are left alone.
+    if not missing:
+        return
+    # A hand-edited file may end mid-line; appending straight onto it would silently merge the first
+    # new entry into the existing last pattern instead of adding one. Done here rather than up front
+    # so a run that adds nothing does not rewrite the file just to normalize its final newline.
+    if content and not content.endswith("\n"):
+        content += line_ending
+    for entry, description in missing:
+        content += f"{entry}{line_ending}"
+        ws_success(added_message.format(description=description, target=target))
+    parent: str = os.path.dirname(target)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    with open(target, "w", encoding="utf-8", newline="") as file:
+        file.write(content)
 
 
 def exclude_from_git(entries: list[Tuple[str, str]]) -> None:
     """Add the given entries to the repository's local git exclude file when missing.
+
+    This is the machine-local exclusion: ``.git/info/exclude`` is never committed, so it hides the
+    entries from this clone only. Use it for folders a single developer generates; use
+    ``add_to_gitignore`` for an exclusion the whole team should get.
 
     Entries already present are left untouched, so the operation is idempotent. When the current
     directory is not a git repository the exclusions are skipped with a warning instead of failing,
@@ -312,29 +581,42 @@ def exclude_from_git(entries: list[Tuple[str, str]]) -> None:
     Returns:
         None
     """
-    if not os.path.exists(".git"):
-        ws_warning(
-            f"Not inside a git repository; skipping git exclusions for: "
-            f"{', '.join(description for _, description in entries)}"
-        )
-        return
-    exclude: str = ""
-    if os.path.exists(GIT_EXCLUDE_FILE):
-        with open(GIT_EXCLUDE_FILE, "r", encoding="utf-8") as file:
-            exclude = file.read()
-    else:
-        os.makedirs(os.path.dirname(GIT_EXCLUDE_FILE), exist_ok=True)
-    if exclude and not exclude.endswith("\n"):
-        exclude += "\n"
-    for entry, description in entries:
-        regex = re.compile(rf"^\s*{re.escape(entry.rstrip('/'))}/?\s*$", re.MULTILINE)
-        if regex.search(exclude):
-            ws_advice(f"{description} already excluded in {GIT_EXCLUDE_FILE}")
-            continue
-        exclude += f"{entry}\n"
-        ws_success(f"Excluded {description} in {GIT_EXCLUDE_FILE}")
-    with open(GIT_EXCLUDE_FILE, "w", encoding="utf-8") as file:
-        file.write(exclude)
+    _append_missing_entries(
+        GIT_EXCLUDE_FILE,
+        entries,
+        skip_message="Not inside a git repository; skipping git exclusions for",
+        present_message="{description} already excluded in {target}",
+        added_message="Excluded {description} in {target}",
+    )
+
+
+def add_to_gitignore(entries: list[Tuple[str, str]]) -> None:
+    """Add the given entries to the repository's .gitignore file when missing.
+
+    This is the committed exclusion: every clone of the repository gets it. Use ``exclude_from_git``
+    instead when the entries should stay local to one machine.
+
+    Entries already present are left untouched, so the operation is idempotent. When the current
+    directory is not a git repository the additions are skipped with a warning instead of failing.
+    The .gitignore file is created when it does not exist yet.
+
+    Parameters:
+        entries: Pairs of (entry, description); the entry is the literal line written to .gitignore
+            (e.g. ``".github/skills/mgsnake/"``), the description is used in the log messages.
+
+    Raises:
+        None
+
+    Returns:
+        None
+    """
+    _append_missing_entries(
+        GITIGNORE_FILE,
+        entries,
+        skip_message="Not inside a git repository; skipping .gitignore additions for",
+        present_message="{description} already in {target}",
+        added_message="Added {description} to {target}",
+    )
 
 
 def ensure_working_path(decline_message: Optional[str] = None) -> str:
@@ -390,161 +672,5 @@ def cli_metadata(**metadata) -> Callable:
             setattr(f, ATTR_METADATA, {})
         getattr(f, ATTR_METADATA).update(metadata)
         return f
-
-    return decorator
-
-
-# `Group.result_callback` is the *decorator* that registers one; the registered callback itself is
-# stored under this name. Reading the public attribute would pass a bound method as the callback.
-_CONSTRUCTOR_ATTRIBUTE_OVERRIDES: dict[str, str] = {"result_callback": "_result_callback"}
-
-
-def _constructor_parameters(command_class: type) -> set[str]:
-    """Return every named constructor parameter a command class accepts, across its whole MRO.
-
-    The walk is the point. ``CliGroup.__init__`` is ``(*args, **kwargs)`` forwarding to its base, so
-    reading that one signature yields nothing at all and the rebuild silently produces a group with
-    no subcommands -- the exact failure this function exists to prevent, reintroduced one level up.
-    ``**kwargs`` and ``*args`` are excluded for the same reason they are useless here: they are the
-    funnel, not settings, and passing one by name would raise.
-
-    Parameters:
-        command_class: The class whose constructors to read.
-
-    Raises:
-        None
-
-    Returns:
-        set[str]: The parameter names that can be passed by keyword.
-    """
-    variadic = (inspect.Parameter.VAR_KEYWORD, inspect.Parameter.VAR_POSITIONAL)
-    names: set[str] = set()
-    for ancestor in command_class.__mro__:
-        if not (isinstance(ancestor, type) and issubclass(ancestor, click.Command)):
-            continue
-        names |= {
-            name
-            for name, parameter in inspect.signature(ancestor.__init__).parameters.items()
-            if name != "self" and parameter.kind not in variadic
-        }
-    return names
-
-
-def _constructor_argument(command: click.Command, name: str) -> Any:
-    """Read the value a rebuilt command should receive for one constructor parameter.
-
-    Parameters:
-        command: The command being copied.
-        name: The constructor parameter name.
-
-    Raises:
-        None
-
-    Returns:
-        Any: The stored value, read from the private attribute when the public one is not it.
-    """
-    return getattr(command, _CONSTRUCTOR_ATTRIBUTE_OVERRIDES.get(name, name))
-
-
-def _has_argument(command: click.Command, name: str) -> bool:
-    """Report whether a command carries a value for one constructor parameter.
-
-    Parameters:
-        command: The command being copied.
-        name: The constructor parameter name.
-
-    Raises:
-        None
-
-    Returns:
-        bool: True when the attribute the rebuild would read exists.
-    """
-    return hasattr(command, _CONSTRUCTOR_ATTRIBUTE_OVERRIDES.get(name, name))
-
-
-def _rebuild_command(command: click.Command) -> click.Command:
-    """Rebuild a command as the same class, so wrapping it cannot change what it is.
-
-    Wrapping copies the command through ``click.Command.__init__``'s signature, which is the reason
-    §2.3 of the contributor guide insists custom attributes be re-applied by hand afterwards. A
-    subclass constructor accepts more than that signature mentions, and everything it adds is
-    dropped unless it is copied too: a ``click.Group`` rebuilt through the plain ``Command``
-    constructor comes out a leaf command with no subcommands, so ``mgsnake config get`` stops
-    resolving the moment the group is registered through a module wrapper like every other command.
-
-    The parameter set is therefore taken from **the command's own class** as well as from
-    ``click.Command``, rather than naming the extras one by one. Enumerating them fixed ``commands``
-    and left ``invoke_without_command``, ``chain``, ``result_callback`` and ``subcommand_metavar``
-    behind, each of which fails the same silent way -- a group declared
-    ``@click.group(invoke_without_command=True)`` would simply stop running its own body, with
-    nothing to see until someone invoked it bare. Deriving the set means the next subclass, or the
-    next click release, is covered without anyone remembering to come back here.
-
-    Parameters:
-        command: The command (or group) to copy.
-
-    Raises:
-        None
-
-    Returns:
-        click.Command: A fresh instance of the same class carrying the same constructor arguments.
-    """
-    attribute_names: set[str] = _constructor_parameters(click.Command) | _constructor_parameters(type(command))
-    return type(command)(
-        **{name: _constructor_argument(command, name) for name in attribute_names if _has_argument(command, name)}
-    )
-
-
-def wrapper_decorator(sub_wrapper: Callable) -> Callable:
-    """Decorator to wrap a command with additional logic"""
-
-    preserved_attrs: Tuple[str, ...] = (ATTR_ALIAS, ATTR_DOCS, ATTR_GROUP)
-
-    def apply_command_metadata(target: click.Command, source: Any) -> None:
-        """Copy custom documentation metadata from a wrapper or callback onto a command.
-
-        Parameters:
-            target: The command that should receive the metadata.
-            source: The callback or wrapper that may carry metadata.
-
-        Raises:
-            None
-
-        Returns:
-            None
-        """
-        metadata: dict[str, Any] = getattr(source, ATTR_METADATA, {})
-        for attr_name in (ATTR_DOCS, ATTR_GROUP):
-            if value := metadata.get(attr_name):
-                setattr(target, attr_name, value)
-
-    def decorator(command) -> click.Command:
-        """
-        Decorator that can handle both Click Commands and regular functions
-        """
-
-        @click.pass_context
-        def wrapper(ctx, *args, **kwargs) -> None:
-            sub_wrapper(ctx, *args, **kwargs)
-            return ctx.invoke(command, *args, **kwargs)
-
-        def update_flags(source) -> None:
-            """Update flags from the source object to the wrapper"""
-            if source_flags := getattr(source, ATTR_METADATA, {}):
-                if not hasattr(wrapper, ATTR_METADATA):
-                    setattr(wrapper, ATTR_METADATA, {})
-                getattr(wrapper, ATTR_METADATA).update(source_flags)
-
-        update_flags(sub_wrapper)
-        update_flags(command.callback)
-
-        comm = _rebuild_command(command)
-        comm.callback = wrapper  # Override the callback with our wrapper
-        for attr_name in preserved_attrs:
-            if value := getattr(command, attr_name, None):
-                setattr(comm, attr_name, value)
-        apply_command_metadata(comm, sub_wrapper)
-        apply_command_metadata(comm, command.callback)
-        return comm
 
     return decorator

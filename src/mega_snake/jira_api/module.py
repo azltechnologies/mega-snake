@@ -6,7 +6,8 @@ from mega_snake.jira_api.board import jira_board
 from mega_snake.jira_api.issues import jira_issues
 from mega_snake.jira_api.sprint import jira_sprint
 from mega_snake.util.cli_group import CliGroup
-from mega_snake.util.util import cli_metadata, wrapper_decorator
+from mega_snake.util.command_registration import ModuleRegistration, wrapper_decorator
+from mega_snake.util.util import cli_metadata
 
 
 @click.group(cls=CliGroup)
@@ -40,10 +41,9 @@ def wrapper(_ctx: click.Context, *_args, **_kwargs) -> None:
     """
 
 
-# Export the decorated wrapper for use in other modules
-add_wrapper = wrapper_decorator(wrapper)
-
-
 main.add_command_with_alias(jira_board, ["jb"])
 main.add_command_with_alias(jira_sprint, ["js"])
 main.add_command_with_alias(jira_issues, ["ji"])
+
+# The module's single export: its group, wrapped command by command by the CLI entry point.
+registration = ModuleRegistration(main, add_wrapper=wrapper_decorator(wrapper))

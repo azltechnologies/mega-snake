@@ -8,6 +8,11 @@ from mega_snake.config_environment.models.vscode_task import VscodeTask, TASKS_V
 
 VERSION_TEST = "1.2.3"
 
+# What the patched `_logger_args` returns in `test_to_dict`. Deliberately non-empty: an empty stub is
+# what an implementation that never calls the builder would also produce, so it could not tell a
+# composed `args` from one that forgot the redirect.
+LOGGER_ARGS_STUB: list[str] = [">", "'stub.log'", "2>&1"]
+
 
 @pytest.fixture(name="jq")
 def fixture_jq() -> Generator[MagicMock, None, None]:
@@ -52,24 +57,61 @@ def test_stack() -> None:
     assert VscodeTask.RUN_JAVA_DEBUG.stack is ProjectStack.GRADLE
 
 
-def test_add_logger_args() -> None:
-    """Test add_logger_args"""
-    for member in [t for t in VscodeTask if t.watcher]:
-        args_size = len(member.args)
-        mock = MagicMock()
-        mock.return_value = "mocked log path"
-        with patch.object(member.watcher, "get_pattern_date", mock):
-            member.add_logger_args("path/to/working")
-            mock.assert_called_once()
-        assert len(member.args) == args_size + 3
+def test_logger_args_renders_the_redirect_without_touching_the_member() -> None:
+    """`_logger_args` returns the redirect but never writes it back onto the enum member.
+
+    `self` is an enum member, i.e. a process-wide singleton, so a builder that appended to
+    `self.args` would permanently mutate it for every other caller. This pins that `_logger_args`
+    is a pure function of its argument: it returns the redirect, and `member.args` is unchanged
+    before and after the call, for members with and without a watcher.
+    """
+    for member in VscodeTask:
+        args_before = list(member.args)
+        if member.watcher:
+            mock = MagicMock()
+            mock.return_value = "mocked log path"
+            with patch.object(member.watcher, "get_pattern_date", mock):
+                result = member._logger_args("path/to/working")  # pylint: disable=protected-access
+                mock.assert_called_once_with("path/to/working")
+            assert result == "mocked log path".split(" ")
+        else:
+            result = member._logger_args("path/to/working")  # pylint: disable=protected-access
+            assert result == []
+        assert member.args == args_before, f"{member.name}.args was mutated by _logger_args"
+
+
+def test_to_dict_emits_the_redirect_once_however_often_it_is_called() -> None:
+    """Calling `to_dict()` twice on the same member must not carry the first redirect into the second.
+
+    `to_dict` used to call `add_logger_args`, which appended the redirect onto the enum member's
+    own `args` list -- a process-wide singleton -- so a second call appended it a second time. The
+    two calls use different working paths, so a redirect left behind by the first one is a distinct
+    value in the second emission, and each emission is compared by equality against the declared
+    args followed by the redirect of its own call.
+    """
+    first_path, second_path = "path/to/first", "path/to/second"
+    watched = [t for t in VscodeTask if t.watcher]
+    assert watched, "no task has a watcher, so this test walks nothing"
+    for member in watched:
+        declared_args: list[str] = list(member.args)
+        first_redirect: list[str] = member.watcher.get_pattern_date(first_path).split(" ")
+        second_redirect: list[str] = member.watcher.get_pattern_date(second_path).split(" ")
+
+        first_args = member.to_dict(first_path)["args"]
+        second_args = member.to_dict(second_path)["args"]
+
+        assert first_args == [*declared_args, *first_redirect], f"{member.name} emitted {first_args}"
+        assert second_args == [*declared_args, *second_redirect], f"{member.name} emitted {second_args}"
+        assert first_redirect[1] not in second_args, f"{member.name} kept the first call's redirect"
+        assert member.args == declared_args, f"{member.name}.args was mutated by to_dict()"
 
 
 def test_to_dict() -> None:
     """Test to_dict"""
     param = "path/to/working"
     for member in VscodeTask:
-        mock = MagicMock()
-        with patch.object(member, "add_logger_args", mock):
+        mock = MagicMock(return_value=list(LOGGER_ARGS_STUB))
+        with patch.object(member, "_logger_args", mock):
             result = member.to_dict(param)
             mock.assert_called_once_with(param)
         assert result["label"] == member.label
@@ -80,8 +122,8 @@ def test_to_dict() -> None:
             assert result["type"] == member.task_type
         if member.command:
             assert result["command"] == member.command
-        if member.args:
-            assert result["args"] == member.args
+        # `args` is composed: the member's own args followed by the redirect, never `member.args` alone
+        assert result["args"] == [*member.args, *LOGGER_ARGS_STUB], f"{member.name} did not compose its args"
         for key, value in member.extra_args.items():
             assert result[key] == value
         # the stack only decides whether the task is written, it is not part of the task definition

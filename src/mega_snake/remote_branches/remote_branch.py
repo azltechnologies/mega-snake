@@ -115,20 +115,8 @@ class Branch(Commit):
             None
         """
         self.short_name = self.name.removeprefix(f"{self._ref_prefix()}/")
-        # TODO: memoize the merge verdict on the tip hash instead of re-deriving it per side.
-        # This method runs once per *side*, so a paired branch pays for the whole analysis twice —
-        # and for an in-sync branch (trackshort "=", the majority) both sides hold the exact same
-        # `self.hash`, so the second run re-derives an answer from byte-identical inputs. Worst case
-        # per side that is 6 git invocations (merge-base --is-ancestor, merge-base, git cherry,
-        # rev-parse ^{tree}, commit-tree, git cherry), each spawned through run_operation as a shell
-        # child, i.e. 2 processes apiece; _on_initialized then adds a seventh per logical branch. On
-        # a 200-branch repository that is on the order of 2500 git invocations, roughly half of them
-        # buying nothing.
-        # The fix is a class-level dict[str, tuple[bool, str]] keyed on the tip hash, holding
-        # (merged_on_main, main_common_ancestor) and consulted at the top of this method. It is safe
-        # because both inputs — the tip hash and Repo.get_main_hash() — are fixed for the lifetime of
-        # the snapshot, so the cache cannot go stale within a run; it must be cleared in Repo.reset()
-        # alongside the rest of the snapshot state, or the tests will leak verdicts between cases.
+        # The verdict is derived once per *side*, so a paired branch pays for the analysis twice.
+        # TODO (copilot-instructions §8.4): memoize it on the tip hash.
         main_hash: str = self.get_main_hash()
         merged_on_main: bool = (
             get_command_return_code(
@@ -344,8 +332,8 @@ class GitBranch:
     LOCAL_ONLY: ClassVar[str] = "local_only"
     SHORT_NA: ClassVar[str] = "-"
     HASH_ABBREV: ClassVar[int] = 12
-    # TODO: expose a --format option on remote-branches-details so the user can choose the columns
-    # and the output shape instead of this fixed table.
+    # Half of the table definition; to_markdown_row() is the other half, and the two must stay in
+    # step. TODO (copilot-instructions §8.5): put both behind a --format option.
     MD_HEADER: ClassVar[str] = (
         "| Branch | Status | Track | Sync | Local hash | Remote hash | Last commit (UTC) "
         "| Author | Subject | Main ancestor |\n"

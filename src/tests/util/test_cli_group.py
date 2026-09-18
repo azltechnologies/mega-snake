@@ -311,7 +311,54 @@ def test_real_cli_registers_every_command_and_alias_exactly_once() -> None:
     """
     from mega_snake.__main__ import MODULES, cli as root_cli  # pylint: disable=import-outside-toplevel
 
-    declared: list[str] = [name for group, _ in MODULES for name in group.commands]
+    declared: list[str] = [name for module in MODULES for name in module.group.commands]
 
     assert sorted(declared) == sorted(set(declared)), "a module declares the same name twice"
     assert sorted(root_cli.commands) == sorted(declared)
+
+
+def test_an_aliased_group_keeps_resolving_its_subcommands() -> None:
+    """An alias of a group has to reach the group's commands, not just its own name.
+
+    Built as a plain `click.Command`, an alias resolves and then refuses whatever follows it --
+    `mgsnake ck status` answered "Got unexpected extra argument (status)" while `mgsnake
+    comment-killer status` worked, so the alias existed, was documented, and did nothing.
+    """
+    group = CliGroup(name="root")
+
+    @click.group(cls=CliGroup)
+    def owner() -> None:
+        """A group with subcommands of its own."""
+
+    @owner.command(name="child")
+    def child() -> None:
+        """A subcommand reached through the alias."""
+        click.echo("reached")
+
+    group.add_command_with_alias(owner, ["own"])
+
+    assert isinstance(group.commands["own"], click.Group), "the alias of a group came out as a leaf command"
+    assert set(group.commands["own"].commands) == {"child"}
+    assert CliRunner().invoke(group, ["own", "child"]).output.strip() == "reached"
+
+
+def test_an_aliased_group_shares_the_registry_it_points_at() -> None:
+    """A command registered after the alias is reachable under both names.
+
+    Copying the registry instead of sharing it would leave a command existing under one name and
+    missing under the other, which is the kind of split nobody finds until a user types the alias.
+    """
+    group = CliGroup(name="root")
+
+    @click.group(cls=CliGroup)
+    def owner() -> None:
+        """A group that grows a command after its alias is registered."""
+
+    group.add_command_with_alias(owner, ["own"])
+
+    @owner.command(name="late")
+    def late() -> None:
+        """Registered after the alias existed."""
+        click.echo("late")
+
+    assert CliRunner().invoke(group, ["own", "late"]).output.strip() == "late"

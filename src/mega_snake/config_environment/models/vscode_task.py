@@ -251,59 +251,26 @@ class VscodeTask(Enum):
         self.problem_matcher = problem_matcher if problem_matcher else []
         self.extra_args = extra_args if extra_args else {}
 
-    # TODO(#55-followup): stop mutating the enum member; build the args locally instead.
-    #
-    # `self.args.extend(...)` writes into the enum member, and an enum member is a process-wide
-    # singleton -- so the redirect is not appended to a copy of the task, it is appended to *the*
-    # task, permanently, for everything that touches it afterwards.
-    #
-    # Confirmed, not suspected:
-    #
-    #     >>> t = VscodeTask.GRADLE_BUILD
-    #     >>> t.args
-    #     ['clean', 'build']
-    #     >>> t.to_dict("wp")["args"][-3:]
-    #     ['>', "'wp/logs/clean_build_${input:todayTimestamp}.log'", '2>&1']
-    #     >>> t.to_dict("wp")["args"].count("2>&1")
-    #     2
-    #
-    # Two consequences, one latent and one that has already cost us:
-    #
-    # 1. NOT LATENT IN THE SUITE, only in production: a second `to_dict` on the same member emits
-    #    the redirect twice, which VS Code would run as `... > log 2>&1 > log 2>&1`. No *user* has
-    #    seen it -- `_update_vscode_tasks` and `_update_vscode_launch` iterate each member exactly
-    #    once per run, and the process exits afterwards. Inside one pytest process it already
-    #    happens: `test_create_working_env.py` drives `update_vscode_launch(..., PYTHON_STACKS)`
-    #    from more than one test, so `DEBUG_PYTHON_FILE`/`DEBUG_PYTHON_MODULE` do accumulate the
-    #    redirect. Nothing catches it because the only assertion on the emitted `args` compares
-    #    `result["args"]` against `member.args` *after* the mutation, which is true either way; the
-    #    first exact-value assertion anyone writes on a task's args turns collection-order
-    #    dependent. That is the same accumulation as point 2, reached from the other direction.
-    #
-    # 2. ALREADY BIT US: within a single pytest process the mutation leaks between test modules.
-    #    `test_launch_input_calls_stay_inside_their_own_stacks` shipped green over an empty loop
-    #    because in a fresh interpreter `args` does not contain the redirect, while any earlier test
-    #    that called `to_dict` would have retroactively put it there -- making the test's result
-    #    depend on pytest's collection order. `reference_text` in
-    #    `src/mega_snake/config_environment/models/reference_text.py` (used from both this module's
-    #    caller and `test_stack_references.py`) now asks the watcher for the rendered redirect rather
-    #    than reading `args`, precisely to stay out of this.
-    #
-    # The fix is small and local: leave `self.args` alone and have `to_dict` compose the value it
-    # emits, e.g. `args = [*self.args, *self._logger_args(working_path)]`, turning this method into a
-    # pure builder. `VscodeLaunch.add_logger_args` is the same code and needs the same treatment, and
-    # its `to_dict` joins the list with `" "` for `debugpy`, so both call sites must be updated
-    # together.
-    #
-    # Deliberately not done in this pull request: it changes a model shared by every emitted task and
-    # launch configuration, in a change set already several review rounds deep, and it is orthogonal
-    # to stack detection. It needs its own commit and its own test -- one that calls `to_dict` twice
-    # and asserts the redirect appears exactly once, which is the assertion nothing makes today.
-    def add_logger_args(self, working_path: str) -> None:
-        """Adds the redirect arg to the task."""
-        if self.watcher:
-            output: str = self.watcher.get_pattern_date(working_path)
-            self.args.extend(output.split(" "))
+    def _logger_args(self, working_path: str) -> list[str]:
+        """Builds the log redirect arguments for this task, without storing them back on the member.
+
+        `self` is an enum member, i.e. a process-wide singleton, so the redirect must be composed
+        into the value `to_dict` emits rather than appended to `self.args` — appending there would
+        permanently mutate the member and duplicate the redirect on every subsequent call.
+
+        Parameters:
+            working_path: The workspace's working path, used to resolve the watcher's log pattern.
+
+        Raises:
+            None
+
+        Returns:
+            list[str]: The redirect arguments, or an empty list when the task has no watcher.
+        """
+        if not self.watcher:
+            return []
+        output: str = self.watcher.get_pattern_date(working_path)
+        return output.split(" ")
 
     def to_dict(self, working_path: str) -> dict[str, Any]:
         """Converts the enum to a dictionary."""
@@ -317,9 +284,9 @@ class VscodeTask(Enum):
             result["type"] = self.task_type
         if self.command:
             result["command"] = self.command
-        self.add_logger_args(working_path)
-        if self.args:
-            result["args"] = self.args
+        combined_args: list[str] = [*self.args, *self._logger_args(working_path)]
+        if combined_args:
+            result["args"] = combined_args
         for key, value in self.extra_args.items():
             result[key] = value
         return result

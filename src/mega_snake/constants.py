@@ -15,6 +15,8 @@ INTERPRETER_PATH: str = ".venv/bin/python3.13"
 # Packaged documentation fragments and the generated command reference
 RESOURCES_DIR: str = "resources"
 DOCS_DIR: str = "docs"
+# Packaged prose bodies of the task skills `generate-skill` installs, one file per skill.
+SKILLS_DIR: str = "skills"
 DOCS_FILE_SUFFIX: str = ".md"
 DOCS_OUTPUT_FILE: str = "COMMANDS.md"
 
@@ -89,6 +91,15 @@ LOGGING_LEVEL_TO_NANE = {
 }
 LOGGING_OPT: list[str] = list(LOGGING_NAME_TO_LEVEL.keys())
 SHELL_OPT: list[str] = ["bash", "zsh", "powershell", "pwsh"]
+# The variable the sourced init script exports, naming one of SHELL_OPT.
+SHELL_ENV_VARIABLE: str = "MEGA_SNAKE_SHELL"
+
+# The names of the comment-killer crew's agents. Shared by two commands: `comment-killer`, which
+# launches them and judges their hooks by these names, and `install-agent-items`, which installs
+# them under the same names. Two copies would let a rename install one name and launch another.
+TRAPPER_AGENT: str = "comment-killer-trapper"
+HITMAN_AGENT: str = "comment-killer-hitman"
+KINGPIN_AGENT: str = "comment-killer-kingpin"
 
 MSG_OPT: dict[str, Callable] = {
     "S": formatting.ws_success,
@@ -104,5 +115,3 @@ RELEASE_TYPE_OPT: dict[str, str] = {"p": "--prerelease", "r": "--latest=false", 
 # Which component of a semantic version the new release tag increments. Bumping a component resets
 # every component to its right, which is what keeps the sequence monotonic (1.2.3 -> 1.3.0, not 1.3.3).
 VERSION_PART_OPT: dict[str, int] = {"patch": 2, "minor": 1, "major": 0}
-
-GCLOUD_LOGGIN_OPT: dict[str, str] = {"U": "user", "A": "application", "B": "both"}

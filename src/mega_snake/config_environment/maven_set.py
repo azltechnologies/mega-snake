@@ -303,30 +303,7 @@ def _add_maven_task(
             filtered = jq.compile(delete_query).input(json_data).first()
             jq_query = f"{TASKS_TASKS_QUERY} = {json.dumps(filtered)}"
             json_input = jq.compile(jq_query).input(json_input).first()
-    task_dict = _build_maven_task_dict(task, working_path)
-    jq_query = f"{TASKS_TASKS_QUERY} += [{json.dumps(task_dict)}]"
+    # VscodeTask.to_dict composes its args without mutating the enum member, so the workaround that
+    # used to duplicate that logic here is gone.
+    jq_query = f"{TASKS_TASKS_QUERY} += [{json.dumps(task.to_dict(working_path))}]"
     return jq.compile(jq_query).input(json_input).first()
-
-
-def _build_maven_task_dict(task: VscodeTask, working_path: str) -> dict[str, Any]:
-    """Build a Maven task dict without mutating enum state."""
-    result: dict[str, Any] = {
-        "label": task.label,
-        "hide": task.hidden,
-        "detail": task.detail,
-        "problemMatcher": task.problem_matcher,
-    }
-    if task.task_type:
-        result["type"] = task.task_type
-    if task.command:
-        result["command"] = task.command
-    # Build args with log redirect without mutating the enum
-    args = list(task.args) if task.args else []
-    if task.watcher:
-        log_output: str = task.watcher.get_pattern_date(working_path)
-        args.extend(log_output.split(" "))
-    if args:
-        result["args"] = args
-    for key, value in task.extra_args.items():
-        result[key] = value
-    return result
