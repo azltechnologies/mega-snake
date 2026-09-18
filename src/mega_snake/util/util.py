@@ -23,6 +23,7 @@ from mega_snake.util.formatting import (
     ws_success,
     ws_warning,
 )
+from mega_snake.constants import SHELL_ENV_VARIABLE
 from mega_snake.util.cli_group import ATTR_METADATA
 from mega_snake.util.props import get_property
 
@@ -189,9 +190,9 @@ def run_operation(
     # on a retry.
     if shell != configured and not shutil.which(shell):
         raise EnvironmentError(
-            f"MEGA_SNAKE_SHELL is '{configured}', which is not native to {OS}, so mgsnake runs its commands "
+            f"{SHELL_ENV_VARIABLE} is '{configured}', which is not native to {OS}, so mgsnake runs its commands "
             f"through '{shell}' instead -- but '{shell}' is not installed or not on the PATH. Install "
-            f"'{shell}', or set MEGA_SNAKE_SHELL to a shell that is available on {OS}."
+            f"'{shell}', or set {SHELL_ENV_VARIABLE} to a shell that is available on {OS}."
         )
     flag: str = "-Command" if shell in ["powershell", "pwsh"] else "-c"
     for attempt in range(1, num_retries + 1):

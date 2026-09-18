@@ -153,7 +153,15 @@ class CliGroup(RichGroup):
         """
         if aliases and isinstance(aliases, list):
             for alias in aliases:
-                alias_cmd = click.Command(
+                # A `click.Command` knows nothing about subcommands, so an alias built as one for a
+                # *group* resolves its own name and then refuses whatever follows it: `mgsnake ck
+                # status` answers "Got unexpected extra argument (status)". Building the alias from
+                # the same class, sharing the owner's registry, is what makes an aliased group
+                # reachable at all -- and sharing rather than copying is what keeps a command
+                # registered later from existing under one name and not the other.
+                alias_type = type(cmd) if isinstance(cmd, click.Group) else click.Command
+                extra: dict[str, Any] = {"commands": cmd.commands} if isinstance(cmd, click.Group) else {}
+                alias_cmd = alias_type(
                     name=alias,
                     callback=cmd.callback,
                     hidden=True,
@@ -161,6 +169,7 @@ class CliGroup(RichGroup):
                     help=f"Alias for '{cmd.name}'. Please see '{APP_NAME} {cmd.name} --help' for more information.",
                     short_help=f"Alias for '{cmd.name}'.",
                     epilog=cmd.epilog,
+                    **extra,
                 )
                 # An alias belongs to the same documentation group as the command it points at, so
                 # a later collision against it reports the owning command instead of this module.

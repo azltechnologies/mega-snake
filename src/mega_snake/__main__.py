@@ -14,7 +14,7 @@ from .config_environment.module import registration as config_environment
 from .dependency_audit.module import registration as dependency_audit
 from .state.module import registration as state
 from .jira_api.module import registration as jira_api
-from .constants import LOGGING_OPT, SHELL_OPT, APP_NAME, MODULE_NAME
+from .constants import LOGGING_OPT, SHELL_ENV_VARIABLE, SHELL_OPT, APP_NAME, MODULE_NAME
 from .util.formatting import get_traceback
 from .util.props import init_app_properties
 from .util.formatting import WorkspaceError, ws_advice
@@ -123,9 +123,9 @@ def cli(ctx: click.Context, log_level: str) -> None:
             if flags and "skip" in flags:
                 ws_advice("'skip' flag detected. Running in light-weight mode if local working directory is not found.")
                 light_weight = True
-        shell = os.environ.get("MEGA_SNAKE_SHELL")
+        shell = os.environ.get(SHELL_ENV_VARIABLE)
         if not shell:
-            raise EnvironmentError("Environment variable 'MEGA_SNAKE_SHELL' is not set")
+            raise EnvironmentError(f"Environment variable '{SHELL_ENV_VARIABLE}' is not set")
         if shell not in SHELL_OPT:
             raise ValueError(f"Unsupported shell: {shell}. Supported shells are: {', '.join(SHELL_OPT)}")
         init_app_properties(log_level, shell, light_weight)

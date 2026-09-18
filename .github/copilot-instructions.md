@@ -154,7 +154,7 @@ def cli(ctx: click.Context, log_level: str) -> None:
 (`_cli_metadata`), so `@cli_metadata(flags={"skip"})` produces
 `getattr(callback, ATTR_METADATA) == {"flags": {"skip"}}`. That is why the entry point reads `metadata.get("flags")`
 and not `metadata` directly — `metadata` is the whole kwargs dict, `"flags"` is just one of its keys (`META_FLAGS`).
-`wrapper_decorator.update_flags` propagates these from both the module wrapper _and_ the command callback onto the
+`_merge_metadata` (§2.3) propagates these from both the module wrapper _and_ the command callback onto the
 wrapping command, which is what makes a module-level `@cli_metadata(flags={"skip"})` apply to every command in the
 module.
 
@@ -232,8 +232,8 @@ main.add_command_with_alias(diff_tree, ["dt", "tree"])
 ```
 
 **How an alias actually works.** `add_command_with_alias` does two things: it stores the alias list on the real
-command under the `aliases` attribute, and it registers one extra `click.Command(hidden=True)` per alias so
-`mgsnake dt` resolves. Both facts matter downstream:
+command under the `aliases` attribute, and it registers one extra hidden command per alias so `mgsnake dt`
+resolves. Both facts matter downstream:
 
 - **rich-click reads the `aliases` attribute natively.** The alias column you see in `mgsnake --help` (the green one
   next to each command) is drawn by rich-click's `_get_command_aliases_help`, styled with `style_command_aliases`
@@ -244,6 +244,13 @@ command under the `aliases` attribute, and it registers one extra `click.Command
   `format_help → format_commands` path is never taken (and `RichHelpFormatter.write_dl` is a stub that only emits a
   `RuntimeWarning`). Do not go looking for `rich_format_help()` either — in the pinned rich-click it survives only
   as a deprecated alias in `rich_click.rich_click`'s `__getattr__`, and nothing on the render path calls it.
+- **An alias mirrors the class of what it points at.** A leaf gets a hidden `click.Command`; a group gets a hidden
+  group of the same class, **sharing the owner's command registry**. The class is what makes the alias work at all:
+  `click.Command` knows nothing about subcommands, so an alias built as one over a group resolves its own name and
+  then refuses whatever follows it — an alias that exists, is documented, and does nothing. Sharing the registry
+  rather than copying it is the other half: a subcommand registered after the alias must not exist under one name
+  and be missing under the other. The alias stays `hidden`, so a group reached through one is not enumerated twice
+  in the documentation either — there is no double counting to "fix".
 - **Hidden alias commands must be skipped when enumerating commands.** A naive walk of `cli.commands` yields three
   entries for `diff-tree` (itself plus `dt` and `tree`). Use `iter_documented_commands()` (§3.7), which filters
   `cmd.hidden` and folds the aliases back in.
@@ -287,7 +294,8 @@ would silently become `"Graphql"`.
 
 ### 2.3 The Wrapper Pattern (`module.py` files)
 
-Each functional module (e.g., `config_environment`) exposes an `add_wrapper` decorator. This allows module-specific checks to run before the command execution, keeping the core logic clean.
+Each functional module (e.g., `config_environment`) wraps its commands with module-specific checks that run before
+the command executes, keeping the core logic clean. The machinery lives in `src/mega_snake/util/command_registration.py`.
 
 **Example from `src/mega_snake/diff_tree/module.py`:**
 
@@ -298,29 +306,92 @@ def wrapper(_ctx: click.Context, *_args, **_kwargs) -> None:
     ensure_working_path()
     complete_app_properties()
 
-add_wrapper = wrapper_decorator(wrapper)
+registration = ModuleRegistration(main, add_wrapper=wrapper_decorator(wrapper))
 ```
 
-Every module exports exactly that pair — its command group as `main`, and `add_wrapper` — and `__main__.py` walks
-its `MODULES` list to register each command wrapped with its own module's checks:
+**Every module exports exactly one thing: `registration`.** A `ModuleRegistration` bundles the module's command
+group (`main`, which stays public because aliases are registered on it) with the decorators that wrap its
+commands. `__main__.py` imports each module's registration into its `MODULES` list and lets the registration
+pick the decorator per command:
 
 ```python
 # src/mega_snake/__main__.py
-for group, add_wrapper in MODULES:
-    for command in group.commands.values():
-        cli.add_command(add_wrapper(command))
+for module in MODULES:
+    for command in module.group.commands.values():
+        cli.add_command(module.wrap(command))
 ```
 
 **Educational Logic:**
 This implements the **Decorator Pattern**. Instead of repeating validation logic in every command, we define it once in the wrapper. The `__main__.py` entry point applies this wrapper dynamically when registering commands, ensuring checks only run when a relevant command is invoked. The wrapper is also where a module's `@cli_metadata` flags are declared once for all of its commands, and registration order in `MODULES` drives the order shown in the help output.
 
-**Custom attributes must be preserved across wrapping.** `wrapper_decorator` rebuilds the command from
-`click.Command.__init__`'s signature, so **anything not in that signature is dropped** unless it is copied by hand.
-That copying is centralized in a `preserved_attrs` tuple plus `apply_command_metadata()`:
+**The module wrapper is the only layer that touches the click context.** Commands receive their arguments
+and return; they never take `@click.pass_context`, never read `ctx.obj` and never write it. Anything that has to
+change the context on a command's behalf — today, the exit status relayed to `post_command` (§7.2) — is done by
+its module's wrapper, driven by the metadata the command declares through `@cli_metadata` (`reloads_environment`
+in `config_environment` is the shape to copy). The module files look like a thin, redundant layer between the
+commands and `__main__.py`, and that is deliberate: they are to the context what a facade is to a transaction,
+a controller to an endpoint, or a service to business logic. Do not "simplify" them away, and do not give a
+command direct access to the context to save a wrapper.
+
+**Context commands: when a command's outcome has to reach the context.** A module wrapper runs *before* its
+command, so on its own it can only act on what the command declares, never on what it produced. A command whose
+result decides something the context carries (a hook's verdict becoming an exit status, say) declares
+`@cli_metadata(context_command=True)` (`META_CONTEXT_COMMAND`), **returns** that result, and is wrapped by
+`wrapper_context_decorator(wrapper, ending)` instead of `wrapper_decorator(wrapper)`:
 
 ```python
-# src/mega_snake/util/util.py
-preserved_attrs: tuple[str, ...] = (ATTR_ALIAS, ATTR_DOCS, ATTR_GROUP)
+def ending(ctx: click.Context, blocked: bool) -> None:
+    if blocked:
+        ctx.obj["exit_code"] = HOOK_BLOCK_CODE
+
+registration = ModuleRegistration(
+    main,
+    add_wrapper=wrapper_decorator(wrapper),
+    add_context_wrapper=wrapper_context_decorator(wrapper, ending),
+)
+```
+
+The wrapper runs, then the command, then the ending with `(ctx, result)` only; the result is returned untouched to
+`post_command`. The ending never runs when the command raises. Four rules hold the contract, and every one of
+them is `InternalStateError` (§7.6), because only a defect in `mgsnake` can break them:
+
+- **The result is a primitive** — `int`, `float`, `str`, `bool` or `None` (`PRIMITIVE_TYPES`; `bytes` is left out on
+  purpose). An ending reads the result to decide what to write, so anything richer is a command handing its
+  module work to do. It is checked twice: **at registration**, the callback's return annotation must be
+  primitive (`Optional[bool]` and `bool | None` included, a missing annotation refused), and **at run time**, the
+  returned value must be, before the ending sees it.
+- **Each decorator refuses the other kind.** `wrapper_decorator` rejects a context command — wrapped without an
+  ending, its result would be lost with no error — and `wrapper_context_decorator` rejects an ordinary one.
+- **A registration wraps something.** `ModuleRegistration.__post_init__` refuses one with neither `add_wrapper` nor
+  `add_context_wrapper`.
+- **The needed decorator is never substituted.** `wrap()` picks `add_context_wrapper` for a context command and
+  `add_wrapper` otherwise, and refuses, naming the command and its module, when the module does not export that
+  one; the other decorator is never a fallback.
+
+**A group can be a context command too.** The wrapper invokes a group's own callback, which runs *before* the
+subcommand, so for a flagged group the ending is attached as the group's **result callback** instead: it receives
+what the invoked subcommand returned. The checks move with it — every subcommand must annotate a primitive return,
+and the messages name group and subcommand (`'comment-killer next'`). Only a plain group of leaf commands delivers
+one primitive per invocation, so registration refuses a context group that is chained (click passes a list), runs
+without a subcommand (it passes the group's own value), has a result callback of its own (it would sit between the
+subcommand and the ending), or holds a nested group. Each refusal is deliberate, not a gap: lifting one means
+testing the shape it admits.
+
+**One ending per module, even when its context commands mean different things.** `ModuleRegistration` holds a
+single `add_context_wrapper`, so a module whose context commands need different translations dispatches **on the
+type of the result**, which the registration has already made a checked contract: `comment_killer`'s ending reads
+the guard's `bool` as a hook verdict and a subcommand's `str` as the JSON action it printed, and raises
+`InternalStateError` for any other type. Never dispatch on the command's name — an alias is a different name
+reaching the same ending.
+
+**Custom attributes must be preserved across wrapping.** Both decorators rebuild the command through the shared
+`_wrap_command`, which copies it from its constructor signature, so **anything not in that signature is dropped**
+unless it is copied by hand. That copying is centralized in the `PRESERVED_ATTRS` tuple plus
+`_apply_command_metadata()`:
+
+```python
+# src/mega_snake/util/command_registration.py
+PRESERVED_ATTRS: Tuple[str, ...] = (ATTR_ALIAS, ATTR_DOCS, ATTR_GROUP)
 # ...copied from the original command, then from the module wrapper, then from the command callback
 ```
 
@@ -333,7 +404,7 @@ out as a leaf command with no subcommands — `mgsnake config get` would simply 
 until someone ran it. `_rebuild_command` therefore instantiates `type(command)` and adds `commands` for groups.
 `test_wrapper_decorator_keeps_a_group_a_group` pins it.
 
-**Per-command initialization flags win over the module wrapper's.** `update_flags` merges the wrapper's metadata
+**Per-command initialization flags win over the module wrapper's.** `_merge_metadata` merges the wrapper's metadata
 first and the command callback's second, so a module whose commands need different levels (see `jira_api`, §3.9)
 declares no `flags` on its wrapper and lets each command carry its own `@cli_metadata(flags={...})`. Aliases go
 through the same path, because they are built from the same callback.
@@ -454,7 +525,7 @@ Developers often have machine-specific tokens, paths, or aliases that shouldn't 
 Generates a visual tree representation of changed files.
 
 **Module layout** — the shape every module follows: `diff_tree/diff_tree.py` holds the command and its helpers,
-`diff_tree/module.py` holds the `CliGroup`, the pre-flight `wrapper` (carrying the `skip` flag) and `add_wrapper`
+`diff_tree/module.py` holds the `CliGroup`, the pre-flight `wrapper` (carrying the `skip` flag) and its `registration`
 (§2.3).
 
 **Implementation Details:**
@@ -650,7 +721,7 @@ other, and two tests enforce it (§6.3).
 | `docs_gen/item_registry.py`   | The model: `Item`, the on-disk layouts, path resolution, the renderers and the dependency closure. Never changes when an item is added. |
 | `docs_gen/item_catalog.py`    | The content: the `ITEMS` tuple and the prose that belongs to it. This is the file adding an item touches.                 |
 | `docs_gen/man_page.py`        | The `man` Click command: alias resolution, terminal rendering, paging.                                                    |
-| `docs_gen/module.py`          | The `CliGroup`, the `wrapper` (carrying `docs_group="Documentation"`) and `add_wrapper`.                                  |
+| `docs_gen/module.py`          | The `CliGroup`, the `wrapper` (carrying `docs_group="Documentation"`) and its `registration`.                             |
 
 **There is exactly one renderer, and no command may grow a second one.** Every command that publishes
 the reference renders it with the same `render_markdown()`, from the same normalized command list:
@@ -1037,7 +1108,7 @@ itself becomes null. A test pins it with the negative assertion.
 `jira-board`/`jira-sprint` are `no_init` (machine-readable stdout) and `jira-issues` is `skip` (writes to
 `working_path`). A module wrapper runs for *every* command in the module, so the pre-flight that `jira-issues`
 needs — `ensure_working_path()` + `complete_app_properties()` — lives in its own command body instead. Per-command
-flags win because `wrapper_decorator.update_flags` merges the module wrapper first and the callback second.
+flags win because the registration merges the module wrapper's metadata first and the callback's second (§2.3).
 That pre-flight is also **conditional on `--output` being absent**: with an explicit destination the run never
 touches the working path, so prompting to create `workspace_temp` (and exiting 114 when the user declines) would
 be a question about a folder it will not write to. When the folder happens to exist anyway, the deferred
@@ -1723,6 +1794,16 @@ before touching it.
 **Never convert an exception into `SystemExit(e)`.** `SystemExit` uses its argument as the status _only when it is
 an `int`_; given an exception it prints it and exits `1`, flattening every failure to the same number. `cli()`
 re-raises with the type intact instead.
+
+**Never call `sys.exit` from a command, either.** A failure raises and lets `main()` translate it; a deliberate
+status that is **not** a failure — a shell-dispatch signal (§7.4), a hook's verdict — is written to
+`ctx.obj["exit_code"]` **by the command's module wrapper or ending, never by the command itself** (§2.3), and `post_command`,
+the root group's `result_callback`, turns it into the process status.
+That is the one established path, and it holds for every initialization level: `cli()` creates `ctx.obj` before
+its `no_init` early return. A `sys.exit` inside a command works in the narrow sense that the process ends with
+that number, but it bypasses `post_command` entirely, so the next reader following the status from its one
+documented source never finds it — and anything later added to `post_command` silently stops applying to that
+command.
 
 ### 7.3 Registering a new exception — mandatory
 
