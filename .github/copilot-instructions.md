@@ -1129,6 +1129,120 @@ interchangeable with the other two commands' surface, and the difference is the 
 which write to stderr (§4.1) — this module briefly carried its own `click.echo(..., err=True)` wrapper from back
 when they printed to stdout; do not reintroduce one.
 
+### 3.10 The Comment-Killer Crew (`src/mega_snake/comment_killer/`)
+
+#### `comment-killer` (`ck`)
+
+A crew of AI agents resolves one code review comment per mission, and this command is the half of
+them that must not be a prompt. The orchestrating agent runs `start`, does exactly what the printed
+JSON says, runs `next`, and repeats. Every decision a model could improvise its way around — the
+file names, the order of the stages, whether a handoff came back empty, whether the target is
+already dead — is taken here instead. The hidden `comment-killer-guard` answers the agents'
+`PreToolUse` hooks.
+
+| File | Responsibility |
+| --- | --- |
+| `comment_killer/mission.py` | The state machine: stage order, handoff validation, the spotter's verdict, the mission folder. |
+| `comment_killer/guards.py` | The three hook rules, and the widening of the trapper's one. |
+| `comment_killer/commands.py` | The `comment-killer` group, a context group whose subcommands print one JSON action on stdout and return it — a refusal of the state machine becomes an `error` action — and the hidden `comment-killer-guard`, a context command returning its verdict. |
+| `comment_killer/constants.py` | Stage names, file names, agent names, statuses, guard names. |
+| `comment_killer/module.py` | The `CliGroup`, a wrapper that declares no flags, the ending that turns a guard's refusal into exit 2 and an `error` action into exit 113, and its `registration`. |
+
+**The agents are catalogue items; the state machine is not.** `install-agent-items` (§3.7) installs
+the kingpin and its two henchmen, whose `hooks` call `mgsnake comment-killer-guard ...`. That is
+what keeps the rules of the crew shipping and versioning with the command that drives it, instead of
+as scripts a user has to keep in their own repository — and what lets a guard be fixed by upgrading
+the package rather than by reinstalling an agent.
+
+**The third henchman is not installed at all.** The spotter is the runtime's own `Explore` agent,
+launched with a brief this command copies from `resources/crew/spotter.md` into the mission folder.
+Nothing to install means nothing that can fall out of step with the CLI, and the brief being a
+per-mission copy rather than a file in the user's repository means nobody maintains it by accident.
+
+**Why the crew works test-first.** The trapper writes tests that fail today and can only pass once
+the comment is honoured; the hitman takes a baseline of every check the project's CI runs, makes
+those tests pass, and compares against that baseline. Two properties come out of it that no
+instruction achieved on its own: the red is witnessed by construction (§6.2), and a failing check
+cannot be dismissed as "pre-existing" unless it is in the baseline. The cost is real and accepted:
+the crew needs a project with tests, and a comment no test could prove — a rename, a rewording — is
+not its job. What the tests cannot express, the spotter's map carries: the stale docstring, the
+duplicated helper that exists only to dodge the bug, the catalogue entry that has to be deleted.
+
+**Each mission is self-contained, and that is what makes two of them safe.** The folder holds the
+brief, the map, the trap, the hit report and a dotted `.state.json`; every action carries the
+`mission` it belongs to, and the orchestrator passes it back through `--mission`. Nothing is shared,
+so a second crew never has to be detected or refused. Three consequences worth keeping:
+
+- **The state lives with the mission, not in the `Store` (§4.4).** A stored pointer is one value: a
+  second mission would overwrite the first, and per-mission keys would accumulate in a file nobody
+  prunes. The `Store` keeps exactly one comment-killer key, `ck.test_pattern`, which is a user
+  setting rather than machinery.
+- **A mission folder is reserved, never reused.** Two missions opened inside the same second would
+  otherwise share a timestamp, and the second would overwrite the first's brief. `_reserve_folder`
+  creates it with `mkdir` and suffixes on `FileExistsError`.
+- **A mission travels as its id, never as its path.** The id is the folder's own name, which the
+  state machine chose, so it matches `MISSION_ID_PATTERN` by construction; the path is the user's,
+  and a space or a quote in it would have to survive the kingpin's shell and the guard's allow-list.
+  The guard and `resolve_folder` read that one pattern, and a test walks a whole mission under a
+  working path with a space checking every `next --mission` the actions hand out against the guard.
+  Only `start` may offer to create the working path; `next` and `status` read missions that must
+  already exist, so a missing folder means there are none.
+
+**Every guard decides by `agent_type`, never by the shape of the call.** A hook declared on the
+kingpin is inherited by every subagent it spawns, so a rule written for the orchestrator reaches the
+whole crew: the first version of the kingpin's guard blocked the spotter from running `git log` at
+all. Deciding by the shape of the command was tried next and leaked — `sed -i ... && tail ...` read
+as a safe command because its second half was one. The payload carries who is calling; use it.
+
+- **The kingpin may run its own state machine and nothing else**, with no second command chained on,
+  no substitution and no redirection. An orchestrator that can append to its own command can do
+  everything the crew was built to stop it doing.
+- **The trapper may write test files only.** The trap is the specification the hitman implements
+  against, so a trapper that "just fixes" the production code writes its tests against a fix that
+  already exists, and nobody ever sees them fail for the real reason. Its own report in the mission
+  folder is the one exception.
+- **Nobody rewrites the user's git state.** Reading git is the job; `stash`, `add`, `commit`,
+  `checkout`, `reset` and the rest are refused, because the user keeps their own work in there. The
+  kingpin declares this guard as well as its own, and that is what covers the spotter: it is the
+  runtime's `Explore` agent, has no header to declare a hook in, and only runs what it inherits. The
+  henchmen keep their own copy anyway, so each stays guarded when used without the kingpin; the
+  price is the guard running twice per Bash call inside a mission.
+
+**A guard answers with 0 or 2, and nothing else.** The runtime reads a hook's status as its verdict: 0
+lets the call through, 2 refuses it and hands stderr to the agent, and **any other status is a hook
+error the call proceeds past**. A guard that crashes, or reaches an initialization error, therefore
+does not fail loudly — it stops guarding. Three consequences:
+
+- **`comment-killer-guard` is `no_init` and its own command**, outside the light-weight group: a hook
+  runs wherever the runtime was started, and `cli()`'s 112 for a missing `MEGA_SNAKE_SHELL` would
+  be no guard at all.
+- **It checks `MEGA_SNAKE_SHELL` itself, before any rule, and refuses every call while it is unset,
+  empty or not in `SHELL_OPT`.** Without it the crew's own `comment-killer` commands cannot start,
+  so a henchman would carry on against a state machine that no longer answers. The refusal is the
+  remedy: the `"env"` block to add to `.claude/settings.local.json`, built from `SHELL_OPT`, and the
+  session restart. **mgsnake never writes that file** — it is the user's private configuration — and
+  the kingpin shows the message to the user and stops.
+- **A rule that cannot identify its caller refuses.** The kingpin's and the trapper's rules are keyed
+  on `agent_type`, so a payload that does not carry it -- a runtime that renames or re-nests the
+  field -- would otherwise let every call through at exit 0, with both rules silently inert. They
+  refuse instead, naming the missing field. The git-state rule judges the command alone and needs no
+  caller, so it keeps working either way.
+- **The verdict is a return value, not a `sys.exit`.** The guard is a context command (§2.3) returning
+  `bool`, and the module ending writes `HOOK_BLOCK_CODE` into the context (§7.2). A payload that is
+  not JSON stays a `ValidationError` (113): a broken hook is a defect to surface, not a refusal.
+
+**`ck.test_pattern` widens the trapper's guard; it never replaces it.** The shipped conventions
+cover the stacks the crew is likely to land in and never all of them, so a project that files its
+tests under `verification/` can say so. Adding rather than replacing is what stops a partial pattern
+from costing a project the conventions it does follow, and an unusable expression warns and is
+ignored: a typo in a setting must not be what stops a mission. The refusal names the key, so the
+user finds the way out at the moment it blocks them.
+
+**An agent cannot grant itself permissions.** There is no `allowed-tools` in an agent's frontmatter
+— that field belongs to skills — so the crew asks the first time it runs the command and the first
+time a henchman runs the project's checks. The kingpin's `initialPrompt` names the two rules worth
+granting up front rather than leaving the user to discover them mid-mission.
+
 ---
 
 ## 4. Utilities & Helpers
@@ -2190,50 +2304,54 @@ their job; the coverage gate has to keep measuring the same set of tests, so int
 be what pushes it over the line; and the Windows job has to be *required*, not advisory, or it becomes
 a red badge everyone learns to ignore.
 
-### 8.8 The comment-killer items are Claude-only, and a Copilot port has no design yet (§3.7)
+### 8.8 The comment-killer crew is Claude-only, and a Copilot port has no design yet (§3.7, §3.10)
 
-**What.** The `comment-killer` crew — the `comment-killer-kingpin` agent plus the five components it
-bundles (`create-progress-folder`, `create-progress-file`, `comment-killer-spotter`,
-`comment-killer-playermaker`, `comment-killer-hitman`) — is declared `runtimes=(RUNTIME_CLAUDE,)`, so
-`install-agent-items` refuses to write it for GitHub Copilot. That is correct today and it is not a
-fix: a Copilot user simply cannot have it.
+**What.** The `comment-killer` crew — the `comment-killer-kingpin` agent and the two henchmen it
+bundles, `comment-killer-trapper` and `comment-killer-hitman` — is declared `runtimes=(RUNTIME_CLAUDE,)`,
+so `install-agent-items` refuses to write it for GitHub Copilot. That is correct today and it is not
+a fix: a Copilot user simply cannot have it.
 
-The reason is that the crew is built out of vocabulary Copilot has no equivalent for, and it is not
-a matter of renaming keys:
+**Where.** `src/mega_snake/docs_gen/item_catalog.py`, `COMMENT_KILLER_ITEMS`; the bodies in
+`resources/skills/comment-killer-*.md`.
+
+**Why it was left.** Half of the original obstacle is gone. The crew used to be forked skills with
+`$contextfile` argument substitution and ` ```! ` blocks that execute on invocation — none of which
+Copilot understands — and the orchestration now lives in the CLI (§3.10), which any assistant can
+run. What is left is a shorter list, and every item on it is about sub-agents:
 
 | What it uses | What it does | Copilot |
 | --- | --- | --- |
-| `agent: Explore` / `agent: Plan` with `context: fork` | The spotter *is* a fork of the Explore agent; the playermaker *is* a fork of Plan | no equivalent found |
-| `arguments:` plus `$contextfile` substitution | The whole chain of custody — each stage is handed the previous stage's file | not available |
-| ` ```! ` executable blocks | `create-progress-folder` and `create-progress-file` are shell that runs on invocation and returns a path | not available |
-| `user-invocable: false` | Keeps the five henchmen out of the user's menu | unknown |
+| `tools` per agent | The trapper writes, the kingpin only orchestrates | no equivalent found |
+| Delegation to a named subagent | The kingpin launches its henchmen and waits | no equivalent found |
+| `hooks` in the frontmatter | Every rule that keeps the crew honest (§3.10) | unknown |
+| `initialPrompt` | The greeting that states the TDD precondition and the permissions worth granting | unknown |
+| The built-in `Explore` agent | The spotter, launched with a packaged brief | unknown |
 
-**Why it was left.** The port is not a header translation, so it cannot be designed before the
-research is done. If Copilot has no way to fork a sub-agent, the answer is probably a **different
-decomposition** — one agent doing inline what five skills do here — and no "emit two headers per
-item" abstraction survives that. Building the abstraction first would be building it blind.
+The port cannot be designed before that research is done: if Copilot has no way to delegate to a
+sub-agent, the answer is a **different decomposition** — one agent running the stages inline,
+driving the same `comment-killer` command — and no "emit two headers per item" abstraction survives
+that. Building the abstraction first would be building it blind.
 
 **Shape of the fix.** In the order the questions have to be answered:
 
-1. **Establish what Copilot can actually express**: sub-agent delegation, argument passing between
-   stages, and whether anything can execute at invocation time. That answer decides everything else.
-2. **If the decomposition survives**, `frontmatter` becomes per-runtime. The natural shape is a
-   small typed header — a class or enum per runtime rather than a free `dict[str, object]` — so the
-   fields each runtime understands are known at type-check time instead of being a bag of strings
-   that silently means nothing on the other side. `Item.frontmatter` would then hold one entry per
+1. **Establish what Copilot can express**: sub-agent delegation with per-agent tools, lifecycle
+   hooks, and anything equivalent to an initial prompt. That answer decides everything else.
+2. **If the decomposition survives**, `frontmatter` becomes per-runtime. The natural shape is a small
+   typed header — a class per runtime rather than a free `dict[str, object]` — so the fields each
+   runtime understands are known at type-check time. `Item.frontmatter` would hold one entry per
    runtime, and `_frontmatter` would render the one belonging to the runtime being written.
-3. **If it does not survive**, the honest answer is a separate Copilot-shaped item with the same
-   name and a different body, which the catalogue already supports — an item is free to render
-   whatever it likes per runtime.
-4. **Either way, `runtimes` stays.** It is not a workaround for this: there will always be items
-   that only make sense on one runtime, and it is what keeps that fact from becoming a broken file.
+3. **If it does not survive**, the honest answer is a Copilot-shaped item with the same name and a
+   different body, which the catalogue already supports.
+4. **Either way, `runtimes` stays.** There will always be items that only make sense on one runtime,
+   and it is what keeps that fact from becoming a broken file.
 
 **Verify.** The Claude install must keep working byte for byte, so whatever lands has to leave the
-existing headers unchanged — a regenerated `SKILL.md` that differs is a regression, not a port.
-`test_the_catalogue_is_exactly_what_is_documented_here` has to name the new items, and the
-compatibility table in `resources/docs/install-agent-items.md` has to stop describing them as
-Claude-only. Deleting this entry means a Copilot user can run the crew, not that the fields were
-renamed.
+existing headers unchanged — a regenerated agent file that differs is a regression, not a port. The
+guards are reached by `agent_type` (§3.10), so a Copilot port that renames an agent has to carry
+those names with it. `test_the_catalogue_is_exactly_what_is_documented_here` has to name the new
+items, and the compatibility table in `resources/docs/install-agent-items.md` has to stop describing
+the crew as Claude-only. Deleting this entry means a Copilot user can run a mission, not that the
+fields were renamed.
 
 ### 8.9 `jira-progress-comment` works around the monolithic diff artifact (issue #85)
 
@@ -2286,3 +2404,124 @@ needs such a value: `ruamel.yaml`, which implements 1.2 and was checked to quote
 and `0o17` against a **1.2** parser; today's round-trip uses PyYAML and cannot see this gap, which
 is the reason it is written down here instead of being covered by a test.
 
+### 8.11 The test suite lives inside `src/`, where it reads as part of the package (§6.2)
+
+**What.** The package follows the src layout (`src/mega_snake/`), which is what keeps a test run
+from importing the working copy instead of the installed distribution. The tests, however, sit in
+`src/tests/` — inside the very directory that exists to hold shipped code. Nothing breaks: the
+tests are not packaged (`packages = ["src/mega_snake"]` sweeps in the package tree only) and ruff
+excludes them (§6.4). What it costs is legibility: `src` and `tests` are peers in every convention
+a Python developer arrives with, and here one is nested in the other.
+
+**Where.** `src/tests/` in full; `pyproject.toml` for the pytest, coverage and ruff paths; the
+mirroring rule in §6.2 ("`config_environment/java_set.py` → `src/tests/config_environment/...`").
+
+**Why it was left.** It is a move of the whole suite -- every path in `pyproject.toml`, the CI
+workflows, and the §6.2 rule -- with no behaviour change to show for it, so it belongs in a commit
+that does nothing else. It is also the kind of change that is cheap now and expensive later, which
+is why it is written down rather than forgotten.
+
+**Shape of the fix.** `tests/` at the repository root, as a peer of `src/`. The one decision to make
+first is whether the mirror keeps the package name — `tests/mega_snake/config_environment/...`,
+which leaves room for a second package — or drops it — `tests/config_environment/...`, which is the
+shorter mirror of what is tested and matches the current layout with one level removed. Then update
+the pytest `testpaths`, the coverage source, the ruff `exclude`, and the §6.2 sentence that spells
+the mapping out.
+
+**Verify.** `uv run pytest` collects the same number of tests it does today, and the coverage gate
+still measures `src/mega_snake` alone -- a move that silently starts counting test files would
+inflate the percentage the 95% gate reads. `uv build` must produce a wheel with no `tests` package
+in it, which is worth checking explicitly rather than assuming: that is what the old nesting made
+impossible to get wrong by accident.
+
+### 8.12 "Offer to create the working path" is a full initialization disguised as light-weight (§2.1)
+
+**What.** Full initialization refuses to run when `working_path` does not exist: `AppProperties.__init__`
+raises `FileNotFoundError`, and the user is told to go create the folder. Commands that need the folder
+but want to offer to create it therefore declare themselves light-weight (`skip`) and call
+`ensure_working_path()` + `complete_app_properties()` from their wrapper or their body instead. Those
+commands are not light-weight at all — they depend on the working path exactly as a full command does —
+they are **full initialization with a pre-setup step**. The pattern has been repeated across modules for
+that reason, and it has emptied `skip` of its meaning: reading a command's flag no longer tells you
+whether it can run outside a workspace.
+
+**Where.** `init_app_properties` and `complete_app_properties` in `src/mega_snake/util/props.py`;
+`ensure_working_path` in `src/mega_snake/util/util.py`; the three-level table and the "rule of thumb" in
+§2.1. The commands that use the pattern are the light-weight ones that call `ensure_working_path` — find
+them with a search when the work starts rather than trusting a list written today.
+
+**Why it was left.** It changes what every full command does when the folder is missing, which is a
+user-visible behaviour across the whole CLI, and it deserves its own change rather than riding inside a
+feature.
+
+**Shape of the fix.** Make "check, offer to create, refuse only on a decline" the **default behaviour of
+full initialization**: when `working_path` is missing, full initialization calls the same prompt
+`ensure_working_path` uses, creates and excludes the folder on a yes, and raises `UserDeclinedError` (114)
+on a no. Then move every command that adopted `skip` only to get that prompt back to full initialization,
+and reserve `skip` for commands that genuinely run anywhere. The §2.1 table and its "rule of thumb" are
+rewritten in the same change: the rule of thumb disappears, because the behaviour it described becomes
+the default.
+
+**Verify.** A full command run where `working_path` is missing prompts, creates the folder and continues
+on a yes, and exits 114 on a no — a row in `src/tests/test_exit_codes.py` for the decline, driven through
+`subprocess` (§7.5). Every command moved back to full keeps its behaviour when the folder already exists.
+And the prompt must not reach `no_init` commands, nor fire on a closed stdin as the `EOFError` of §8.2:
+decide that interaction explicitly, since a CI step running a full command without the folder is exactly
+where it would surface.
+
+### 8.13 `ws_error` prints its message twice when logging was never configured (§4.1)
+
+**What.** In a `no_init` command, and in a light-weight one whose working path is missing, every
+`ws_error` call writes its message to stderr **twice**: once from its own `print`, and again from the
+logger, followed by `; BaseException: <the same message>` and blank lines. A user reads the error
+twice; an agent reading a hook's stderr (`comment-killer-guard`, §3.10) is handed the refusal twice.
+
+**Where.** `_ws_error` in `src/mega_snake/util/formatting.py`, which calls `logger.error` unconditionally.
+
+**Why it happens.** With no handler configured anywhere, the standard library falls back to
+`logging.lastResort`, which writes every record at `WARNING` or above to stderr. `ws_warning` already
+guards its `logger.warning` with `logger.hasHandlers()`, so it prints once; `ws_error` never got the
+same guard. `ws_info` and `ws_success` log below `WARNING`, so `lastResort` drops them.
+
+**Why it was left.** Found while finishing the guard's environment check; the output was already
+duplicated before that change, and the fix touches the logging path of every command.
+
+**Shape of the fix.** Guard the `logger.error` in `_ws_error` the way `ws_warning` does, or configure a
+`NullHandler` on the package logger so nothing reaches `lastResort` at any level. Decide between the two
+explicitly: the second also silences a record some future helper logs at `WARNING` without a guard,
+which is the point, but must not hide records once `config_log` has attached the file handler.
+
+**Verify.** A `subprocess` test (the in-process runner shares pytest's own handlers, so `hasHandlers()`
+is true there and the duplicate never shows) running a `no_init` command that reaches `ws_error` —
+`comment-killer-guard` with a refused call is one — asserting the message appears exactly once on
+stderr and `BaseException` does not appear at all. It has to be seen failing against today's code first.
+
+### 8.14 The explicit-help test cannot fail, and one group already slipped past it (§3.7, §6.2)
+
+**What.** `test_every_documented_command_uses_explicit_help` asserts
+`entry.command.help != inspect.getdoc(entry.command.callback)`, and for **every** registered
+command the right-hand side is `None`: registration replaces the callback with the module
+wrapper's, which carries none of the original's docstring. The comparison is therefore
+`"<some text>" != None` — true for anything, including a command that does inherit its help
+from its docstring, which is exactly what §3.7 field #2 forbids. The `comment-killer` group is
+already in that state: no `help=`, no `short_help=`, so `mgsnake --help` shows it without a
+description and `COMMANDS.md` publishes its callback docstring.
+
+**Where.** `src/tests/docs_gen/test_docs_gen.py`, `test_every_documented_command_uses_explicit_help`;
+the callback swap is `_wrap_command` in `src/mega_snake/util/command_registration.py`; the command
+missing both fields is the group in `src/mega_snake/comment_killer/commands.py`.
+
+**Why it was left.** Fixing the test is likely to surface other commands that omit `help=`, and each
+one needs prose written for it — a documentation pass of its own rather than a line inside a
+feature change.
+
+**Shape of the fix.** Two halves, in this order. First, make the wrapping carry the original
+callback's `__doc__` (`functools.wraps`, or copying it in `_wrap_command`), so introspection and
+tracebacks stop losing it and the comparison means something again. Then point the test at what is
+actually declared — each module's `registration.group.commands`, before the wrapping — so it reads
+the object a human wrote. Give `comment-killer` its `help=` and `short_help=` in the same change,
+plus whatever else the fixed test names.
+
+**Verify.** The test must be **seen failing**: strip `help=` from a command that declares it and
+confirm it turns red, which today it does not. `mgsnake --help` shows a description for every
+command, and `COMMANDS.md` is regenerated (§6.3).

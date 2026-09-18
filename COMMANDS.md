@@ -1,5 +1,102 @@
 # Available Commands
 
+## Comment Killer
+
+### comment-killer
+
+Drives the comment-killer crew: one mission per code review comment.
+
+**Synopsis:** `mgsnake comment-killer [OPTIONS] COMMAND [ARGS]...`
+
+**Aliases:** `ck`
+
+| Option | Description |
+| --- | --- |
+| `-h, --help` | Show this message and exit. |
+
+The comment-killer crew is a set of AI agents that resolve one code review comment at a time, and
+this command is the part of them that cannot be a prompt: the order of the stages, the paths, the
+handoffs and the verdict. An orchestrating agent runs `start`, does exactly what the printed JSON
+says, runs `next`, and repeats. Everything a model could improvise its way around — inventing a
+file name, carrying on with an empty handoff, deciding by itself that the comment is already
+resolved — is decided here instead, in code.
+
+The crew works test-first, which is what makes its result checkable rather than merely plausible.
+The **spotter** maps the code the comment touches, the **trapper** writes tests that fail today and
+can only pass once the comment is honoured, and the **hitman** takes a baseline of the project's own
+checks, makes those tests pass and compares against it. Install them with `install-agent-items`; the
+spotter needs nothing installed, because it is the runtime's own exploring agent working from a
+brief this command writes.
+
+Nothing here talks to a model: it moves a mission from one stage to the next and answers the agents'
+lifecycle hooks, so the rules that keep the crew honest ship and version with the CLI instead of as
+scripts inside your repository.
+
+#### Output
+
+Each mission gets a folder under the working path, named after the moment it opened:
+
+- `workspace_temp/comment_killer/<timestamp>/01_brief.md` — the code review comment, verbatim.
+- `…/02_map.md` — the spotter's map: every file and object it inspected, with line ranges, and
+  whether each one is involved in the bug or was checked and ruled out.
+- `…/03_trap.md` — the trap: the failing tests, the proof that they fail, the sketch of what has to
+  change, the project rules that govern it and the verification commands its CI runs.
+- `…/04_hit.md` — the hit report: what was changed, the baseline against the final run of every
+  check, and anything the crew had to report rather than fix.
+- `…/00_spotter_brief.md` and `…/.state.json` — the crew's own machinery: the brief handed to the
+  spotter, and which stage the mission is on.
+
+#### Examples
+
+```bash
+# The orchestrating agent drives this; run it by hand only to inspect or resume a mission.
+mgsnake comment-killer start "to_dict() mutates the enum member instead of composing a value"
+mgsnake comment-killer next --mission 2026-09-16_01-00-34
+mgsnake comment-killer status
+
+# Teach the crew where this project files its tests, when it is not a convention the crew knows.
+mgsnake config set ck.test_pattern 'verification/|_should\.py$'
+```
+
+#### Notes
+
+- **Every answer is an action on stdout, refusals included.** When the state machine refuses a call —
+  a mission id that is malformed or names nothing, an unreadable state file, an ambiguous verdict —
+  `next` and `status` print an `error` action carrying the whole message and exit with 113, so the
+  orchestrator reads the refusal the same way it reads every other step, and a script still sees
+  the failure in the status.
+- **A mission is self-contained, so several can run at once.** Every action carries the id of the
+  mission it belongs to — its folder's name — and the orchestrator passes it back with `--mission`,
+  which is what lets two crews work two comments in parallel without sharing anything. It is an id
+  rather than a path so that a working path with spaces in it never reaches a shell. Omitting it
+  picks the newest mission, which is a convenience for a human typing by hand.
+- **`comment-killer-guard` is for hooks, not for people**, which is why it is hidden from `--help`. It
+  is a command of its own rather than part of this group because it has to answer in an environment
+  where nothing of mgsnake's has been set up. It reads a hook payload on stdin and exits with status 2 to
+  refuse a tool call: it holds the orchestrator to these three commands, keeps the trapper inside
+  the project's test files, and stops any of them from rewriting the index, the stash, the branch or
+  the history. The agents declare it themselves; you never call it.
+- **The crew needs `MEGA_SNAKE_SHELL` in the assistant's own environment**, which a session started
+  outside a profile-sourced terminal does not have. Until it does, the guard refuses every call and
+  tells you what to add to the `"env"` block of `.claude/settings.local.json`; add it, restart the
+  session, and the mission runs. mgsnake never edits that file for you.
+- **`ck.test_pattern` widens the trapper's guard**, it never replaces it: your regular expression is
+  added to the conventions the crew already recognises, so a partial pattern cannot cost you the
+  ones your project does follow. An unusable expression is reported and ignored rather than being
+  allowed to stop a mission.
+- **The crew is Claude-only for now**, because its agents use per-agent tools, lifecycle hooks and an
+  initial prompt. `install-agent-items` says so when it refuses to write them for GitHub Copilot.
+- **The crew asks for permission like any other tool, and two rules spare it the interruptions.**
+  An agent definition cannot grant permissions to itself, so the assistant will ask the first time
+  the orchestrator runs this command and the first time a henchman runs your test suite. Granting
+  `Bash(mgsnake comment-killer:*)` plus whatever your project's checks need — its test runner, its
+  linter, its type checker — with `/permissions` or in `.claude/settings.local.json` is what lets a
+  mission run start to finish without stopping. Nothing is lost by not granting them: the crew just
+  waits for you.
+- Only `start` offers to create the working path, the same way every other command that writes
+  there does. `next` and `status` only read missions, so without the folder they report that there is
+  none.
+
 ## Config Environment
 
 ### graphql-schema
@@ -540,7 +637,7 @@ Installs the agent assets mgsnake ships - skills into .github/skills/<name>/ or 
 
 | Option | Description |
 | --- | --- |
-| `--item [mgsnake\|jira-continue\|jira-progress-comment\|create-progress-folder\|create-progress-file\|comment-killer-spotter\|comment-killer-playermaker\|comment-killer-hitman\|comment-killer-kingpin]` | Install this item instead of asking. Repeat the option to install several. Items required by the ones named are installed too, and reported. Accepts bundled items that the interactive list does not offer, so one can be refreshed without reinstalling what bundles it. |
+| `--item [mgsnake\|jira-continue\|jira-progress-comment\|comment-killer-trapper\|comment-killer-hitman\|comment-killer-kingpin]` | Install this item instead of asking. Repeat the option to install several. Items required by the ones named are installed too, and reported. Accepts bundled items that the interactive list does not offer, so one can be refreshed without reinstalling what bundles it. |
 | `--target [c\|l\|b]` | Where to install, instead of asking: 'c' for GitHub Copilot, 'l' for Claude, 'b' for both. |
 | `--tracking [e\|g\|v]` | How to track the files in git, instead of asking: 'e' excludes them in .git/info/exclude, 'g' adds them to .gitignore, 'v' leaves them versioned. |
 | `--check` | Render in memory, compare with every installed file on disk, and exit with an error when any is stale. Never prompts and never writes. It always checks every item for every assistant, so it cannot be combined with --item, --target or --tracking. |
@@ -609,12 +706,18 @@ of every skill, so a stale `reference.md` is reported even when its `SKILL.md` i
 | `mgsnake` | skill | both | The command reference: an index, plus `reference.md` read on demand. |
 | `jira-continue` | skill | both | Resume a Jira story from one board download and `jq`, and record the plan. |
 | `jira-progress-comment` | skill | both | Draft a story's progress comment from the commit range since a baseline, and never publish it unapproved. |
-| `comment-killer-kingpin` | agent | Claude | Orchestrates a review-comment run: investigate, plan, implement, verify, report. Installs five bundled components with it. |
+| `comment-killer-kingpin` | agent | Claude | Runs a whole review-comment mission test-first, delegating to the two henchmen it installs with it. |
 
-The kingpin's five components — `create-progress-folder`, `create-progress-file`,
-`comment-killer-spotter`, `comment-killer-playermaker` and `comment-killer-hitman` — are not offered
-on their own, since each is handed its inputs by the kingpin and does nothing without it. They can
-still be named with `--item` to refresh one in place.
+The kingpin's two henchmen — `comment-killer-trapper`, which writes the failing tests the mission is
+specified by, and `comment-killer-hitman`, which makes them pass against a baseline of the project's
+own checks — are not offered on their own, since each is handed its files by the kingpin and does
+nothing without it. They can still be named with `--item` to refresh one in place.
+
+The crew's third henchman, the spotter, is not installed at all: it is the assistant's own exploring
+agent, launched with a brief that `mgsnake comment-killer` writes into the mission folder. The same
+command drives the mission and answers the agents' hooks, so the rules that keep the crew honest
+travel with the CLI rather than as files in your repository — and the kingpin will ask you to allow
+`Bash(mgsnake comment-killer:*)` the first time it runs.
 
 #### Examples
 

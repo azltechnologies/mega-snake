@@ -863,59 +863,35 @@ EXPECTED_CATALOGUE: dict[str, dict[str, object]] = {
         "requires": ("mgsnake",),
         "about": "Drafts a progress comment from the commit range, and never publishes unapproved.",
     },
-    # --- the comment-killer crew: one agent and the five components it bundles ---
-    # All six are Claude-only: their headers fork other agents, take arguments and execute blocks,
-    # none of which GitHub Copilot understands. The port is catalogued in §8.8.
+    # --- the comment-killer crew: one agent and the two henchmen it delegates to ---
+    # All three are Claude-only: their headers carry per-agent tools, lifecycle hooks and an initial
+    # prompt, none of which GitHub Copilot understands. The port is catalogued in section 8.8.
     #
-    # The kingpin is the only one offered. The five below are hidden because each is handed its
-    # inputs by the kingpin and does nothing on its own.
+    # The spotter is deliberately absent: it is the runtime's own Explore agent, launched with a
+    # brief the `comment-killer` command writes into the mission folder, so there is nothing to
+    # install for it.
+    #
+    # The kingpin is the only one offered. The two below are hidden because each is handed its files
+    # by the kingpin and does nothing on its own.
     "comment-killer-kingpin": {
         "kind": "agent",
         "hidden": False,
-        "requires": (
-            "create-progress-folder",
-            "create-progress-file",
-            "comment-killer-spotter",
-            "comment-killer-playermaker",
-            "comment-killer-hitman",
-        ),
-        "about": "Orchestrates a review-comment run: investigate, plan, implement, verify, report.",
+        "requires": ("mgsnake", "comment-killer-trapper", "comment-killer-hitman"),
+        "about": "Runs a whole review-comment mission by relaying the crew's state machine.",
     },
-    # Shells out to `mgsnake local-config-path`, which is what carries the whole crew to the CLI
-    # skill transitively.
-    "create-progress-folder": {
-        "kind": "skill",
-        "hidden": True,
-        "requires": ("mgsnake",),
-        "about": "Creates the mission folder every report of a run is written into.",
-    },
-    # Takes the folder the skill above returns as its only argument.
-    "create-progress-file": {
-        "kind": "skill",
-        "hidden": True,
-        "requires": ("create-progress-folder",),
-        "about": "Creates one timestamped report file inside a mission folder.",
-    },
-    # A read-only fork of the Explore agent: decides whether the comment is still valid.
-    "comment-killer-spotter": {
-        "kind": "skill",
+    # Writes the failing tests the mission is specified by; a hook holds it to the project's tests.
+    "comment-killer-trapper": {
+        "kind": "agent",
         "hidden": True,
         "requires": (),
-        "about": "Investigates whether a review comment still applies, and gathers the code context.",
+        "about": "Writes the failing tests that pin what the review comment demands.",
     },
-    # A read-only fork of the Plan agent: turns the spotter's findings into a plan.
-    "comment-killer-playermaker": {
-        "kind": "skill",
-        "hidden": True,
-        "requires": (),
-        "about": "Writes the implementation plan the hitman executes.",
-    },
-    # The only henchman that may write: applies the plan, verifies it, files its own report.
+    # Makes those tests pass, against a baseline it captures before touching anything.
     "comment-killer-hitman": {
-        "kind": "skill",
+        "kind": "agent",
         "hidden": True,
         "requires": (),
-        "about": "Carries out the plan, runs the verification, and documents the outcome.",
+        "about": "Makes the trap pass, verifies against a baseline, and files its report.",
     },
 }
 
@@ -924,10 +900,7 @@ EXPECTED_CATALOGUE: dict[str, dict[str, object]] = {
 # whose install came out half empty.
 EXPECTED_RUNTIME_LIMITS: dict[str, tuple[str, ...]] = {
     "comment-killer-kingpin": (RUNTIME_CLAUDE,),
-    "create-progress-folder": (RUNTIME_CLAUDE,),
-    "create-progress-file": (RUNTIME_CLAUDE,),
-    "comment-killer-spotter": (RUNTIME_CLAUDE,),
-    "comment-killer-playermaker": (RUNTIME_CLAUDE,),
+    "comment-killer-trapper": (RUNTIME_CLAUDE,),
     "comment-killer-hitman": (RUNTIME_CLAUDE,),
 }
 
@@ -1130,3 +1103,51 @@ def test_every_documented_runtime_limit_names_a_real_item() -> None:
     assert set(EXPECTED_RUNTIME_LIMITS) <= set(EXPECTED_CATALOGUE), (
         f"unknown items in EXPECTED_RUNTIME_LIMITS: {set(EXPECTED_RUNTIME_LIMITS) - set(EXPECTED_CATALOGUE)}"
     )
+
+
+def bash_hook_commands(item_name: str) -> list[str]:
+    """Collect every command an agent's own header runs before a Bash call.
+
+    Parameters:
+        item_name: The catalogue name of the agent.
+
+    Raises:
+        None
+
+    Returns:
+        list[str]: The hook commands, in declaration order.
+    """
+    item = next(candidate for candidate in ITEMS if candidate.name == item_name)
+    entries = item.frontmatter.get("hooks", {}).get("PreToolUse", [])  # type: ignore[union-attr]
+    return [hook["command"] for entry in entries if entry["matcher"] == "Bash" for hook in entry["hooks"]]
+
+
+GIT_STATE_GUARD_COMMAND: str = "mgsnake comment-killer-guard git-state"
+
+
+def test_the_kingpin_hands_the_git_state_guard_down_to_the_spotter() -> None:
+    """The spotter is the runtime's own Explore agent and has no header of its own.
+
+    The only hook it runs is one it inherits from the kingpin, so the git-state guard has to be declared
+    there, or the agent most likely to reach for `git` is the one nothing stops from rewriting the
+    user's git state.
+    """
+    commands = bash_hook_commands("comment-killer-kingpin")
+
+    assert GIT_STATE_GUARD_COMMAND in commands, f"the kingpin's Bash hooks are {commands}"
+    assert "mgsnake comment-killer-guard kingpin" in commands, "the kingpin lost its own guard"
+
+
+@pytest.mark.parametrize(
+    "henchman",
+    [
+        name
+        for name in next(item for item in ITEMS if item.name == "comment-killer-kingpin").requires
+        if next(item for item in ITEMS if item.name == name).kind == "agent"
+    ],
+)
+def test_every_henchman_keeps_its_own_git_state_guard(henchman: str) -> None:
+    """A henchman is guarded even when it runs without the kingpin that would hand the hook down."""
+    commands = bash_hook_commands(henchman)
+
+    assert commands.count(GIT_STATE_GUARD_COMMAND) == 1, f"{henchman}'s Bash hooks are {commands}"

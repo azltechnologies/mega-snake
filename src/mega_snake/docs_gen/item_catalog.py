@@ -9,7 +9,7 @@ Adding an item therefore touches this file and, for a task skill or an agent, it
 under ``resources/skills/``. It never touches the logic.
 """
 
-from mega_snake.constants import APP_NAME
+from mega_snake.constants import APP_NAME, HITMAN_AGENT, KINGPIN_AGENT, TRAPPER_AGENT
 from mega_snake.docs_gen.item_registry import (
     KIND_AGENT,
     REFERENCE_FILE,
@@ -64,159 +64,130 @@ JIRA_CONTINUE_DESCRIPTION: str = (
 
 # --- The comment-killer crew -------------------------------------------------------------------
 #
-# One orchestrating agent and five components it bundles. Every one of them is Claude-only: their
-# headers use vocabulary GitHub Copilot has no equivalent for -- forking the Explore and Plan agents,
-# argument substitution between stages, and blocks that execute on invocation. Writing them for
-# Copilot would install files it registers and then behaves nothing like what was authored, so they
-# declare `runtimes` and `install-agent-items` refuses. The port is catalogued in §8.8 of the
-# copilot instructions.
+# One orchestrating agent and the two henchmen it delegates to. The third henchman, the spotter, is
+# not an item: it is the runtime's own Explore agent, launched with a brief the `comment-killer`
+# command writes into the mission folder, so there is nothing to install for it and nothing in the
+# user's repository to keep in step with the CLI.
 #
-# The five components are `hidden`: none of them does anything on its own -- each is handed its
-# inputs by the kingpin -- so offering them in the selection list would invite installing a part.
+# Every one of them is Claude-only: their headers use vocabulary GitHub Copilot has no equivalent
+# for -- sub-agent delegation with per-agent tools, lifecycle hooks, and an initial prompt. Writing
+# them for Copilot would install files it registers and then behaves nothing like what was authored,
+# so they declare `runtimes` and `install-agent-items` refuses. The port is catalogued in section
+# 8.8 of the copilot instructions.
+#
+# The henchmen are `hidden`: neither does anything on its own -- each is handed its files by the
+# kingpin -- so offering them in the selection list would invite installing a part.
+#
+# The `hooks` entries call the CLI itself (`mgsnake comment-killer-guard ...`). That is what keeps
+# the rules of the crew shipping and versioning with the command that drives it, instead of as
+# scripts a user would have to keep in their own repository.
 
-PROGRESS_FOLDER_NAME: str = "create-progress-folder"
-PROGRESS_FILE_NAME: str = "create-progress-file"
-SPOTTER_NAME: str = "comment-killer-spotter"
-PLAYERMAKER_NAME: str = "comment-killer-playermaker"
-HITMAN_NAME: str = "comment-killer-hitman"
-KINGPIN_NAME: str = "comment-killer-kingpin"
+
+GIT_STATE_HOOK: dict[str, object] = {
+    "PreToolUse": [
+        {"matcher": "Bash", "hooks": [{"type": "command", "command": f"{APP_NAME} comment-killer-guard git-state"}]}
+    ]
+}
 
 COMMENT_KILLER_ITEMS: tuple[Item, ...] = (
     Item(
-        name=PROGRESS_FOLDER_NAME,
-        summary="Creates the mission folder every comment-killer report is written into.",
+        name=TRAPPER_AGENT,
+        summary="Writes the failing tests that pin what a review comment demands.",
         description=(
-            "Creates a progress folder in the mgsnake local configuration path so that you and your "
-            "sub-agents can document the results of each task."
-        ),
-        render=render_task_skill,
-        # It shells out to `mgsnake local-config-path`, so the CLI reference is a real dependency and
-        # not a formality -- which is what carries the whole crew to the mgsnake skill transitively.
-        requires=(CLI_SKILL_NAME,),
-        hidden=True,
-        runtimes=(RUNTIME_CLAUDE,),
-        frontmatter={
-            "user-invocable": False,
-            "when_to_use": (
-                "Use this skill when you need to create a progress folder for documenting the "
-                "results of tasks performed by you and your sub-agents."
-            ),
-            "allowed-tools": "Bash",
-        },
-    ),
-    Item(
-        name=PROGRESS_FILE_NAME,
-        summary="Creates one timestamped report file inside a mission folder.",
-        description=(
-            "Creates a progress file at the provided path to document progress, results, findings, "
-            "or other information related to the assigned task."
-        ),
-        render=render_task_skill,
-        # Its only argument is the folder the other skill returns, so it is meaningless without it.
-        requires=(PROGRESS_FOLDER_NAME,),
-        hidden=True,
-        runtimes=(RUNTIME_CLAUDE,),
-        frontmatter={
-            "user-invocable": False,
-            "when_to_use": (
-                "Use this skill when you need to create a progress file to document the results of "
-                "tasks performed by you or your sub-agents."
-            ),
-            "arguments": ["outputpath"],
-            "allowed-tools": "Bash",
-        },
-    ),
-    Item(
-        name=SPOTTER_NAME,
-        summary="Read-only Explore fork: decides whether a review comment is still valid.",
-        description=(
-            "Explores the codebase to determine whether a code review comment is still valid or has "
-            "already been resolved, and documents the findings and relevant code context."
-        ),
-        render=render_task_skill,
-        hidden=True,
-        runtimes=(RUNTIME_CLAUDE,),
-        frontmatter={
-            "user-invocable": False,
-            "context": "fork",
-            "agent": "Explore",
-            "allowed-tools": "Bash",
-            "arguments": ["contextfile"],
-            "when_to_use": (
-                "Use this skill when you want to determine whether a code review comment is still "
-                "valid or has already been resolved."
-            ),
-        },
-    ),
-    Item(
-        name=PLAYERMAKER_NAME,
-        summary="Read-only Plan fork: turns the spotter's findings into an implementation plan.",
-        description=(
-            "Creates a plan to address a code review comment that is still valid, based on the "
-            "comment and the findings from comment-killer-spotter."
-        ),
-        render=render_task_skill,
-        hidden=True,
-        runtimes=(RUNTIME_CLAUDE,),
-        frontmatter={
-            "user-invocable": False,
-            "effort": "high",
-            "model": "opus",
-            "context": "fork",
-            "allowed-tools": "Bash",
-            "agent": "Plan",
-            "background": False,
-            "arguments": ["contextfile", "spotterfile"],
-            "when_to_use": (
-                "Use this skill when you want to create a plan to address a code review comment that is still valid."
-            ),
-        },
-    ),
-    Item(
-        name=HITMAN_NAME,
-        summary="Carries out the plan, verifies it, and files its own report.",
-        description=(
-            "Executes the implementation plan created by comment-killer-playermaker to resolve a "
-            "valid code review comment, including the required production and test code changes."
-        ),
-        render=render_task_skill,
-        hidden=True,
-        runtimes=(RUNTIME_CLAUDE,),
-        frontmatter={
-            "user-invocable": False,
-            "context": "fork",
-            "effort": "medium",
-            "model": "sonnet",
-            "background": False,
-            "allowed-tools": (
-                "Bash(uv run pytest) Bash(uv run ruff format:*) Bash(uv run ruff check:*) "
-                "Bash(uv run mypy:*) Bash(ruff format:*) Bash(ruff check:*) Bash(mypy:*)"
-            ),
-            "permissionMode": "acceptEdits",
-            "arguments": ["contextfile", "planfile", "hitfile"],
-            "when_to_use": (
-                "Use this skill when you have a plan to address a code review comment that is still "
-                "valid and need to carry it out."
-            ),
-        },
-    ),
-    Item(
-        name=KINGPIN_NAME,
-        summary="Orchestrates the whole comment-killer run; installs the five components with it.",
-        description=(
-            "Orchestrates the comment-killer workflow by delegating investigation, planning, "
-            "implementation, and verification to specialized skills."
+            "Henchman of the comment-killer crew. Writes the failing tests that pin the behaviour a "
+            "still-valid code review comment demands, proves they fail today, and hands them over as "
+            "the trap. Only the comment-killer-kingpin delegates to this agent."
         ),
         render=render_task_skill,
         kind=KIND_AGENT,
-        # It delegates to all five, and the two progress skills carry the mgsnake dependency up.
-        requires=(PROGRESS_FOLDER_NAME, PROGRESS_FILE_NAME, SPOTTER_NAME, PLAYERMAKER_NAME, HITMAN_NAME),
+        hidden=True,
         runtimes=(RUNTIME_CLAUDE,),
         frontmatter={
-            "tools": ["Skill", "Read", "Write", "Edit"],
+            "tools": ["Read", "Write", "Edit", "Grep", "Glob", "Bash"],
+            "model": "sonnet",
+            "effort": "medium",
+            "permissionMode": "acceptEdits",
+            "color": "yellow",
+            "hooks": {
+                "PreToolUse": [
+                    {
+                        "matcher": "Bash",
+                        "hooks": [{"type": "command", "command": f"{APP_NAME} comment-killer-guard git-state"}],
+                    },
+                    {
+                        "matcher": "Edit|Write|NotebookEdit",
+                        "hooks": [{"type": "command", "command": f"{APP_NAME} comment-killer-guard trapper"}],
+                    },
+                ]
+            },
+        },
+    ),
+    Item(
+        name=HITMAN_AGENT,
+        summary="Makes the trap pass, verifies against a baseline, and files its report.",
+        description=(
+            "Henchman of the comment-killer crew. Makes the trapper's failing tests pass for a "
+            "still-valid code review comment, verifies the result with the project's own checks, and "
+            "files its own report. Only the comment-killer-kingpin delegates to this agent."
+        ),
+        render=render_task_skill,
+        kind=KIND_AGENT,
+        hidden=True,
+        runtimes=(RUNTIME_CLAUDE,),
+        frontmatter={
+            "tools": ["Read", "Edit", "Write", "Grep", "Glob", "Bash"],
+            "model": "opus",
+            "effort": "high",
+            "permissionMode": "acceptEdits",
+            "omitClaudeMd": True,
+            "color": "red",
+            "hooks": GIT_STATE_HOOK,
+        },
+    ),
+    Item(
+        name=KINGPIN_AGENT,
+        summary="Runs a whole review-comment mission; installs the two henchmen with it.",
+        description=(
+            "Orchestrates the comment-killer workflow by relaying the crew's state machine to the "
+            "henchman subagents: investigate, set the trap, spring it, report."
+        ),
+        render=render_task_skill,
+        kind=KIND_AGENT,
+        # It delegates to both, and neither is any use without it; and it drives the CLI's own
+        # `comment-killer` command, so the reference that documents it travels along.
+        requires=(CLI_SKILL_NAME, TRAPPER_AGENT, HITMAN_AGENT),
+        runtimes=(RUNTIME_CLAUDE,),
+        frontmatter={
+            "tools": ["Agent", "Bash", "Write", "Read"],
             "permissionMode": "acceptEdits",
             "model": "haiku",
-            "skills": [PROGRESS_FOLDER_NAME, PROGRESS_FILE_NAME, SPOTTER_NAME, PLAYERMAKER_NAME, HITMAN_NAME],
+            # Hooks declared here are inherited by every subagent the kingpin spawns. That is what
+            # guards the spotter, which is the runtime's own Explore agent and has no header to
+            # declare a hook in; the henchmen keep their own git-state hook too, so they stay
+            # guarded when used without the kingpin.
+            "hooks": {
+                "PreToolUse": [
+                    {
+                        "matcher": "Bash",
+                        "hooks": [
+                            {"type": "command", "command": f"{APP_NAME} comment-killer-guard kingpin"},
+                            {"type": "command", "command": f"{APP_NAME} comment-killer-guard git-state"},
+                        ],
+                    }
+                ]
+            },
+            "initialPrompt": (
+                "Greet the boss in character. Remind them, in one or two lines, that this crew works "
+                "TDD: it turns a code review comment into failing tests and then makes them pass, so "
+                "it needs a project with a test suite, and it is not the tool for a comment no test "
+                "could ever prove -- a rename, a rewording, a file move. Tell them the crew only runs "
+                "what the project's permissions allow, and that granting these two beforehand is what "
+                "keeps a mission from stopping to ask: "
+                f"`Bash({APP_NAME} comment-killer:*)` for your own commands, and whatever the project's "
+                "checks need for the henchmen (its test runner, its linter, its type checker). Either "
+                "with `/permissions` or in the `permissions.allow` list of "
+                "`.claude/settings.local.json`. Then ask for the code review comment to whack, and wait."
+            ),
         },
     ),
 )

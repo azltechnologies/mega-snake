@@ -16,8 +16,10 @@ Two levels are used deliberately:
 """
 
 import importlib
+import json
 import inspect
 import os
+import re
 import pkgutil
 import subprocess
 import sys
@@ -346,6 +348,67 @@ def test_a_missing_shell_variable_exits_with_the_environment_error_code() -> Non
 
     assert result.returncode == 112, f"exited {result.returncode}\n{result.stderr}"
     assert result.returncode != CLICK_EXCEPTION_EXIT_CODE, "an unset environment variable is not user misuse"
+
+
+@pytest.mark.parametrize(
+    "shell, command, expected_code, expected_first_line",
+    [
+        ("bash", "mgsnake comment-killer next", 0, None),
+        ("bash", "ls -la", 2, "Blocked: you only run `mgsnake comment-killer start|next|status`, on its own."),
+        (None, "mgsnake comment-killer next", 2, "Blocked: the comment-killer crew cannot run, because `MEGA_SNAKE_SHELL` is not set,"),
+        ("fish", "mgsnake comment-killer next", 2, "Blocked: the comment-killer crew cannot run, because `MEGA_SNAKE_SHELL` is `fish`,"),
+    ],
+    ids=["allowed", "refused-by-rule", "shell-missing", "shell-unsupported"],
+)
+def test_the_hook_guard_blocks_with_the_hook_status_never_with_an_initialization_error(
+    shell: Optional[str], command: str, expected_code: int, expected_first_line: Optional[str]
+) -> None:
+    """A hook the runtime spawns reads the status as the verdict: 0 lets the call through, 2 refuses it.
+
+    Anything else is a hook error the call proceeds past. So a missing or unsupported
+    `MEGA_SNAKE_SHELL` reaching `cli()`'s 112 or 103 would be no guard at all: the guard is `no_init`,
+    checks the variable itself, and refuses with 2 and the remedy on stderr. Only a real process can
+    check this -- `CliRunner` never reaches `main()`, where a status becomes the process' own.
+    """
+    payload = f'{{"agent_type": "comment-killer-kingpin", "tool_input": {{"command": "{command}"}}}}'
+
+    result = _run_cli("comment-killer-guard", "kingpin", stdin=payload, MEGA_SNAKE_SHELL=shell)
+
+    assert result.returncode == expected_code, f"`{command}` with {shell!r} exited {result.returncode}\n{result.stderr}"
+    assert result.returncode not in (1, 103, 112), "the verdict collapsed into an error the runtime proceeds past"
+    assert result.stdout == "", "a hook's verdict never goes to stdout"
+    if expected_first_line is None:
+        assert result.stderr == "", f"an allowed call printed: {result.stderr}"
+    else:
+        first_line = re.sub(r"\x1b\[[0-9;]*m", "", result.stderr).splitlines()[0]
+        assert first_line.startswith(expected_first_line), first_line
+
+
+@pytest.mark.parametrize(
+    "args, expected_code, expected_status",
+    [
+        (("start",), 0, "write_file"),
+        (("next", "--mission", "no-such-mission"), 113, "error"),
+        (("status", "--mission", "../elsewhere"), 113, "error"),
+    ],
+    ids=["action", "unknown-mission", "malformed-mission"],
+)
+def test_a_crew_command_reports_its_refusal_as_an_error_action_with_the_validation_code(
+    tmp_path: Path, args: tuple[str, ...], expected_code: int, expected_status: str
+) -> None:
+    """An `error` action leaves with 113, the status a validation reports; every other action leaves with 0.
+
+    The status is decided by the module ending from the action the subcommand returned, after the
+    process has printed it, so only a real process sees both halves: the JSON on stdout and the code.
+    """
+    (tmp_path / "workspace_temp").mkdir()
+
+    result = _run_cli("ck", *args, cwd=tmp_path, MEGA_SNAKE_SHELL="bash")
+
+    assert result.returncode == expected_code, f"{args} exited {result.returncode}\n{result.stderr}"
+    assert result.returncode not in (1, 100), "the refusal collapsed into a generic or internal error"
+    assert json.loads(result.stdout)["status"] == expected_status, result.stdout
+    assert "Traceback" not in result.stderr, result.stderr
 
 
 def test_an_unsupported_shell_exits_with_the_value_error_code() -> None:

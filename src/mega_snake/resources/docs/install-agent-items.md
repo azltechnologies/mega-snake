@@ -61,12 +61,18 @@ of every skill, so a stale `reference.md` is reported even when its `SKILL.md` i
 | `mgsnake` | skill | both | The command reference: an index, plus `reference.md` read on demand. |
 | `jira-continue` | skill | both | Resume a Jira story from one board download and `jq`, and record the plan. |
 | `jira-progress-comment` | skill | both | Draft a story's progress comment from the commit range since a baseline, and never publish it unapproved. |
-| `comment-killer-kingpin` | agent | Claude | Orchestrates a review-comment run: investigate, plan, implement, verify, report. Installs five bundled components with it. |
+| `comment-killer-kingpin` | agent | Claude | Runs a whole review-comment mission test-first, delegating to the two henchmen it installs with it. |
 
-The kingpin's five components — `create-progress-folder`, `create-progress-file`,
-`comment-killer-spotter`, `comment-killer-playermaker` and `comment-killer-hitman` — are not offered
-on their own, since each is handed its inputs by the kingpin and does nothing without it. They can
-still be named with `--item` to refresh one in place.
+The kingpin's two henchmen — `comment-killer-trapper`, which writes the failing tests the mission is
+specified by, and `comment-killer-hitman`, which makes them pass against a baseline of the project's
+own checks — are not offered on their own, since each is handed its files by the kingpin and does
+nothing without it. They can still be named with `--item` to refresh one in place.
+
+The crew's third henchman, the spotter, is not installed at all: it is the assistant's own exploring
+agent, launched with a brief that `mgsnake comment-killer` writes into the mission folder. The same
+command drives the mission and answers the agents' hooks, so the rules that keep the crew honest
+travel with the CLI rather than as files in your repository — and the kingpin will ask you to allow
+`Bash(mgsnake comment-killer:*)` the first time it runs.
 
 ## Examples
 

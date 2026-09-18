@@ -94,6 +94,13 @@ SHELL_OPT: list[str] = ["bash", "zsh", "powershell", "pwsh"]
 # The variable the sourced init script exports, naming one of SHELL_OPT.
 SHELL_ENV_VARIABLE: str = "MEGA_SNAKE_SHELL"
 
+# The names of the comment-killer crew's agents. Shared by two commands: `comment-killer`, which
+# launches them and judges their hooks by these names, and `install-agent-items`, which installs
+# them under the same names. Two copies would let a rename install one name and launch another.
+TRAPPER_AGENT: str = "comment-killer-trapper"
+HITMAN_AGENT: str = "comment-killer-hitman"
+KINGPIN_AGENT: str = "comment-killer-kingpin"
+
 MSG_OPT: dict[str, Callable] = {
     "S": formatting.ws_success,
     "I": formatting.ws_info,

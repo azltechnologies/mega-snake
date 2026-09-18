@@ -14,6 +14,7 @@ from .config_environment.module import registration as config_environment
 from .dependency_audit.module import registration as dependency_audit
 from .state.module import registration as state
 from .jira_api.module import registration as jira_api
+from .comment_killer.module import registration as comment_killer
 from .constants import LOGGING_OPT, SHELL_ENV_VARIABLE, SHELL_OPT, APP_NAME, MODULE_NAME
 from .util.formatting import get_traceback
 from .util.props import init_app_properties
@@ -174,6 +175,7 @@ MODULES: list[ModuleRegistration] = [
     dependency_audit,
     state,
     jira_api,
+    comment_killer,
 ]
 
 for module in MODULES:
