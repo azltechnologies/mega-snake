@@ -3,21 +3,23 @@
 import os
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as get_package_version
-from typing import Callable, Optional
+from typing import Optional
 import sys
 import click
-from .diff_tree.module import main as diff_tree, add_wrapper as diff_tree_result_callback
-from .docs_gen.module import main as docs_gen, add_wrapper as docs_gen_result_callback
-from .light_weight.module import main as create_release, add_wrapper as create_release_result_callback
-from .remote_branches.module import main as remote_branches, add_wrapper as remote_branches_result_callback
-from .config_environment.module import main as config_environment, add_wrapper as config_env_result_callback
-from .dependency_audit.module import main as dependency_audit, add_wrapper as dependency_audit_result_callback
-from .state.module import main as state, add_wrapper as state_result_callback
-from .jira_api.module import main as jira_api, add_wrapper as jira_api_result_callback
-from .constants import LOGGING_OPT, SHELL_OPT, APP_NAME, MODULE_NAME
+from .diff_tree.module import registration as diff_tree
+from .docs_gen.module import registration as docs_gen
+from .light_weight.module import registration as create_release
+from .remote_branches.module import registration as remote_branches
+from .config_environment.module import registration as config_environment
+from .dependency_audit.module import registration as dependency_audit
+from .state.module import registration as state
+from .jira_api.module import registration as jira_api
+from .comment_killer.module import registration as comment_killer
+from .constants import LOGGING_OPT, SHELL_ENV_VARIABLE, SHELL_OPT, APP_NAME, MODULE_NAME
 from .util.formatting import get_traceback
 from .util.props import init_app_properties
 from .util.formatting import WorkspaceError, ws_advice
+from .util.command_registration import ModuleRegistration
 from .util.cli_group import ATTR_METADATA, META_FLAGS, CliGroup
 
 
@@ -122,9 +124,9 @@ def cli(ctx: click.Context, log_level: str) -> None:
             if flags and "skip" in flags:
                 ws_advice("'skip' flag detected. Running in light-weight mode if local working directory is not found.")
                 light_weight = True
-        shell = os.environ.get("MEGA_SNAKE_SHELL")
+        shell = os.environ.get(SHELL_ENV_VARIABLE)
         if not shell:
-            raise EnvironmentError("Environment variable 'MEGA_SNAKE_SHELL' is not set")
+            raise EnvironmentError(f"Environment variable '{SHELL_ENV_VARIABLE}' is not set")
         if shell not in SHELL_OPT:
             raise ValueError(f"Unsupported shell: {shell}. Supported shells are: {', '.join(SHELL_OPT)}")
         init_app_properties(log_level, shell, light_weight)
@@ -137,9 +139,9 @@ def cli(ctx: click.Context, log_level: str) -> None:
         click.echo(get_traceback(e), err=True)
         # Deliberately re-raised with its type intact instead of being converted to a SystemExit.
         # `SystemExit(e)` uses its argument as the status only when that argument is an int; given
-        # an exception it prints it and exits 1, which is what flattened every initialization
-        # failure to the same code. main() turns this into a WorkspaceError, whose registered
-        # status is what actually reaches the shell.
+        # an exception it prints it and exits 1, flattening every initialization failure to the same
+        # code. main() turns this into a WorkspaceError, whose registered status is what actually
+        # reaches the shell.
         raise
 
 
@@ -163,32 +165,31 @@ def post_command(ctx, result, **kwargs) -> None:
         sys.exit(exit_code)
 
 
-# Every module exposes the same pair: its command group, and the decorator that wraps each of its
-# commands with the module's own pre-flight checks. Registration order drives the order shown in
-# the help output.
-MODULES: list[tuple[CliGroup, Callable]] = [
-    (diff_tree, diff_tree_result_callback),
-    (docs_gen, docs_gen_result_callback),
-    (create_release, create_release_result_callback),
-    (config_environment, config_env_result_callback),
-    (remote_branches, remote_branches_result_callback),
-    (dependency_audit, dependency_audit_result_callback),
-    (state, state_result_callback),
-    (jira_api, jira_api_result_callback),
+# Registration order drives the order shown in the help output.
+MODULES: list[ModuleRegistration] = [
+    diff_tree,
+    docs_gen,
+    create_release,
+    config_environment,
+    remote_branches,
+    dependency_audit,
+    state,
+    jira_api,
+    comment_killer,
 ]
 
-for group, add_wrapper in MODULES:
-    for command in group.commands.values():
-        cli.add_command(add_wrapper(command))
+for module in MODULES:
+    for command in module.group.commands.values():
+        cli.add_command(module.wrap(command))
 
 
 def main() -> None:
     """Run the CLI: the single place where an exception becomes an exit code.
 
-    This is what ``[project.scripts]`` points at. Pointing it at ``cli`` instead meant the installed
-    executable called the group directly, so the translation below — and with it the installation of
-    ``_on_crash`` as the except hook — only ever ran under ``python -m mega_snake``. No user runs
-    that, which is how every failure came to report the same status.
+    This is what ``[project.scripts]`` must point at, never at ``cli``. Pointing it at the group makes
+    the installed executable call click directly, so the translation below — and with it the
+    installation of ``_on_crash`` as the except hook — only runs under ``python -m mega_snake``, which
+    no user types: every failure then reports the same status.
 
     ``click.ClickException`` is re-raised untouched because Click already knows its status
     (``exit_code``); wrapping it would relabel a user error as an internal one. Anything else

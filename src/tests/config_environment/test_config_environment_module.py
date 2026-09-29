@@ -38,7 +38,7 @@ def _invoke_wrapper(command_name: str) -> dict:
     """
     command = module.main.commands.get(command_name)
     assert command is not None, f"'{command_name}' is not registered in the config_environment group"
-    wrapped: click.Command = module.add_wrapper(command)
+    wrapped: click.Command = module.registration.wrap(command)
     ctx = click.Context(wrapped)
     ctx.obj = {}
     with ctx.scope():
@@ -88,6 +88,9 @@ def test_reload_metadata_survives_the_command_wrapping(command_name: str) -> Non
     with it, silently.
     """
     command = module.main.commands[command_name]
-    wrapped: click.Command = module.add_wrapper(command)
+    wrapped: click.Command = module.registration.wrap(command)
+    # The original callback carries the marker too, so a registration that returned the command
+    # untouched would pass the metadata assertion below without wrapping anything.
+    assert wrapped.callback is not command.callback, f"'{command_name}' was registered without being wrapped"
     metadata = getattr(wrapped.callback, ATTR_METADATA, {})
     assert metadata.get(META_RELOADS_ENV) is True, f"'{command_name}' lost its reload marker when wrapped"

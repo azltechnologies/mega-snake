@@ -6,8 +6,24 @@ Jira skills consume.
 Nothing on disk. The board lookup it performs first may populate the cached `jira.board_id`, exactly
 as `jira-board` does.
 
-Each entry carries `id`, `name`, `startDate`, `endDate`, `cloudDomain` and `boardId` — the same keys
-the shell version produced, with `boardId` now a number.
+One JSON array on stdout, one entry per active sprint:
+
+```jsonc
+[
+  {
+    "id": 42,              // number
+    "name": "Sprint 7",    // string
+    "startDate": "2026-08-17T09:00:00.000Z", // string, or null when the sprint has no start date
+    "endDate": "2026-08-31T09:00:00.000Z",   // string, or null when the sprint has no end date
+    "cloudDomain": "example.atlassian.net",  // string, the domain the board was read from
+    "boardId": 1           // number, the board the sprint belongs to
+  }
+]
+```
+
+The same keys the shell version produced, with `boardId` now a number. `startDate` and `endDate` are
+whatever Jira stored, so both can be `null` on a sprint created without dates — read them defensively
+(`.startDate // "unset"` in `jq`).
 
 ## Examples
 

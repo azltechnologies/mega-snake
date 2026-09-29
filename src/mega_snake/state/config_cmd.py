@@ -16,7 +16,7 @@ from typing import Optional
 
 import click
 
-from mega_snake.constants import SHELL_OPT
+from mega_snake.constants import SHELL_ENV_VARIABLE, SHELL_OPT
 from mega_snake.util.cli_group import CliGroup
 from mega_snake.util.formatting import ws_info, ws_success, ws_warning
 from mega_snake.util.store import (
@@ -300,7 +300,7 @@ def config_export(shell: Optional[str], scope: str) -> None:
     Returns:
         None
     """
-    target_shell: str = shell or os.environ.get("MEGA_SNAKE_SHELL") or DEFAULT_EXPORT_SHELL
+    target_shell: str = shell or os.environ.get(SHELL_ENV_VARIABLE) or DEFAULT_EXPORT_SHELL
     values: dict[str, str] = Store.get_instance().items(None if scope == SCOPE_ALL else scope)
     for key in sorted(values):
         click.echo(_format_export(target_shell, key, values[key]))

@@ -1,5 +1,102 @@
 # Available Commands
 
+## Comment Killer
+
+### comment-killer
+
+Drives the comment-killer crew: one mission per code review comment.
+
+**Synopsis:** `mgsnake comment-killer [OPTIONS] COMMAND [ARGS]...`
+
+**Aliases:** `ck`
+
+| Option | Description |
+| --- | --- |
+| `-h, --help` | Show this message and exit. |
+
+The comment-killer crew is a set of AI agents that resolve one code review comment at a time, and
+this command is the part of them that cannot be a prompt: the order of the stages, the paths, the
+handoffs and the verdict. An orchestrating agent runs `start`, does exactly what the printed JSON
+says, runs `next`, and repeats. Everything a model could improvise its way around — inventing a
+file name, carrying on with an empty handoff, deciding by itself that the comment is already
+resolved — is decided here instead, in code.
+
+The crew works test-first, which is what makes its result checkable rather than merely plausible.
+The **spotter** maps the code the comment touches, the **trapper** writes tests that fail today and
+can only pass once the comment is honoured, and the **hitman** takes a baseline of the project's own
+checks, makes those tests pass and compares against it. Install them with `install-agent-items`; the
+spotter needs nothing installed, because it is the runtime's own exploring agent working from a
+brief this command writes.
+
+Nothing here talks to a model: it moves a mission from one stage to the next and answers the agents'
+lifecycle hooks, so the rules that keep the crew honest ship and version with the CLI instead of as
+scripts inside your repository.
+
+#### Output
+
+Each mission gets a folder under the working path, named after the moment it opened:
+
+- `workspace_temp/comment_killer/<timestamp>/01_brief.md` — the code review comment, verbatim.
+- `…/02_map.md` — the spotter's map: every file and object it inspected, with line ranges, and
+  whether each one is involved in the bug or was checked and ruled out.
+- `…/03_trap.md` — the trap: the failing tests, the proof that they fail, the sketch of what has to
+  change, the project rules that govern it and the verification commands its CI runs.
+- `…/04_hit.md` — the hit report: what was changed, the baseline against the final run of every
+  check, and anything the crew had to report rather than fix.
+- `…/00_spotter_brief.md` and `…/.state.json` — the crew's own machinery: the brief handed to the
+  spotter, and which stage the mission is on.
+
+#### Examples
+
+```bash
+# The orchestrating agent drives this; run it by hand only to inspect or resume a mission.
+mgsnake comment-killer start "to_dict() mutates the enum member instead of composing a value"
+mgsnake comment-killer next --mission 2026-09-16_01-00-34
+mgsnake comment-killer status
+
+# Teach the crew where this project files its tests, when it is not a convention the crew knows.
+mgsnake config set ck.test_pattern 'verification/|_should\.py$'
+```
+
+#### Notes
+
+- **Every answer is an action on stdout, refusals included.** When the state machine refuses a call —
+  a mission id that is malformed or names nothing, an unreadable state file, an ambiguous verdict —
+  `next` and `status` print an `error` action carrying the whole message and exit with 113, so the
+  orchestrator reads the refusal the same way it reads every other step, and a script still sees
+  the failure in the status.
+- **A mission is self-contained, so several can run at once.** Every action carries the id of the
+  mission it belongs to — its folder's name — and the orchestrator passes it back with `--mission`,
+  which is what lets two crews work two comments in parallel without sharing anything. It is an id
+  rather than a path so that a working path with spaces in it never reaches a shell. Omitting it
+  picks the newest mission, which is a convenience for a human typing by hand.
+- **`comment-killer-guard` is for hooks, not for people**, which is why it is hidden from `--help`. It
+  is a command of its own rather than part of this group because it has to answer in an environment
+  where nothing of mgsnake's has been set up. It reads a hook payload on stdin and exits with status 2 to
+  refuse a tool call: it holds the orchestrator to these three commands, keeps the trapper inside
+  the project's test files, and stops any of them from rewriting the index, the stash, the branch or
+  the history. The agents declare it themselves; you never call it.
+- **The crew needs `MEGA_SNAKE_SHELL` in the assistant's own environment**, which a session started
+  outside a profile-sourced terminal does not have. Until it does, the guard refuses every call and
+  tells you what to add to the `"env"` block of `.claude/settings.local.json`; add it, restart the
+  session, and the mission runs. mgsnake never edits that file for you.
+- **`ck.test_pattern` widens the trapper's guard**, it never replaces it: your regular expression is
+  added to the conventions the crew already recognises, so a partial pattern cannot cost you the
+  ones your project does follow. An unusable expression is reported and ignored rather than being
+  allowed to stop a mission.
+- **The crew is Claude-only for now**, because its agents use per-agent tools, lifecycle hooks and an
+  initial prompt. `install-agent-items` says so when it refuses to write them for GitHub Copilot.
+- **The crew asks for permission like any other tool, and two rules spare it the interruptions.**
+  An agent definition cannot grant permissions to itself, so the assistant will ask the first time
+  the orchestrator runs this command and the first time a henchman runs your test suite. Granting
+  `Bash(mgsnake comment-killer:*)` plus whatever your project's checks need — its test runner, its
+  linter, its type checker — with `/permissions` or in `.claude/settings.local.json` is what lets a
+  mission run start to finish without stopping. Nothing is lost by not granting them: the crew just
+  waits for you.
+- Only `start` offers to create the working path, the same way every other command that writes
+  there does. `next` and `status` only read missions, so without the folder they report that there is
+  none.
+
 ## Config Environment
 
 ### graphql-schema
@@ -456,7 +553,7 @@ Useful for code reviews, progress comments on a ticket, and release notes: it an
 touch since master?" without scrolling through `git log`.
 
 Both ends of the comparison move independently: `--origin-hash` sets where it starts, `--target-hash`
-sets where it ends. With both, the range is fully explicit and no longer anchored to the current checkout,
+sets where it ends. With both, the range is fully explicit and not anchored to the current checkout,
 which is what makes it possible to reconstruct a past release from the two commits that bound it.
 
 #### Output
@@ -529,6 +626,165 @@ Writes a Markdown command reference to the target file (default: `COMMANDS.md`).
 
 This command is intentionally `no_init`: it does not require `MEGA_SNAKE_SHELL`, a workspace, or a
 git repository, and it resolves the packaged fragments through `importlib.resources`.
+
+### install-agent-items
+
+Installs the agent assets mgsnake ships - skills into .github/skills/<name>/ or .claude/skills/<name>/, agents into .github/agents/<name>.agent.md or .claude/agents/<name>.md. Every item is offered with its current state, so an installed one can be refreshed in place; an item that requires others pulls them in and says so. The selection, the target and the git-tracking strategy are asked interactively unless --item, --target and --tracking supply them, which is what makes the command usable from a hook or a CI step.
+
+**Synopsis:** `mgsnake install-agent-items [OPTIONS]`
+
+**Aliases:** `generate-skill`, `iai`
+
+| Option | Description |
+| --- | --- |
+| `--item [mgsnake\|jira-continue\|jira-progress-comment\|comment-killer-trapper\|comment-killer-hitman\|comment-killer-kingpin]` | Install this item instead of asking. Repeat the option to install several. Items required by the ones named are installed too, and reported. Accepts bundled items that the interactive list does not offer, so one can be refreshed without reinstalling what bundles it. |
+| `--target [c\|l\|b]` | Where to install, instead of asking: 'c' for GitHub Copilot, 'l' for Claude, 'b' for both. |
+| `--tracking [e\|g\|v]` | How to track the files in git, instead of asking: 'e' excludes them in .git/info/exclude, 'g' adds them to .gitignore, 'v' leaves them versioned. |
+| `--check` | Render in memory, compare with every installed file on disk, and exit with an error when any is stale. Never prompts and never writes. It always checks every item for every assistant, so it cannot be combined with --item, --target or --tracking. |
+| `-h, --help` | Show this message and exit. |
+
+Agent items let AI agent runtimes (GitHub Copilot, Claude) drive `mgsnake` inside your own project.
+Each item is a Markdown document the runtime discovers by reading the YAML frontmatter at its top.
+
+**The CLI reference is split in two, and the split is the point.** Both runtimes load a skill's body
+eagerly the moment the skill triggers, so everything inside `SKILL.md` is spent from the assistant's
+context before it knows which command it needs. The `mgsnake` skill therefore carries only the
+frontmatter and a command index — name, aliases and one-line description, around 90 lines — while
+the full reference lives beside it in `reference.md`, opened only when the options, defaults and
+caveats of a specific command are actually needed. Cheaper still, and what the index recommends
+first: `mgsnake man <command>`, which renders one command's entry and always reflects the installed
+version rather than whatever was generated last.
+
+`reference.md` is identical to what `generate-docs` would write to `COMMANDS.md`, and the index is
+rendered from the same introspection pass, so neither file can drift from the CLI or from the other.
+
+**Items can require other items.** A task skill that tells an assistant to run mgsnake commands is
+useless to one that does not know those commands exist, so it requires the `mgsnake` skill and
+selecting it installs both; an agent may likewise bundle components that do nothing on their own.
+Dependencies are resolved to any depth, and the extra install is never silent — the selection list
+shows what comes bundled *before* you choose, and the run then prints which item it added and which
+selection asked for it. Files appearing in your working tree that you did not choose must be
+explainable.
+
+**Not every item fits every assistant.** An item whose header uses vocabulary only one runtime
+understands — a skill that is really a fork of another agent, one that takes arguments, one that runs
+a shell block — is declared for that runtime alone, and the selection list says so before you choose.
+Writing such a file where the runtime cannot read it would install cleanly and then behave nothing
+like what was written, which is worse than not installing it, because it looks installed.
+
+**Some items are bundled, not offered.** A component that only makes sense as part of something else
+is kept out of the selection list, so it cannot be installed on its own by accident. It is still
+reachable by name through `--item`, which is what leaves it an update path that does not require
+reinstalling whatever bundles it.
+
+**Two kinds of item, with different shapes on disk.** A **skill** owns a directory and may hold
+several files; an **agent** is a single file — and its extension is not the same for both assistants,
+so the layout is resolved per runtime rather than assumed.
+
+#### Output
+
+| Kind | GitHub Copilot | Claude |
+| ---- | -------------- | ------ |
+| skill | `.github/skills/<name>/` | `.claude/skills/<name>/` |
+| agent | `.github/agents/<name>.agent.md` | `.claude/agents/<name>.md` |
+
+Inside a skill directory:
+
+| File | Written for | Contents |
+| ---- | ----------- | -------- |
+| `SKILL.md` | every skill | The YAML frontmatter both runtimes read to register the document — its `name` and the `description` that tells the assistant when the skill applies — then the skill's body. |
+| `reference.md` | the `mgsnake` skill only | The complete command reference: every synopsis, option table, epilog and prose fragment. Not loaded until the assistant opens it. |
+
+A `SKILL.md` without the frontmatter header is never loaded, so the frontmatter is part of the
+generated content and `--check` compares it like any other line. `--check` validates **every** file
+of every skill, so a stale `reference.md` is reported even when its `SKILL.md` is current.
+
+#### What ships today
+
+| Item | Kind | Assistants | What it is |
+| ---- | ---- | ---------- | ---------- |
+| `mgsnake` | skill | both | The command reference: an index, plus `reference.md` read on demand. |
+| `jira-continue` | skill | both | Resume a Jira story from one board download and `jq`, and record the plan. |
+| `jira-progress-comment` | skill | both | Draft a story's progress comment from the commit range since a baseline, and never publish it unapproved. |
+| `comment-killer-kingpin` | agent | Claude | Runs a whole review-comment mission test-first, delegating to the two henchmen it installs with it. |
+
+The kingpin's two henchmen — `comment-killer-trapper`, which writes the failing tests the mission is
+specified by, and `comment-killer-hitman`, which makes them pass against a baseline of the project's
+own checks — are not offered on their own, since each is handed its files by the kingpin and does
+nothing without it. They can still be named with `--item` to refresh one in place.
+
+The crew's third henchman, the spotter, is not installed at all: it is the assistant's own exploring
+agent, launched with a brief that `mgsnake comment-killer` writes into the mission folder. The same
+command drives the mission and answers the agents' hooks, so the rules that keep the crew honest
+travel with the CLI rather than as files in your repository — and the kingpin will ask you to allow
+`Bash(mgsnake comment-killer:*)` the first time it runs.
+
+#### Examples
+
+```bash
+# Interactive: pick the skills, the assistant and the git-tracking preference at the prompts
+mgsnake install-agent-items
+
+# Non-interactive, for a hook or a CI step: nothing is asked
+mgsnake install-agent-items --item mgsnake --target b --tracking e
+
+# Bring an existing installation up to date after upgrading mgsnake
+mgsnake install-agent-items --item mgsnake --target l --tracking v
+
+# Verify that the skill files present on disk are up to date, without writing anything
+mgsnake install-agent-items --check
+```
+
+#### Notes
+
+**Every offered item is always listed, installed ones included.** Each entry shows its kind and is
+annotated with where it currently stands — `installed`, `STALE` or `not installed`, per assistant — so a skill whose content
+improved in a newer mgsnake can be refreshed. Hiding what is already on disk would leave no way to
+update it: the run would report everything as installed and hand you a stale file with a successful
+exit. Re-running is idempotent; a skill already present is simply rewritten with the current content.
+
+**The selection is all-or-nothing.** Items are chosen as one comma-separated answer (or `all`), and
+a single unrecognised name rejects the whole answer without installing anything. Dropping the
+unknown entry and proceeding with the rest would act on a selection you never made, and report
+success for it.
+
+**An item is `STALE` when any of its files is.** For the `mgsnake` skill that means a current
+`SKILL.md` beside an outdated `reference.md` reads as stale, which is the case worth seeing: the
+index would look perfectly current while the document it points at described commands that no longer
+exist.
+
+**The prompts can all be skipped.** `--item`, `--target` and `--tracking` answer them up front, and
+a run that supplies all three asks nothing — which is what makes the command usable from a git hook,
+a `Makefile` or a CI step. Whatever is not supplied is still asked, and every answer is collected
+before the first file is written, so abandoning a prompt leaves the working tree untouched.
+
+`--check` only validates skill files that already exist on disk, and checks each one independently.
+If none are present it exits successfully — the command does not mandate that skill files exist, only
+that the ones you keep are not stale. It never prompts and never writes, so it is the mode to use in
+CI.
+
+**What happens when an item does not fit the target** depends on what you asked for, not on how
+much was dropped:
+
+| Situation | Result |
+| --------- | ------ |
+| The item goes to some of the chosen assistants but not all | Installed where it fits, with a warning naming what was skipped. `both` means "wherever it fits", and the list already said so. |
+| You named the item yourself and no chosen assistant can take it | An error. You asked for something that cannot happen, and installing nothing while exiting 0 would read as success. |
+| It arrived as a dependency and no chosen assistant can take it | A warning. You asked for its parent, which still installs — the message names the component that did not come with it. |
+
+The git-tracking choice applies to every path written in that run, and only to those: a pattern is
+never added for a file the run did not install.
+
+- **exclude (e)** — appends them to `.git/info/exclude`, keeping them machine-local and uncommitted.
+  Best for teams that do not all use the same AI assistant.
+- **gitignore (g)** — adds them to `.gitignore`. Use this when the whole team uses the same
+  assistant and has agreed to keep skill files out of the repository.
+- **versioned (v)** — leaves the files as-is so they can be committed. Use this when you want to
+  ship the skills alongside the project so contributors get them automatically after cloning.
+
+The command requires no workspace and no git repository, so it runs anywhere `mgsnake` is installed.
+The git-tracking step is the exception: outside a repository it is skipped with a warning rather
+than failing.
 
 ### man
 
@@ -717,6 +973,15 @@ the lookup and every later one answers from disk, with no HTTP call and, therefo
 needed at all.
 
 #### Output
+
+One JSON object on stdout, and nothing else:
+
+```jsonc
+{
+  "boardId": 1,                           // number, the Agile board behind the project
+  "cloudDomain": "example.atlassian.net"  // string, the Jira Cloud domain it was resolved from
+}
+```
 
 Nothing on disk except the cache entry: `jira.board_id` is written to the repository scope of the
 state store (see `config`), but only when the resolved project matches the stored
@@ -929,8 +1194,24 @@ Jira skills consume.
 Nothing on disk. The board lookup it performs first may populate the cached `jira.board_id`, exactly
 as `jira-board` does.
 
-Each entry carries `id`, `name`, `startDate`, `endDate`, `cloudDomain` and `boardId` — the same keys
-the shell version produced, with `boardId` now a number.
+One JSON array on stdout, one entry per active sprint:
+
+```jsonc
+[
+  {
+    "id": 42,              // number
+    "name": "Sprint 7",    // string
+    "startDate": "2026-08-17T09:00:00.000Z", // string, or null when the sprint has no start date
+    "endDate": "2026-08-31T09:00:00.000Z",   // string, or null when the sprint has no end date
+    "cloudDomain": "example.atlassian.net",  // string, the domain the board was read from
+    "boardId": 1           // number, the board the sprint belongs to
+  }
+]
+```
+
+The same keys the shell version produced, with `boardId` now a number. `startDate` and `endDate` are
+whatever Jira stored, so both can be `null` on a sprint created without dates — read them defensively
+(`.startDate // "unset"` in `jq`).
 
 #### Examples
 

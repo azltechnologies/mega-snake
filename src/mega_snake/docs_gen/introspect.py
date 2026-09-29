@@ -16,6 +16,11 @@ from mega_snake.util.cli_group import CliGroup
 EPILOG_USAGE_PREFIX = "usage:"
 EPILOG_SECTION_HEADERS = frozenset({"options", "args", "arguments", "allowed values"})
 
+# Width Click is asked to fit a short help into. Generous on purpose: the value is consumed by a
+# Markdown table cell, not by an 80-column terminal, so truncating to the terminal default would
+# discard wording the author wrote for the command list.
+SHORT_HELP_LIMIT = 120
+
 
 @dataclass(frozen=True)
 class CommandOptionDoc:
@@ -44,6 +49,7 @@ class IntrospectedCommand:
         name: The public command name.
         group: The documentation group title.
         aliases: The registered hidden aliases.
+        short_help: The one-line description shown in the command list.
         summary: The normalized long help text.
         synopsis: The command synopsis.
         options: The normalized option rows.
@@ -61,6 +67,7 @@ class IntrospectedCommand:
     name: str
     group: str
     aliases: tuple[str, ...]
+    short_help: str
     summary: str
     synopsis: str
     options: tuple[CommandOptionDoc, ...]
@@ -262,6 +269,11 @@ def iter_introspected_commands(root: CliGroup) -> Iterator[IntrospectedCommand]:
             name=entry.name,
             group=entry.group,
             aliases=entry.aliases,
+            # `get_short_help_str` is what Click itself puts in the command list, so it falls back to
+            # the truncated help exactly the way `mgsnake --help` does. Reading `short_help` directly
+            # would yield None for every command that never declared one, and the index would render
+            # a column of blanks for commands whose description the user does in fact see.
+            short_help=normalize_help(entry.command.get_short_help_str(limit=SHORT_HELP_LIMIT)),
             summary=normalize_help(entry.command.help),
             synopsis=_get_synopsis(root, entry.command, entry.name),
             options=_get_option_docs(root, entry.command, entry.name),

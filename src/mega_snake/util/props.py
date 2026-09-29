@@ -11,7 +11,13 @@ import os
 from datetime import datetime
 from mega_snake.util import formatting
 from mega_snake.util.formatting import InternalStateError
-from mega_snake.constants import SHELL_OPT, LOGGING_NAME_TO_LEVEL, LOGGING_LEVEL_TO_NANE, MODULE_NAME
+from mega_snake.constants import (
+    SHELL_ENV_VARIABLE,
+    SHELL_OPT,
+    LOGGING_NAME_TO_LEVEL,
+    LOGGING_LEVEL_TO_NANE,
+    MODULE_NAME,
+)
 
 
 def get_validated_input(p_prompt: str, valid_values: list[str]) -> str:
@@ -394,7 +400,7 @@ def init_app_properties(log_level: str, shell: Optional[str], light_weight: bool
         raise ValueError("Properties file is empty")
 
     if not shell:
-        raise EnvironmentError("Environment variable 'MEGA_SNAKE_SHELL' is not set")
+        raise EnvironmentError(f"Environment variable '{SHELL_ENV_VARIABLE}' is not set")
     if not shutil.which(shell):
         if shell == "powershell" and shutil.which("pwsh"):
             shell = "pwsh"

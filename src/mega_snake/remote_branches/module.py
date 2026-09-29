@@ -5,7 +5,8 @@ from mega_snake.remote_branches.cleanup_remote_branches import remote_branches_c
 from mega_snake.remote_branches.details_remote_branches import remote_branches_details
 from mega_snake.util.cli_group import CliGroup
 from mega_snake.util.props import complete_app_properties
-from mega_snake.util.util import cli_metadata, ensure_working_path, wrapper_decorator
+from mega_snake.util.command_registration import ModuleRegistration, wrapper_decorator
+from mega_snake.util.util import cli_metadata, ensure_working_path
 
 
 @click.group(cls=CliGroup)
@@ -19,9 +20,11 @@ def wrapper(_ctx, *_args, **_kwargs) -> None:
 
     These commands only need a git repository and a scratch folder (``working_path``, e.g.
     ``workspace_temp``) to write their output and logs to; they don't require a full VS Code
-    workspace. A remote is no longer required up front: the ``Repo`` snapshot resolves one when it
-    exists and otherwise asks the user for the main branch, so a repository without remotes can
-    still get its local branches reported and cleaned. The "skip" flag defers the usual
+    workspace. A remote is **not** required up front: the ``Repo`` snapshot resolves one when it
+    exists and otherwise asks the user for the main branch, so a repository without remotes still
+    gets its local branches reported and cleaned. Requiring one here would refuse a workflow that
+    works perfectly well; the remote is demanded only where a remote reference is about to be
+    touched (§4.4). The "skip" flag defers the usual
     working-path validation done during CLI initialization, so this check runs instead and can
     offer to create the folder rather than letting the command crash with a raw FileNotFoundError.
 
@@ -42,9 +45,8 @@ def wrapper(_ctx, *_args, **_kwargs) -> None:
     complete_app_properties()
 
 
-# Export the decorated wrapper for use in other modules
-add_wrapper = wrapper_decorator(wrapper)
-
-
 main.add_command_with_alias(remote_branches_cleanup, ["rbc"])
 main.add_command_with_alias(remote_branches_details, ["rbd"])
+
+# The module's single export: its group, wrapped command by command by the CLI entry point.
+registration = ModuleRegistration(main, add_wrapper=wrapper_decorator(wrapper))

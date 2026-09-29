@@ -8,7 +8,7 @@ from mega_snake.config_environment.maven_set import maven_project_setup, set_mav
 from mega_snake.config_environment.local_config import initial_load
 from mega_snake.config_environment.create_working_env import create_working_env
 from mega_snake.constants import RELOAD_ENVIRONMENT_EXIT_CODE
-from mega_snake.util.util import wrapper_decorator
+from mega_snake.util.command_registration import ModuleRegistration, wrapper_decorator
 from mega_snake.util.cli_group import ATTR_METADATA, META_RELOADS_ENV, CliGroup
 
 
@@ -20,10 +20,11 @@ def main() -> None:
 def wrapper(ctx: click.Context, *_args, **_kwargs) -> None:
     """Ask the shell to reload its local environment files, for the commands that rewrite them.
 
-    The signal used to be set for every command in this module, which was wrong in both directions:
-    `graphql-schema` and `maven-project-setup` never touch the local environment files, and nothing
-    guarantees a future command that does will live here. Each command therefore declares it, with
-    ``@cli_metadata(reloads_environment=True)``, and this wrapper only relays what it finds.
+    The signal is declared per command, with ``@cli_metadata(reloads_environment=True)``, and this
+    wrapper only relays what it finds. Setting it for every command in this module would be wrong in
+    both directions: `graphql-schema` and `maven-project-setup` never touch the local environment
+    files, and nothing guarantees a future command that does will live here. Living in
+    `config_environment` is not what makes a command change the environment; touching those files is.
 
     The metadata is read off ``ctx.command.callback`` because by this point the command has been
     rebuilt by ``wrapper_decorator``, which merges the original callback's metadata onto the
@@ -43,9 +44,6 @@ def wrapper(ctx: click.Context, *_args, **_kwargs) -> None:
         ctx.obj["exit_code"] = RELOAD_ENVIRONMENT_EXIT_CODE
 
 
-# Export the decorated wrapper for use in other modules
-add_wrapper = wrapper_decorator(wrapper)
-
 main.add_command_with_alias(set_java_version, ["java", "sj"])
 main.add_command_with_alias(set_gradle_version, ["gradle", "sg"])
 main.add_command_with_alias(set_maven_version, ["maven", "sm"])
@@ -53,3 +51,6 @@ main.add_command_with_alias(maven_project_setup, ["mps"])
 main.add_command_with_alias(initial_load, ["iload", "ilc"])
 main.add_command_with_alias(create_working_env, ["cwe", "env"])
 main.add_command_with_alias(create_graphql_schema, ["graphql", "gql", "cgs"])
+
+# The module's single export: its group, wrapped command by command by the CLI entry point.
+registration = ModuleRegistration(main, add_wrapper=wrapper_decorator(wrapper))

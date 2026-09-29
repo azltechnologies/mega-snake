@@ -4,7 +4,8 @@ import click
 from mega_snake.diff_tree.diff_tree import diff_tree
 from mega_snake.util.cli_group import CliGroup
 from mega_snake.util.props import complete_app_properties
-from mega_snake.util.util import cli_metadata, ensure_working_path, wrapper_decorator
+from mega_snake.util.command_registration import ModuleRegistration, wrapper_decorator
+from mega_snake.util.util import cli_metadata, ensure_working_path
 
 
 @click.group(cls=CliGroup)
@@ -42,8 +43,7 @@ def wrapper(_ctx: click.Context, *_args, **_kwargs) -> None:
     complete_app_properties()
 
 
-# Export the decorated wrapper for use in other modules
-add_wrapper = wrapper_decorator(wrapper)
-
-
 main.add_command_with_alias(diff_tree, ["dt", "tree"])
+
+# The module's single export: its group, wrapped command by command by the CLI entry point.
+registration = ModuleRegistration(main, add_wrapper=wrapper_decorator(wrapper))

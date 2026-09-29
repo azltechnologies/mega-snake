@@ -1,15 +1,12 @@
 """Test cases for util.py"""
 
-import inspect
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch, mock_open
-from typing import Generator, Callable
+from typing import Any, Callable, Generator, Optional
 from types import SimpleNamespace
 import pytest
 import click
-from click.testing import CliRunner
-from mega_snake.util.cli_group import CliGroup
 from mega_snake.util.util import (
     load_json_with_comments,
     run_operation,
@@ -18,9 +15,10 @@ from mega_snake.util.util import (
     get_command_return_code,
     get_input_or_default,
     get_validated_input,
+    get_validated_selection,
     get_typed_validated_input,
+    MAX_PROMPT_TRIES,
     cli_metadata,
-    wrapper_decorator,
     write_json_atomically,
     GIT_EXCLUDE_FILE,
 )
@@ -28,7 +26,6 @@ from mega_snake.util.formatting import (
     USER_DECLINED_ERROR_CODE,
     InternalStateError,
     UserDeclinedError,
-    resolve_error_code,
 )
 from mega_snake.util.cli_group import ATTR_METADATA
 
@@ -194,6 +191,145 @@ def test_run_operation_renders_a_missing_captured_stream_as_empty(
     assert "Error: \n" in str(raised.value)
 
 
+# The shell `run_operation` must execute with, for every platform and every configurable shell. This
+# table *is* the contract, so it is written out rather than derived from the code under test. The rule
+# it encodes: a shell native to the platform is kept; anything else falls back to that platform's
+# default -- PowerShell on Windows, zsh on macOS, bash on Linux.
+SHELL_RESOLUTION: dict[tuple[str, str], str] = {
+    ("Linux", "bash"): "bash",
+    ("Linux", "zsh"): "zsh",
+    ("Linux", "powershell"): "bash",
+    ("Linux", "pwsh"): "bash",
+    ("Darwin", "bash"): "bash",
+    ("Darwin", "zsh"): "zsh",
+    ("Darwin", "powershell"): "zsh",
+    ("Darwin", "pwsh"): "zsh",
+    ("Windows", "bash"): "powershell",
+    ("Windows", "zsh"): "powershell",
+    ("Windows", "powershell"): "powershell",
+    ("Windows", "pwsh"): "pwsh",
+}
+SUPPORTED_PLATFORMS: tuple[str, ...] = ("Linux", "Darwin", "Windows")
+
+
+@pytest.mark.parametrize(("platform_name", "configured", "expected"), [(*key, value) for key, value in SHELL_RESOLUTION.items()])
+def test_run_operation_resolves_the_shell_for_every_platform_and_configured_shell(
+    platform_name: str, configured: str, expected: str, mk_subprocess_run: MagicMock
+) -> None:
+    """Each (platform, configured shell) pair executes with exactly the shell the contract names.
+
+    The whole matrix, not a sample: the defect this pins was one wrong comparison (`OS != "Darwin"`)
+    that sent Windows with PowerShell -- the configuration `config_setup.ps1` exports for every
+    Windows user -- to `zsh`, while every row a Linux or macOS developer ever runs stayed correct.
+    Only the rows nobody exercises locally could show it, so all of them are asserted. The flag is
+    checked too, since PowerShell takes `-Command` and a POSIX shell takes `-c`.
+    """
+    mk_subprocess_run.return_value = SimpleNamespace(stdout="", stderr="", returncode=0)
+
+    # Every shell is reported as installed, so the row depends only on the resolution rule and not on
+    # which shells happen to exist on the machine running the suite. A missing fallback has its own tests.
+    with (
+        patch("mega_snake.util.util.OS", platform_name),
+        patch("mega_snake.util.util.get_property", return_value=configured),
+        patch("mega_snake.util.util.shutil.which", side_effect=lambda name: f"/usr/bin/{name}"),
+    ):
+        run_operation("git status", "Probing the shell")
+
+    argv = mk_subprocess_run.call_args[0][0]
+    expected_flag = "-Command" if expected in ("powershell", "pwsh") else "-c"
+    assert argv[0] == expected, f"{platform_name} with {configured} ran through {argv[0]}, not {expected}"
+    assert argv[1] == expected_flag, f"{platform_name} with {configured} passed {argv[1]} to {argv[0]}"
+
+
+SUBSTITUTED_SHELLS: list[tuple[str, str, str]] = [
+    (platform_name, configured, resolved)
+    for (platform_name, configured), resolved in SHELL_RESOLUTION.items()
+    if resolved != configured
+]
+
+
+@pytest.mark.parametrize(("platform_name", "configured", "fallback"), SUBSTITUTED_SHELLS)
+def test_run_operation_refuses_a_fallback_shell_that_is_not_installed(
+    platform_name: str, configured: str, fallback: str, mk_subprocess_run: MagicMock
+) -> None:
+    """A missing fallback is reported by name, before any attempt, instead of a bare FileNotFoundError.
+
+    Derived from the contract table, so every substitution the resolution can make is covered. The
+    error names the configured shell, the platform and the missing fallback -- the three facts a
+    user needs, and the ones `[WinError 2] The system cannot find the file specified` gave none of.
+    The extent is asserted as well: no process was started, so nothing was retried.
+    """
+    with (
+        patch("mega_snake.util.util.OS", platform_name),
+        patch("mega_snake.util.util.get_property", return_value=configured),
+        patch("mega_snake.util.util.shutil.which", return_value=None) as mk_which,
+        pytest.raises(EnvironmentError) as raised,
+    ):
+        run_operation("git status", "Probing the shell")
+
+    assert str(raised.value) == (
+        f"MEGA_SNAKE_SHELL is '{configured}', which is not native to {platform_name}, so mgsnake runs its "
+        f"commands through '{fallback}' instead -- but '{fallback}' is not installed or not on the PATH. "
+        f"Install '{fallback}', or set MEGA_SNAKE_SHELL to a shell that is available on {platform_name}."
+    )
+    assert type(raised.value) is OSError, "a subclass would resolve to a different exit status"
+    mk_which.assert_called_once_with(fallback)
+    mk_subprocess_run.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("platform_name", "configured"),
+    [key for key, resolved in SHELL_RESOLUTION.items() if resolved == key[1]],
+)
+def test_run_operation_does_not_search_the_path_for_a_shell_it_kept(
+    platform_name: str, configured: str, mk_subprocess_run: MagicMock
+) -> None:
+    """The configured shell is not looked up again: initialization already located it on the PATH.
+
+    The discriminating twin of the test above. Checking every shell would pass that test too, but it
+    would search the PATH on every command for a fact established once at startup.
+    """
+    mk_subprocess_run.return_value = SimpleNamespace(stdout="", stderr="", returncode=0)
+
+    with (
+        patch("mega_snake.util.util.OS", platform_name),
+        patch("mega_snake.util.util.get_property", return_value=configured),
+        patch("mega_snake.util.util.shutil.which", return_value=None) as mk_which,
+    ):
+        run_operation("git status", "Probing the shell")
+
+    mk_which.assert_not_called()
+    assert mk_subprocess_run.call_args[0][0][0] == configured
+
+
+def test_run_operation_resolves_the_shell_once_across_retries(mk_ws_warning: MagicMock, mk_subprocess_run: MagicMock) -> None:
+    """Failing attempts are retried with the same shell, and the PATH is searched once, not per attempt."""
+    failure = subprocess.CalledProcessError(returncode=1, cmd="git status", stderr="boom")
+    mk_subprocess_run.side_effect = [failure, failure, SimpleNamespace(stdout="", stderr="", returncode=0)]
+
+    with (
+        patch("mega_snake.util.util.OS", "Linux"),
+        patch("mega_snake.util.util.get_property", return_value="pwsh") as mk_property,
+        patch("mega_snake.util.util.shutil.which", return_value="/bin/bash") as mk_which,
+    ):
+        run_operation("git status", "Probing the shell")
+
+    assert [issued.args[0][0] for issued in mk_subprocess_run.call_args_list] == ["bash", "bash", "bash"]
+    mk_which.assert_called_once_with("bash")
+    mk_property.assert_called_once_with("shell")
+
+
+def test_shell_resolution_contract_covers_every_configurable_shell_on_every_platform() -> None:
+    """A shell added to SHELL_OPT must be given a row per platform, or the matrix above silently skips it."""
+    from mega_snake.constants import SHELL_OPT
+
+    expected_keys = {(platform_name, shell) for platform_name in SUPPORTED_PLATFORMS for shell in SHELL_OPT}
+    assert set(SHELL_RESOLUTION) == expected_keys, (
+        f"missing: {sorted(expected_keys - set(SHELL_RESOLUTION))}, "
+        f"unexpected: {sorted(set(SHELL_RESOLUTION) - expected_keys)}"
+    )
+
+
 def test_get_command_return_code() -> None:
     """Test get_command_return_code function."""
 
@@ -340,68 +476,6 @@ def test_cli_metadata() -> None:
     }
 
 
-def test_wrapper_decorator() -> None:
-    """Test wrapper_decorator function."""
-
-    def wrapper(ctx: click.Context, *_args, **_kwargs) -> None:
-        """Wrapper for the config_environment command."""
-        ctx.obj["exit_code"] = 21
-
-    add_wrapper = wrapper_decorator(wrapper)
-
-    exit_code: int = 0
-
-    @click.command()
-    @click.pass_context
-    # This command is decorated with cli_metadata
-    @cli_metadata(name="test_command", short_help="Test command", help="This is a test command")
-    def test_command(ctx) -> None:
-        """Test command."""
-        nonlocal exit_code
-        exit_code = ctx.obj.get("exit_code", 0)
-
-    # Add aliases to the command
-    setattr(test_command, "aliases", ["tc", "testcmd"])
-
-    wrapped_command: click.Command = add_wrapper(test_command)
-    runner = CliRunner()
-    result = runner.invoke(wrapped_command, obj={"foo": "bar"})
-    assert result.exit_code == 0
-    assert result.exception is None
-    assert isinstance(wrapped_command, click.Command)
-    assert exit_code == 21
-
-
-def test_wrapper_decorator_keeps_a_group_a_group() -> None:
-    """Wrapping must not turn a `click.Group` into a leaf command.
-
-    The rebuild copies a command through `click.Command.__init__`'s signature, which knows nothing
-    about `commands`. Before this was handled, registering the nested `config` group through its
-    module wrapper silently produced a command with no subcommands, so `mgsnake config get` stopped
-    resolving.
-    """
-
-    def wrapper(_ctx: click.Context, *_args, **_kwargs) -> None:
-        """No-op pre-flight."""
-
-    @click.group(name="parent")
-    def parent() -> None:
-        """Parent group."""
-
-    @parent.command(name="child")
-    def child() -> None:
-        """Child command."""
-        click.echo("child ran")
-
-    wrapped = wrapper_decorator(wrapper)(parent)
-
-    assert isinstance(wrapped, click.Group)
-    assert set(wrapped.commands) == {"child"}
-    result = CliRunner().invoke(wrapped, ["child"])
-    assert result.exit_code == 0
-    assert "child ran" in result.output
-
-
 def test_write_json_atomically_writes_the_payload(tmp_path: Path) -> None:
     """The happy path writes readable JSON and preserves the caller's key order."""
     destination = tmp_path / "nested" / "payload.json"
@@ -507,6 +581,275 @@ def test_exclude_from_git_outside_a_git_repository(
     mk_ws_warning.assert_called_once()
 
 
+# ---------------------------------------------------------------------------
+# add_to_gitignore
+# ---------------------------------------------------------------------------
+
+GITIGNORE_ENTRIES: list[tuple[str, str]] = [
+    (".github/skills/mgsnake/", ".github/skills/mgsnake/ folder"),
+    (".claude/skills/mgsnake/", ".claude/skills/mgsnake/ folder"),
+]
+
+
+def test_add_to_gitignore_creates_missing_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_util_ws_success: MagicMock,
+    mk_ws_advice: MagicMock,
+) -> None:
+    """A missing .gitignore file is created when entries are added for the first time."""
+    from mega_snake.util.util import GITIGNORE_FILE, add_to_gitignore
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".git").mkdir()
+
+    add_to_gitignore(GITIGNORE_ENTRIES)
+
+    content = (tmp_path / GITIGNORE_FILE).read_text(encoding="utf-8")
+    assert ".github/skills/mgsnake/" in content.splitlines()
+    assert ".claude/skills/mgsnake/" in content.splitlines()
+    assert mk_util_ws_success.call_count == 2
+    mk_ws_advice.assert_not_called()
+
+
+def test_add_to_gitignore_is_idempotent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_util_ws_success: MagicMock,
+    mk_ws_advice: MagicMock,
+) -> None:
+    """Entries already present in .gitignore are not duplicated."""
+    from mega_snake.util.util import GITIGNORE_FILE, add_to_gitignore
+
+    monkeypatch.chdir(tmp_path)
+    gitignore = tmp_path / GITIGNORE_FILE
+    (tmp_path / ".git").mkdir()
+    gitignore.write_text(".github/skills/mgsnake/\n", encoding="utf-8")
+
+    add_to_gitignore(GITIGNORE_ENTRIES)
+
+    lines = gitignore.read_text(encoding="utf-8").splitlines()
+    assert lines.count(".github/skills/mgsnake/") == 1
+    assert ".claude/skills/mgsnake/" in lines
+    mk_util_ws_success.assert_called_once()
+    mk_ws_advice.assert_called_once()
+
+    # Second full run changes nothing
+    mk_util_ws_success.reset_mock()
+    add_to_gitignore(GITIGNORE_ENTRIES)
+    assert gitignore.read_text(encoding="utf-8").splitlines() == lines
+    mk_util_ws_success.assert_not_called()
+
+
+def test_add_to_gitignore_separates_an_unterminated_last_line(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_util_ws_success: MagicMock,
+    mk_ws_advice: MagicMock,
+) -> None:
+    """A .gitignore whose last line has no newline keeps that line intact, entry on its own line.
+
+    This is the realistic shape of a hand-edited file, and the only one that distinguishes appending
+    from concatenating: with a trailing newline both behave identically.
+    """
+    from mega_snake.util.util import GITIGNORE_FILE, add_to_gitignore
+
+    monkeypatch.chdir(tmp_path)
+    gitignore = tmp_path / GITIGNORE_FILE
+    (tmp_path / ".git").mkdir()
+    gitignore.write_text("build/", encoding="utf-8")  # No trailing newline, on purpose.
+
+    add_to_gitignore(GITIGNORE_ENTRIES)
+
+    lines = gitignore.read_text(encoding="utf-8").splitlines()
+    assert lines == ["build/", ".github/skills/mgsnake/", ".claude/skills/mgsnake/"], (
+        f"the pre-existing last line must survive untouched, got {lines}"
+    )
+    assert "build/.github/skills/mgsnake/" not in lines, "the entry was concatenated onto the last line"
+    assert mk_util_ws_success.call_count == 2
+    mk_ws_advice.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("helper_name", "target_name"),
+    [("add_to_gitignore", "GITIGNORE_FILE"), ("exclude_from_git", "GIT_EXCLUDE_FILE")],
+)
+def test_appending_nothing_leaves_the_file_byte_identical(
+    helper_name: str,
+    target_name: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_util_ws_success: MagicMock,
+    mk_ws_advice: MagicMock,
+) -> None:
+    """A run where every entry is already listed must not rewrite the file at all.
+
+    The fixture deliberately omits the final newline: with one present, rewriting and not rewriting
+    produce identical bytes, so only an unterminated file distinguishes a real no-op from a
+    read-modify-write that happens to reproduce the same content plus a normalized ending.
+    """
+    import mega_snake.util.util as util_module
+
+    helper = getattr(util_module, helper_name)
+    target = getattr(util_module, target_name)
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".git").mkdir()
+    file_path = tmp_path / target
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    before = ".github/skills/mgsnake/\n.claude/skills/mgsnake/"  # No trailing newline, on purpose.
+    file_path.write_text(before, encoding="utf-8")
+
+    helper(GITIGNORE_ENTRIES)
+
+    after = file_path.read_text(encoding="utf-8")
+    assert after == before, f"{target} was rewritten although every entry was already present"
+    mk_util_ws_success.assert_not_called()
+    assert mk_ws_advice.call_count == len(GITIGNORE_ENTRIES)
+
+
+IGNORE_FILE_HELPERS = pytest.mark.parametrize(
+    ("helper_name", "target_name"),
+    [("add_to_gitignore", "GITIGNORE_FILE"), ("exclude_from_git", "GIT_EXCLUDE_FILE")],
+)
+
+
+def ignore_file_under_test(helper_name: str, target_name: str, root: Path, content: Optional[bytes]) -> tuple[Any, Path]:
+    """Prepare a git repository holding the given ignore-file bytes, and return the helper and its file.
+
+    Bytes rather than text on purpose: every assertion in these tests is about line endings, which a
+    text-mode read or write would translate before the assertion could see them.
+
+    Parameters:
+        helper_name: The public helper to exercise, looked up on the util module.
+        target_name: The util constant naming the file that helper writes.
+        root: The directory to use as the repository root; the caller has already chdir'ed into it.
+        content: The file's initial bytes, or None to leave it absent.
+
+    Raises:
+        None
+
+    Returns:
+        tuple[Any, Path]: The helper function, and the absolute path of the file it writes.
+    """
+    import mega_snake.util.util as util_module
+
+    (root / ".git").mkdir(exist_ok=True)
+    file_path = root / getattr(util_module, target_name)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    if content is not None:
+        file_path.write_bytes(content)
+    return getattr(util_module, helper_name), file_path
+
+
+@IGNORE_FILE_HELPERS
+def test_appending_keeps_every_existing_crlf_line_ending(
+    helper_name: str,
+    target_name: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_util_ws_success: MagicMock,
+    mk_ws_advice: MagicMock,
+) -> None:
+    """Adding one entry to a CRLF file changes only the new line, and the new line is CRLF too.
+
+    Compared as exact bytes: a text-mode read-modify-write turns every `\\r\\n` into `\\n`, and a
+    text comparison would translate both sides and pass. `.gitignore` is committed, so that rewrite
+    is a whole-file diff for a one-line change. The negative half pins that no bare `\\n` slipped in,
+    which is what appending with a hard-coded ending would produce -- a file with mixed endings.
+    """
+    monkeypatch.chdir(tmp_path)
+    before = b"build/\r\nnode_modules/\r\n"
+    helper, file_path = ignore_file_under_test(helper_name, target_name, tmp_path, before)
+
+    helper([GITIGNORE_ENTRIES[0]])
+
+    after = file_path.read_bytes()
+    assert after == before + b".github/skills/mgsnake/\r\n", f"{target_name} came back as {after!r}"
+    assert after.startswith(before), f"{target_name}: the pre-existing lines were rewritten"
+    assert b"\n" not in after.replace(b"\r\n", b""), f"{target_name} ended up with mixed line endings"
+
+
+@IGNORE_FILE_HELPERS
+def test_appending_to_an_unterminated_crlf_file_separates_with_crlf(
+    helper_name: str,
+    target_name: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_util_ws_success: MagicMock,
+    mk_ws_advice: MagicMock,
+) -> None:
+    """The separator added before the first new entry follows the file's convention as well."""
+    monkeypatch.chdir(tmp_path)
+    helper, file_path = ignore_file_under_test(helper_name, target_name, tmp_path, b"build/\r\nnode_modules/")
+
+    helper([GITIGNORE_ENTRIES[0]])
+
+    assert file_path.read_bytes() == b"build/\r\nnode_modules/\r\n.github/skills/mgsnake/\r\n"
+
+
+@IGNORE_FILE_HELPERS
+def test_appending_to_an_lf_file_keeps_lf(
+    helper_name: str,
+    target_name: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_util_ws_success: MagicMock,
+    mk_ws_advice: MagicMock,
+) -> None:
+    """The discriminating twin of the CRLF test: an LF file must not be converted to CRLF."""
+    monkeypatch.chdir(tmp_path)
+    helper, file_path = ignore_file_under_test(helper_name, target_name, tmp_path, b"build/\n")
+
+    helper([GITIGNORE_ENTRIES[0]])
+
+    after = file_path.read_bytes()
+    assert after == b"build/\n.github/skills/mgsnake/\n", f"{target_name} came back as {after!r}"
+    assert b"\r" not in after, f"{target_name} gained a carriage return"
+
+
+@IGNORE_FILE_HELPERS
+def test_two_entries_naming_the_same_pattern_in_one_batch_are_written_once(
+    helper_name: str,
+    target_name: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_util_ws_success: MagicMock,
+    mk_ws_advice: MagicMock,
+) -> None:
+    """`foo/` and `foo` in the same call are one pattern: the first is added, the second is present.
+
+    Both are missing from the original file, which is exactly why a presence check run only against
+    that file appended both. The descriptions differ so the messages show which one was written.
+    """
+    monkeypatch.chdir(tmp_path)
+    helper, file_path = ignore_file_under_test(helper_name, target_name, tmp_path, None)
+
+    helper([("foo/", "first declaration"), ("foo", "second declaration")])
+
+    assert file_path.read_bytes() == b"foo/\n", f"{target_name} came back as {file_path.read_bytes()!r}"
+    assert mk_util_ws_success.call_count == 1, "the duplicate was reported as added"
+    assert "first declaration" in mk_util_ws_success.call_args[0][0]
+    mk_ws_advice.assert_called_once()
+    assert "second declaration" in mk_ws_advice.call_args[0][0], "the duplicate was not reported as present"
+
+
+def test_add_to_gitignore_outside_a_git_repository(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mk_ws_warning: MagicMock,
+) -> None:
+    """Outside a git repository the additions are skipped with a warning, not an error."""
+    from mega_snake.util.util import GITIGNORE_FILE, add_to_gitignore
+
+    monkeypatch.chdir(tmp_path)
+
+    add_to_gitignore(GITIGNORE_ENTRIES)
+
+    assert not (tmp_path / GITIGNORE_FILE).exists()
+    mk_ws_warning.assert_called_once()
+
+
 def test_ensure_working_path_when_it_exists(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -607,54 +950,168 @@ def test_ensure_working_path_invalid_property(
         ensure_working_path()
 
 
-def test_wrapper_decorator_preserves_every_group_only_constructor_argument() -> None:
-    """The sibling of the test above, generalised: `commands` was never the only casualty.
+# ---------------------------------------------------------------------------
+# get_validated_selection — the comma-separated multiple choice
+# ---------------------------------------------------------------------------
 
-    Fixing `commands` by name left `invoke_without_command`, `chain`, `subcommand_metavar` and
-    `result_callback` behind, and each fails the same silent way -- nothing raises, the group simply
-    stops behaving as declared until someone happens to invoke it the right way. The parameter set is
-    now derived from the class, so this test walks `Group.__init__`'s own signature rather than a
-    list someone has to remember to extend.
+# Deliberately distinguishable fixtures: three values that share no prefix, so a wrong entry can
+# never be mistaken for a right one by a substring comparison, and none of them is the all key.
+SELECTABLE = ["mgsnake", "jira-continue", "jira-progress"]
 
-    `CliGroup` is the class under test on purpose: its `__init__` is `(*args, **kwargs)`, so reading
-    one signature yields nothing at all and the rebuild produces an empty group. Only a walk of the
-    MRO answers, and using a plain `click.Group` here would hide that.
+
+def test_get_validated_selection_accepts_a_single_entry(mk_input: MagicMock) -> None:
+    """One value is a selection of one, returned as a list."""
+    mk_input.return_value = "jira-continue"
+
+    assert get_validated_selection("Pick:", SELECTABLE) == ["jira-continue"]
+
+
+def test_get_validated_selection_splits_and_trims_a_comma_separated_answer(mk_input: MagicMock) -> None:
+    """Entries are separated by commas and surrounding blanks are ignored.
+
+    Order is asserted against the order typed, not against SELECTABLE: returning the declaration
+    order would pass a containment check while silently ignoring what the user actually asked for.
     """
+    mk_input.return_value = "  jira-progress ,mgsnake  "
 
-    def wrapper(_ctx: click.Context, *_args, **_kwargs) -> None:
-        """No-op pre-flight."""
+    assert get_validated_selection("Pick:", SELECTABLE) == ["jira-progress", "mgsnake"]
 
-    parent = CliGroup(
-        name="parent",
-        invoke_without_command=True,
-        chain=False,
-        subcommand_metavar="<THING>",
-        help="Parent group.",
-    )
 
-    @parent.command(name="child")
-    def child() -> None:
-        """Child command."""
-        click.echo("child ran")
+def test_get_validated_selection_expands_the_all_key(mk_input: MagicMock) -> None:
+    """'all' selects every value, and the result is the full list rather than the key itself."""
+    mk_input.return_value = "all"
 
-    @parent.result_callback()
-    def collect(result: object, **_kwargs: object) -> str:
-        """Mark the result so a dropped callback is visible."""
-        return f"collected:{result}"
+    result = get_validated_selection("Pick:", SELECTABLE)
 
-    wrapped = wrapper_decorator(wrapper)(parent)
+    assert result == SELECTABLE
+    assert "all" not in result, "the all key leaked into the selection"
 
-    group_only = {
-        name
-        for name, parameter in inspect.signature(click.Group.__init__).parameters.items()
-        if name != "self" and parameter.kind not in (parameter.VAR_KEYWORD, parameter.VAR_POSITIONAL)
-    }
-    dropped = [name for name in group_only if not hasattr(wrapped, name)]
-    assert dropped == [], f"the rebuild dropped {dropped}"
-    assert wrapped.invoke_without_command is True, "a group declared to run bare must still run bare"
-    assert wrapped.subcommand_metavar == "<THING>"
-    assert wrapped.chain is False
-    # `result_callback` is the decorator, so the registered callback lives on the private attribute;
-    # reading the public one would compare two bound methods and pass regardless.
-    assert wrapped._result_callback is collect  # pylint: disable=protected-access
-    assert set(wrapped.commands) == {"child"}
+
+def test_get_validated_selection_collapses_duplicates(mk_input: MagicMock) -> None:
+    """A value named twice is selected once, so a caller cannot act on it twice."""
+    mk_input.return_value = "mgsnake,jira-continue,mgsnake"
+
+    assert get_validated_selection("Pick:", SELECTABLE) == ["mgsnake", "jira-continue"]
+
+
+def test_get_validated_selection_matches_case_insensitively(mk_input: MagicMock) -> None:
+    """Answers are lowercased before matching, and returned lowercased."""
+    mk_input.return_value = "MGSNAKE"
+
+    assert get_validated_selection("Pick:", SELECTABLE) == ["mgsnake"]
+
+
+def test_get_validated_selection_rejects_the_whole_answer_for_one_unknown_entry(
+    mk_input: MagicMock, mk_ws_warning: MagicMock
+) -> None:
+    """One unrecognised entry rejects everything, and the retry returns the corrected answer.
+
+    The discriminating case: the answer also carries two perfectly valid entries. An implementation
+    that dropped the unknown one and kept the rest would return a selection the user never made,
+    and the caller would report success for it.
+    """
+    mk_input.side_effect = ["mgsnake,typo,jira-continue", "mgsnake,jira-continue"]
+
+    result = get_validated_selection("Pick:", SELECTABLE)
+
+    assert result == ["mgsnake", "jira-continue"]
+    assert mk_input.call_count == 2, "the invalid answer was not re-asked"
+    mk_ws_warning.assert_called_once()
+
+
+def test_get_validated_selection_rejects_an_empty_answer(mk_input: MagicMock, mk_ws_warning: MagicMock) -> None:
+    """A blank answer is not "select nothing"; it is a missing answer and is re-asked."""
+    mk_input.side_effect = ["   ", ",,", "mgsnake"]
+
+    assert get_validated_selection("Pick:", SELECTABLE) == ["mgsnake"]
+    assert mk_ws_warning.call_count == 2
+    reasons = [issued.args[0].splitlines()[0] for issued in mk_ws_warning.call_args_list]
+    assert reasons == ["No entry was given.", "No entry was given."], f"got {reasons}"
+
+
+def test_get_validated_selection_gives_up_after_the_shared_retry_limit(
+    mk_input: MagicMock, mk_ws_warning: MagicMock
+) -> None:
+    """It stops after MAX_PROMPT_TRIES retries, like every other prompt in this module.
+
+    The limit is read from the production constant rather than hard-coded, so raising it there does
+    not leave this test asserting the old number.
+    """
+    mk_input.return_value = "not-a-skill"
+
+    with pytest.raises(KeyError, match="Too many invalid selections"):
+        get_validated_selection("Pick:", SELECTABLE)
+
+    assert mk_input.call_count == MAX_PROMPT_TRIES + 1
+
+
+def test_get_validated_selection_warns_naming_the_unknown_entries(
+    mk_input: MagicMock, mk_ws_warning: MagicMock
+) -> None:
+    """The warning's first line names exactly the entries that were not recognised, in typed order.
+
+    The fixture mixes two unknown names around a valid one, so the assertion separates an
+    implementation that names the culprits from one that repeats the whole answer (the valid name
+    would appear) or names only the first (the second would be missing). Compared by equality over
+    the first line, since the lines below it are the generic guidance every rejection repeats.
+    """
+    typos = ["jira-continu", "comment-kiler"]
+    mk_input.side_effect = [f"{typos[0]}, mgsnake, {typos[1]}", "mgsnake"]
+
+    get_validated_selection("Pick:", SELECTABLE)
+
+    reason = mk_ws_warning.call_args[0][0].splitlines()[0]
+    assert reason == f"Not recognised: {', '.join(repr(typo) for typo in typos)}.", f"got {reason!r}"
+    assert "'mgsnake'" not in reason, "a valid entry was reported as unrecognised"
+
+
+def test_get_validated_selection_warning_still_says_nothing_was_applied(
+    mk_input: MagicMock, mk_ws_warning: MagicMock
+) -> None:
+    """Below the reason, the warning keeps disclaiming a partial effect."""
+    mk_input.side_effect = ["typo", "mgsnake"]
+
+    get_validated_selection("Pick:", SELECTABLE)
+
+    guidance = mk_ws_warning.call_args[0][0].splitlines()[1]
+    assert guidance.startswith("Invalid selection; nothing has been applied."), f"got {guidance!r}"
+
+
+@pytest.mark.parametrize("answer", ["all, typo", "typo, all", "ALL, typo"])
+def test_get_validated_selection_rejects_an_unknown_entry_even_next_to_the_all_key(
+    answer: str, mk_input: MagicMock, mk_ws_warning: MagicMock
+) -> None:
+    """`all` must not short-circuit validation: an unknown entry beside it still rejects the answer.
+
+    Checked in both positions and in upper case, because the defect was an ordering one -- the `all`
+    shortcut ran before the unknown-entry check -- and a fix that only reorders for one position or
+    one casing would pass a single-case test. Rejection is asserted by its effects: the answer is
+    re-asked, the retry's result is what comes back, and the typo is named.
+    """
+    mk_input.side_effect = [answer, "mgsnake"]
+
+    result = get_validated_selection("Pick:", SELECTABLE)
+
+    assert result == ["mgsnake"], f"{answer!r} was accepted as {result}"
+    assert result != SELECTABLE, f"{answer!r} selected the whole catalogue"
+    assert mk_input.call_count == 2, f"{answer!r} was not re-asked"
+    assert mk_ws_warning.call_args[0][0].splitlines()[0] == "Not recognised: 'typo'."
+
+
+def test_get_validated_selection_accepts_the_all_key_next_to_valid_entries(mk_input: MagicMock) -> None:
+    """Redundant but valid: `all` beside real names still selects everything, without a retry."""
+    mk_input.return_value = "mgsnake, all"
+
+    assert get_validated_selection("Pick:", SELECTABLE) == SELECTABLE
+    assert mk_input.call_count == 1
+
+
+def test_get_validated_input_warning_is_unchanged_by_the_rejection_reason(
+    mk_input: MagicMock, mk_ws_warning: MagicMock
+) -> None:
+    """Only a helper that supplies a reason gets one: the single-value prompt keeps its exact warning."""
+    mk_input.side_effect = ["nope", "b"]
+
+    get_validated_input("Pick:", ["a", "b"])
+
+    assert mk_ws_warning.call_args[0][0] == "Invalid input. Please enter one of:\n a | b"

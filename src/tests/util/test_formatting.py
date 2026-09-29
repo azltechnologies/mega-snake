@@ -1,6 +1,7 @@
 """Test cases for formatting.py"""
 
 import logging
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 from typing import Generator, Callable
 from types import SimpleNamespace
@@ -322,7 +323,7 @@ def test_ws_error(mk_logger: MagicMock) -> None:
         assert extra.get("namefile") == "unknown file"
 
 
-def test_workspace_error(mk_error: MagicMock, tmp_path: pytest.TempPathFactory) -> None:
+def test_workspace_error(mk_error: MagicMock, tmp_path: Path) -> None:
     """Test WorkspaceError class"""
     value_error_message = "This is a value error"
     workspace_error_message = "This is a workspace error"

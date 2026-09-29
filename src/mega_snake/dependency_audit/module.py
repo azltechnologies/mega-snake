@@ -4,7 +4,8 @@ from typing import Optional
 
 import click
 
-from mega_snake.util.util import cli_metadata, wrapper_decorator
+from mega_snake.util.command_registration import ModuleRegistration, wrapper_decorator
+from mega_snake.util.util import cli_metadata
 from mega_snake.util.cli_group import CliGroup
 from mega_snake.util.formatting import ws_info, ws_success
 from mega_snake.dependency_audit.scanner import scan_dependencies, Vulnerability, SUPPORTED_ECOSYSTEMS
@@ -29,10 +30,6 @@ def wrapper(_ctx: click.Context, *_args, **_kwargs) -> None:
     Returns:
         None
     """
-
-
-# Export the decorated wrapper for use in other modules
-add_wrapper = wrapper_decorator(wrapper)
 
 
 @click.command(
@@ -91,3 +88,6 @@ def scan_dependencies_command(dry_run: bool, ecosystem: Optional[str]) -> None:
 
 
 main.add_command_with_alias(scan_dependencies_command, ["sdep", "audit"])
+
+# The module's single export: its group, wrapped command by command by the CLI entry point.
+registration = ModuleRegistration(main, add_wrapper=wrapper_decorator(wrapper))
