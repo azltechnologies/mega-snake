@@ -2434,7 +2434,7 @@ inflate the percentage the 95% gate reads. `uv build` must produce a wheel with 
 in it, which is worth checking explicitly rather than assuming: that is what the old nesting made
 impossible to get wrong by accident.
 
-### 8.12 "Offer to create the working path" is a full initialization disguised as light-weight (§2.1)
+### 8.12 "Offer to create the working path" is a full initialization disguised as light-weight (§2.1, §3.10)
 
 **What.** Full initialization refuses to run when `working_path` does not exist: `AppProperties.__init__`
 raises `FileNotFoundError`, and the user is told to go create the folder. Commands that need the folder
@@ -2450,24 +2450,47 @@ whether it can run outside a workspace.
 §2.1. The commands that use the pattern are the light-weight ones that call `ensure_working_path` — find
 them with a search when the work starts rather than trusting a list written today.
 
-**Why it was left.** It changes what every full command does when the folder is missing, which is a
-user-visible behaviour across the whole CLI, and it deserves its own change rather than riding inside a
+**Why it was left.** It changes what several commands do when the folder is missing, which is a
+user-visible behaviour across the CLI, and it deserves its own change rather than riding inside a
 feature.
 
-**Shape of the fix.** Make "check, offer to create, refuse only on a decline" the **default behaviour of
-full initialization**: when `working_path` is missing, full initialization calls the same prompt
-`ensure_working_path` uses, creates and excludes the folder on a yes, and raises `UserDeclinedError` (114)
-on a no. Then move every command that adopted `skip` only to get that prompt back to full initialization,
-and reserve `skip` for commands that genuinely run anywhere. The §2.1 table and its "rule of thumb" are
-rewritten in the same change: the rule of thumb disappears, because the behaviour it described becomes
-the default.
+**Why the prompt must not become the default of full initialization.** An earlier version of this
+entry proposed exactly that, and it would have broken every command whose caller cannot answer a
+prompt. The `comment-killer` state machine (§3.10) is run by an agent, which has no stdin: a `y/n`
+there is unanswerable by construction, Click reads the closed stdin as `Aborted.` with exit 1, and the
+agent — handed an outcome that is neither a JSON action nor a `Blocked` — improvises. A CI step or a
+git hook is in the same position. Whether a command may ask is a property of its **audience**, so it
+has to be declared per command, not imposed by the level.
 
-**Verify.** A full command run where `working_path` is missing prompts, creates the folder and continues
-on a yes, and exits 114 on a no — a row in `src/tests/test_exit_codes.py` for the decline, driven through
-`subprocess` (§7.5). Every command moved back to full keeps its behaviour when the folder already exists.
-And the prompt must not reach `no_init` commands, nor fire on a closed stdin as the `EOFError` of §8.2:
-decide that interaction explicitly, since a CI step running a full command without the folder is exactly
-where it would surface.
+**Shape of the fix.** Split the implicit level in two, so there are four, each honest about the working
+path:
+
+| Level | Working path | Flag |
+| --- | --- | --- |
+| **Full** | Required. Missing → the command refuses; it never asks | _(none)_ |
+| **Provisioning** | Required. Missing → offers to create it (and excludes it from git), `UserDeclinedError` (114) on a no | a new flag, name to be decided |
+| **Light-weight** | No dependency on it at all; the command runs anywhere | `skip` |
+| **None** | `AppProperties` is never built | `no_init` |
+
+1. Add the provisioning flag to `cli()`: it runs `ensure_working_path()` before `init_app_properties`,
+   so the command then gets a full initialization and no longer needs `complete_app_properties()`.
+2. Move every command that is `skip` only to reach `ensure_working_path` onto the new flag, and delete
+   the pre-flight calls from its wrapper or body. A command whose need is conditional — `jira-issues`
+   touches the folder only without `--output` — either stays `skip` with its pre-flight in the body, or
+   the flag grows a way to express the condition; decide which when the work starts.
+3. Commands whose audience is an agent (`comment-killer start|next|status`) are **full**, never
+   provisioning. A missing folder there is refused, and the agent learns it through its guard (§3.10)
+   rather than through a prompt.
+4. Reserve `skip` for commands that genuinely run anywhere, and rewrite the §2.1 table in the same
+   change: its "rule of thumb" becomes the definition of the provisioning level.
+
+**Verify.** A provisioning command run where `working_path` is missing prompts, creates the folder and
+continues on a yes, and exits 114 on a no — a row in `src/tests/test_exit_codes.py` for the decline,
+driven through `subprocess` (§7.5). A full command in the same situation refuses without reading stdin,
+which a test proves by running it with stdin closed. Every migrated command keeps its behaviour when the
+folder already exists. And decide explicitly how the provisioning prompt meets a closed stdin — the
+`EOFError` of §8.2 — since a CI step running a provisioning command without the folder is exactly where
+it would surface.
 
 ### 8.13 `ws_error` prints its message twice when logging was never configured (§4.1)
 
